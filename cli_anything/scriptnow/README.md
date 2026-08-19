@@ -18,8 +18,13 @@ scriptnow login --host https://sn.igeewa.com --email you@example.com --password 
 ## 典型创作流程
 
 ```bash
-# 1. 建项目（小说）
-scriptnow project create --name 新作 --medium novel
+# 1. 建项目（小说）——平台要求完整创作方向（卷数/章数/字数/结构等）
+scriptnow project create --name 新作 --medium novel --genre "mystery, werewolf" \
+  --volume-one 1 --volume-two 15 --chapter-target-words 1200
+
+# 1b. 客户端 Agent 梳理方向 → 回填（推荐：Agent 按创作要求梳理后一次写入）
+scriptnow project direction <pid> --apply '{"premise":"...","tone":"...","world_setting":"...","genre":"mystery, werewolf","structure":"hero_journey","volume_one":"1","volume_two":"15","chapter_target_words":"1500"}'
+#     或从文件读：scriptnow project direction <pid> --apply @direction.json
 
 # 2. 一书一 Skill：上传作品 → 通读 → 源分析 + 创作方法论
 scriptnow interpret go 手稿.docx

@@ -130,8 +130,19 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--medium", type=click.Choice(["novel", "script"]), default="novel")
 @click.option("--source-mode", type=click.Choice(["original", "adaptation"]), default="original")
 @click.option("--workflow-kind", default=None, help="e.g. cross_cultural_recreation")
-@click.option("--genre", default="", help="Comma-separated genre tags")
+@click.option("--genre", default="", help="类型标签（逗号分隔），如 mystery,werewolf")
+@click.option("--premise", default="", help="故事前提/核心设定")
+@click.option("--tone", default="", help="文风基调，如 少比喻、以动作体现情绪")
+@click.option("--world-setting", default="", help="世界观设定")
 @click.option("--language", default="zh-CN")
+@click.option("--styles", default=None, help="文风标签（逗号分隔），如 heroic-epic")
+@click.option("--structure", default="", help="叙事结构，如 hero_journey / three_act / custom")
+@click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
+@click.option("--volume-one", default="1", help="卷数（novel）或季数（script）")
+@click.option("--volume-two", default="15", help="每卷章数（novel）或每季场次（script），可写区间如 20-30")
+@click.option("--volume-three", default="", help="第三维规模（script 用）")
+@click.option("--chapter-target-words", default="1200", help="每章目标字数（novel）")
+@click.option("--creative-variance", type=click.Choice(["focused", "balanced", "exploratory"]), default="balanced", help="创意发散程度")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def project_create(
@@ -141,15 +152,48 @@ def project_create(
     source_mode: str,
     workflow_kind: str | None,
     genre: str,
+    premise: str,
+    tone: str,
+    world_setting: str,
     language: str,
+    styles: str | None,
+    structure: str,
+    script_format: str,
+    volume_one: str,
+    volume_two: str,
+    volume_three: str,
+    chapter_target_words: str,
+    creative_variance: str,
     json_output: bool,
 ) -> None:
-    """Create a project."""
+    """创建作品项目（补全平台要求的完整创作方向）。
+
+    平台新建项目需要完整的 direction 设定（卷数/章数/字数/结构/风格等），
+    否则后续生成 StoryMap/章节会缺少必要配置。CLI 已按平台要求补齐默认值：
+    小说 1 卷 15 章、每章 1200 字、hero_journey 结构；剧本同理可设场次与格式。
+    """
+    direction: dict[str, Any] = {
+        "language": language,
+        "genre": genre,
+        "premise": premise,
+        "tone": tone,
+        "world_setting": world_setting,
+        "structure": structure or ("hero_journey" if medium == "novel" else "three_act"),
+        "volume_one": volume_one,
+        "volume_two": volume_two,
+        "volume_three": volume_three,
+        "chapter_target_words": chapter_target_words,
+        "creative_variance": creative_variance,
+    }
+    if styles:
+        direction["styles"] = [item.strip() for item in styles.split(",") if item.strip()]
+    if medium == "script":
+        direction["script_format"] = script_format or "chinese"
     body: dict[str, Any] = {
         "name": name,
         "medium": medium,
         "source_mode": source_mode,
-        "direction": {"language": language, "genre": genre},
+        "direction": direction,
     }
     if workflow_kind:
         body["workflow_kind"] = workflow_kind
@@ -203,7 +247,8 @@ def project_delete(ctx: click.Context, project_id: str, confirm_name: str, json_
 
 @project_group.command("direction")
 @click.argument("project_id")
-@click.option("--inspire", default=None, help="灵感模式：给出一句话/一段种子文本，AI 生成完整创作方向并写入项目")
+@click.option("--inspire", default=None, help="平台灵感模式：给一句话种子，由平台 AI 生成方向并写入")
+@click.option("--apply", "apply_json", default=None, help="客户端回填：JSON 字符串或 @文件路径，Agent 梳理好的完整方向一次写入")
 @click.option("--language", default=None, help="灵感模式语言（默认 zh-CN）")
 @click.option("--genres", default=None, help="灵感模式：逗号分隔的类型提示，如 mystery,werewolf")
 @click.option("--variance", type=click.Choice(["balanced", "high", "low"]), default="balanced", help="灵感模式：创意发散程度")
@@ -215,6 +260,7 @@ def project_direction(
     ctx: click.Context,
     project_id: str,
     inspire: str | None,
+    apply_json: str | None,
     language: str | None,
     genres: str | None,
     variance: str,
@@ -222,14 +268,20 @@ def project_direction(
     show: bool,
     json_output: bool,
 ) -> None:
-    """查看 / 灵感生成 / 手动补齐项目的创作方向（direction）。
+    """查看 / 灵感生成 / 客户端梳理回填 / 手动补齐项目的创作方向（direction）。
 
-    灵感模式（推荐）：--inspire 给一句种子文本，AI 生成 premise/tone/
-    world_setting/genre 并写入项目，后续创作沿用新方向。
-    手动模式：--set key=value 补齐任意字段（如 tone、world_setting、volume_one）。
+    推荐流程（客户端 Agent 梳理 → 回填）：
+      1. 客户端 Agent 先了解创作要求，梳理出完整方向（premise/tone/
+         world_setting/genre/structure/volume/字数 等）。
+      2. 用 --apply 一次写入：
+         scriptnow project direction <pid> --apply '{"premise":"...","tone":"...",...}'
+         或 --apply @direction.json（从文件读）。
+    备选：
+      --inspire：交给平台 AI 根据一句话种子生成方向。
+      --set key=value：手动补齐单个字段。
     """
     session = _session(ctx)
-    if show and not inspire and not set_pairs:
+    if show and not inspire and not apply_json and not set_pairs:
         projects = session.request("GET", "/projects")
         project = next((item for item in projects if item.get("id") == project_id), None)
         if project is None:
@@ -237,6 +289,21 @@ def project_direction(
         _emit(dict(project.get("direction") or {}), json_output)
         return
     direction: dict[str, Any] = {}
+    if apply_json:
+        import json as _json
+
+        raw = apply_json
+        if raw.startswith("@"):
+            raw = Path(raw[1:]).read_text(encoding="utf-8")
+        try:
+            parsed = _json.loads(raw)
+        except _json.JSONDecodeError as error:
+            raise click.ClickException(f"--apply 需要合法 JSON：{error}") from error
+        if not isinstance(parsed, dict):
+            raise click.ClickException("--apply 需要 JSON 对象（键值对）")
+        direction.update(parsed)
+        if not json_output:
+            click.echo(f"已读取客户端梳理方向：{sorted(parsed.keys())}", err=True)
     if inspire:
         body: dict[str, Any] = {
             "medium": "novel",
@@ -262,7 +329,7 @@ def project_direction(
         key, value = pair.split("=", 1)
         direction[key.strip()] = value.strip()
     if not direction:
-        raise click.ClickException("请提供 --inspire 种子文本、--set 字段，或 --show 查看当前方向")
+        raise click.ClickException("请提供 --apply 梳理结果、--inspire 种子文本、--set 字段，或 --show 查看当前方向")
     updated = session.request(
         "PATCH",
         f"/projects/{project_id}/direction",

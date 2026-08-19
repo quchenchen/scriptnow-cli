@@ -32,7 +32,7 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 
 | Group | Commands |
 |-------|----------|
-| project | list, create, upload, files, delete, direction (--show / --inspire 灵感模式 / --set 手动补齐) |
+| project | list, create, upload, files, delete, direction (--show / --apply 客户端梳理回填 / --inspire 平台灵感 / --set 手动补齐) |
 | interpret | go, create, read, status, decide |
 | chapter | list, show, generate, adopt, quality |
 | storymap | state, generate, adopt |
