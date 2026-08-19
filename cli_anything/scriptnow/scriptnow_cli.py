@@ -1129,7 +1129,7 @@ def novel_propose(
     """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
 
     kind:
-      cores      — 3 个故事方向候选：{"drafts":[{"title","premise","point_of_view",
+      cores      — 1 到 3 个故事方向候选（可只给 1 个主推，直接采纳）：{"drafts":[{"title","premise","point_of_view",
                    "narrative_constraints":[],"angles":["欲望","阻力","情感承诺","道德困境","结局代价"]}]}
       blueprint  — 蓝图锚点：{"anchors":[{"id":"kind:key","kind":"world|character|relationship|
                    character_arc|plot|foreshadow|motif","name","payload":{}}]}
@@ -1152,12 +1152,15 @@ def novel_propose(
 
     if kind == "cores":
         drafts = data.get("drafts") or []
-        if len(drafts) != 3:
-            raise click.ClickException("story cores 需要恰好 3 个 draft")
+        if not 1 <= len(drafts) <= 3:
+            raise click.ClickException("story cores 需要 1 到 3 个 draft（可只给 1 个主推方向）")
         body = {"idempotency_key": idem, "drafts": drafts}
         result = session.request(
             "POST", f"/novel/projects/{project_id}/story-cores/propose", json_body=body, write=True
         )
+        # story-cores/propose 返回 3 个候选的 list；取第一个用于 adopt。
+        if isinstance(result, list):
+            result = result[0] if result else {}
     elif kind == "blueprint":
         anchors = data.get("anchors") or []
         if not anchors:
@@ -1211,6 +1214,152 @@ def novel_propose(
             )
             payload["adopted"] = adopted.get("status")
     _emit(payload, json_output)
+
+
+@novel_group.command("orchestrate")
+@click.argument("project_id")
+@click.option("--storymap-candidate", "candidate_id", default=None, help="要审阅/采纳的 storymap 候选 id（默认取最新 active 候选）")
+@click.option("--adjust", "adjust_file", default=None, help="审阅后调整：传入修改后的 storymap JSON（@file），重新 propose 并采纳")
+@click.option("--accept", is_flag=True, help="确认接受当前 storymap 候选并采纳")
+@click.option("--skip-adopt", is_flag=True, help="只展示候选与计划，不自动采纳（等人工决策）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_orchestrate(
+    ctx: click.Context,
+    project_id: str,
+    candidate_id: str | None,
+    adjust_file: str | None,
+    accept: bool,
+    skip_adopt: bool,
+    json_output: bool,
+) -> None:
+    """编排故事结构：审阅 storymap 候选 → 决定 接受/调整 → 采纳 → 输出全书创作计划。
+
+    这是「用户是否对 storymap 进行调整」的显式决策步骤：
+      1. 展示当前 storymap 候选（卷/章/节拍摘要）。
+      2. 决策：
+         --accept        采纳当前候选；
+         --adjust @file  用修改后的 JSON 重新导入并采纳（旧的自动过期）；
+         都不传则只展示（配合 --skip-adopt 完全等人决定）。
+      3. 采纳后输出 book plan（各章创作状态），作为逐章创作的起点。
+    """
+    import json as _json
+
+    session = _session(ctx)
+    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    story_map = state.get("story_map") or {}
+    candidates = state.get("story_map_candidates") or []
+    active = [c for c in candidates if c.get("status") in ("active", "candidate")]
+    if candidate_id:
+        chosen = next((c for c in active if c.get("id") == candidate_id), None)
+    else:
+        chosen = active[0] if active else None
+    if chosen is None and adjust_file is None:
+        raise click.ClickException(
+            "没有可审阅的 storymap 候选。先用 storymap generate 生成，或 novel propose storymap @file 导入。"
+        )
+
+    def summarize(cand: dict[str, Any]) -> dict[str, Any]:
+        volumes = cand.get("volumes") or []
+        return {
+            "candidate_id": cand.get("id"),
+            "status": cand.get("status"),
+            "volumes": len(volumes),
+            "chapters": sum(len(v.get("chapters", [])) for v in volumes),
+            "structure": [
+                {
+                    "volume": v.get("title"),
+                    "chapters": [c.get("title") for c in (v.get("chapters") or [])],
+                }
+                for v in volumes
+            ],
+        }
+
+    # ① 展示候选供审阅
+    if chosen is not None and not json_output:
+        click.echo("=== 当前 StoryMap 候选（审阅）===", err=True)
+        for vol in summarize(chosen).get("structure", []):
+            click.echo(f"  卷 · {vol['volume']}", err=True)
+            for title in vol["chapters"]:
+                click.echo(f"    - {title}", err=True)
+    elif chosen is not None:
+        _emit(summarize(chosen), json_output)
+        return
+
+    final_candidate = chosen
+    # ② 用户决策：调整 → 重新导入
+    if adjust_file:
+        import pathlib as _pl
+
+        raw = _pl.Path(adjust_file[1:] if adjust_file.startswith("@") else adjust_file).read_text(
+            encoding="utf-8"
+        )
+        data = _json.loads(raw)
+        version = int(story_map.get("version") or 1)
+        body = {
+            "idempotency_key": f"cli-orchestrate-adjust-{__import__('time').time_ns()}",
+            "expected_version": version,
+            "volumes": data.get("volumes") or [],
+        }
+        result = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/propose",
+            json_body=body,
+            write=True,
+        )
+        final_candidate = {
+            "id": result.get("id"),
+            "status": result.get("status"),
+            "volumes": data.get("volumes") or [],
+        }
+        if not json_output:
+            click.echo(
+                f"已用调整后的 JSON 重新导入（候选 {result.get('id')}，旧候选自动过期）", err=True
+            )
+
+    # ③ 采纳（除非 --skip-adopt 且无 accept）
+    if not skip_adopt or accept:
+        if final_candidate is None or not final_candidate.get("id"):
+            raise click.ClickException("没有可采纳的 storymap 候选")
+        adopted = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/{final_candidate['id']}/adopt",
+            write=True,
+        )
+        if not json_output:
+            click.echo(f"✓ StoryMap 已采纳（{adopted.get('status')}）", err=True)
+
+    # ④ 输出全书创作计划
+    fresh = session.request("GET", f"/novel/projects/{project_id}/state")
+    volumes = (fresh.get("story_map") or {}).get("volumes", [])
+    documents = fresh.get("documents") or []
+    plan = []
+    for volume in volumes:
+        for chapter in volume.get("chapters", []):
+            cid = str(chapter["id"])
+            docs = [d for d in documents if d.get("chapter_id") == cid]
+            adopted = next((d for d in docs if d.get("status") == "adopted"), None)
+            candidates = [d for d in docs if d.get("status") in ("candidate", "active")]
+            candidates.sort(key=lambda d: d.get("revision_number", 0), reverse=True)
+            plan.append({
+                "chapter_id": cid,
+                "title": chapter.get("title"),
+                "ordinal": chapter.get("ordinal"),
+                "target_words": chapter.get("target_words"),
+                "state": {
+                    "adopted_revision": adopted.get("revision_number") if adopted else None,
+                    "candidate_revisions": [d.get("revision_number") for d in candidates],
+                    "needs_generation": adopted is None and not candidates,
+                },
+            })
+    _emit({
+        "project_id": project_id,
+        "storymap_adopted": not skip_adopt or accept,
+        "adopted_candidate_id": final_candidate.get("id") if final_candidate else None,
+        "total_chapters": len(plan),
+        "needs_generation": [p["chapter_id"] for p in plan if p["state"]["needs_generation"]],
+        "plan": plan,
+    }, json_output)
 
 
 # ------------------------------------------------------------------------ script
