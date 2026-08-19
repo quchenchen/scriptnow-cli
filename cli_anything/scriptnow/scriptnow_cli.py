@@ -999,6 +999,123 @@ def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str
     )
 
 
+@novel_group.command("bootstrap")
+@click.argument("project_id")
+@click.option("--cores-feedback", default=None, help="故事核心生成反馈")
+@click.option("--blueprint-feedback", default=None, help="蓝图生成反馈")
+@click.option("--stop-at", type=click.Choice(["cores", "blueprint", "storymap"]), default=None, help="在哪个阶段后停止（默认跑完整规划）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_bootstrap(
+    ctx: click.Context,
+    project_id: str,
+    cores_feedback: str | None,
+    blueprint_feedback: str | None,
+    stop_at: str | None,
+    json_output: bool,
+) -> None:
+    """一键完成小说规划：故事核心(3候选)→采纳→蓝图→采纳→StoryMap→采纳。
+
+    平台要求严格按序生成；本命令自动执行并采纳每一步，产出可开始逐章创作的
+    完整 StoryMap。可 --stop-at cores|blueprint 在中间停下让人审阅候选。
+    """
+    import time as _time
+
+    session = _session(ctx)
+    steps: list[dict[str, Any]] = []
+
+    def note(step: str, ok: bool, detail: str = "") -> None:
+        steps.append({"step": step, "ok": ok, "detail": detail})
+        if not json_output:
+            mark = "✓" if ok else "✗"
+            click.echo(f"  {mark} {step}{(' · ' + detail) if detail else ''}", err=True)
+
+    # ① story cores
+    gen = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-cores/generate?background=true",
+        json_body={
+            "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
+            "feedback": cores_feedback,
+        },
+        write=True,
+    )
+    if gen.get("run_id"):
+        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    cores = [c for c in state.get("story_cores") or [] if c.get("status") == "candidate"]
+    if not cores:
+        note("故事核心生成", False, "没有候选，请检查 direction 是否完整")
+        _emit({"project_id": project_id, "steps": steps}, json_output)
+        return
+    cores.sort(key=lambda c: c.get("ordinal", 0))
+    session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-cores/{cores[0]['id']}/adopt",
+        write=True,
+    )
+    note("故事核心生成并采纳", True, cores[0].get("title"))
+    if stop_at == "cores":
+        _emit({"project_id": project_id, "steps": steps}, json_output)
+        return
+
+    # ② blueprint
+    gen = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/blueprints/generate?background=true",
+        json_body={
+            "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
+            "feedback": blueprint_feedback,
+        },
+        write=True,
+    )
+    if gen.get("run_id"):
+        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    bp = next((c for c in state.get("blueprint_candidates") or [] if c.get("status") == "active"), None)
+    if bp is None:
+        note("蓝图生成", False, "没有候选")
+        _emit({"project_id": project_id, "steps": steps}, json_output)
+        return
+    session.request(
+        "POST",
+        f"/novel/projects/{project_id}/blueprints/{bp['id']}/adopt",
+        write=True,
+    )
+    note("蓝图生成并采纳", True, f"锚点 {len(state.get('blueprint') or {}).get('anchors', []) if state.get('blueprint') else 0} 个")
+    if stop_at == "blueprint":
+        _emit({"project_id": project_id, "steps": steps}, json_output)
+        return
+
+    # ③ storymap
+    gen = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-map/generate?background=true",
+        json_body={
+            "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
+            "feedback": None,
+        },
+        write=True,
+    )
+    if gen.get("run_id"):
+        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    sm = next((c for c in state.get("story_map_candidates") or [] if c.get("status") == "active"), None)
+    if sm is None:
+        note("StoryMap 生成", False, "没有候选")
+        _emit({"project_id": project_id, "steps": steps}, json_output)
+        return
+    session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-map/{sm['id']}/adopt",
+        write=True,
+    )
+    volumes = state.get("story_map", {}).get("volumes", [])
+    total_chapters = sum(len(v.get("chapters", [])) for v in volumes)
+    note("StoryMap 生成并采纳", True, f"{len(volumes)} 卷 {total_chapters} 章")
+    _emit({"project_id": project_id, "steps": steps, "story_map_ready": True}, json_output)
+
+
 # ------------------------------------------------------------------------ script
 
 

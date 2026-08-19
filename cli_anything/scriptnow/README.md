@@ -79,6 +79,7 @@ scriptnow export download <pid> <manifest> -o 书.docx
 
 ## Agent 使用提示
 
+- **必须主动填充完整 direction**：创建项目或设定方向时，Agent 应主动梳理并回填全部关键字段（premise/tone/world_setting/genre/structure/卷数/章数/字数/发散度/约束），用 `project direction <pid> --apply '{"...":...}'` 或建项目时带全参数；**不要依赖 `--inspire` 让平台生成，也不要建裸项目**。仅当用户明确要求平台灵感时才用 `--inspire`。
 - 优先 `--json`；所有生成命令默认后台，`--wait` 阻塞等待。
 - 版本管理：创作搭档与后续章节基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：`chapter show` / `scene-show --plain` 读正文 → 判断 → `--feedback` 驱动修正。
