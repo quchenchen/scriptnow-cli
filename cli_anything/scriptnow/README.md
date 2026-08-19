@@ -29,9 +29,15 @@ scriptnow project direction <pid> --apply '{"premise":"...","tone":"...","world_
 # 2. 一书一 Skill：上传作品 → 通读 → 源分析 + 创作方法论
 scriptnow interpret go 手稿.docx
 
-# 3. 规划全书（StoryMap 卷章节）
+# 3. 规划全书（两种方式）
+# ① Agent 本地生成导入（零平台压力，故事方向可单推直接采纳）
+scriptnow novel propose <pid> cores @cores.json --adopt      # 可只给 1 个主推
+scriptnow novel propose <pid> blueprint @blueprint.json --adopt
+scriptnow novel propose <pid> storymap @storymap.json
+scriptnow novel orchestrate <pid> --accept                  # 审阅 → 采纳 → 全书计划
+# ② 平台生成
 scriptnow storymap generate <pid> --wait
-scriptnow storymap adopt <pid> <candidate_id>
+scriptnow novel orchestrate <pid> --accept
 
 # 4. 查看全书托管创作规划
 scriptnow book <pid>
