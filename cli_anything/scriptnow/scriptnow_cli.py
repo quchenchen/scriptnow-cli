@@ -968,6 +968,74 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
     )
 
 
+@chapter_group.command("propose")
+@click.argument("project_id")
+@click.argument("chapter_id")
+@click.option("--file", "blocks_file", default=None, help="章节正文 JSON：{\"blocks\":[{\"block_id\":\"h1\",\"type\":\"heading|prose|dialogue|quote|divider\",\"text\":\"...\"}]}")
+@click.option("--text", default=None, help="纯文本正文（自动分段为 prose blocks，首段为标题）")
+@click.option("--budget", type=int, default=None, help="正文 token 预算上限（中文≈1 token/字，英文≈1 token/4 字符）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def chapter_propose(
+    ctx: click.Context,
+    project_id: str,
+    chapter_id: str,
+    blocks_file: str | None,
+    text: str | None,
+    budget: int | None,
+    json_output: bool,
+) -> None:
+    """Agent 本地创作章节 → 回传为候选（改编创作不经过平台文本生成）。
+
+    适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
+    写好了章节正文，这里只负责把成品按标准格式回传为候选，平台不参与文本生成。
+    """
+    import json as _json
+
+    if not blocks_file and not text:
+        raise click.ClickException("需要 --file（blocks JSON）或 --text（纯文本）")
+    if blocks_file:
+        raw = Path(blocks_file[1:] if blocks_file.startswith("@") else blocks_file).read_text(
+            encoding="utf-8"
+        )
+        try:
+            data = _json.loads(raw)
+        except _json.JSONDecodeError as error:
+            raise click.ClickException(f"blocks JSON 解析失败：{error}") from error
+        blocks = data.get("blocks") if isinstance(data, dict) else data
+        if not isinstance(blocks, list) or not blocks:
+            raise click.ClickException("blocks 需要是至少 1 个 block 的数组")
+        for block in blocks:
+            if block.get("type") not in ("heading", "prose", "dialogue", "quote", "divider"):
+                raise click.ClickException(
+                    f"block type 必须是 heading|prose|dialogue|quote|divider，收到：{block.get('type')}"
+                )
+            if "block_id" not in block or "text" not in block:
+                raise click.ClickException("每个 block 需要 block_id 和 text")
+    else:
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        if not paragraphs:
+            raise click.ClickException("正文为空")
+        blocks = []
+        if paragraphs:
+            blocks.append({"block_id": "h1", "type": "heading", "text": paragraphs[0]})
+        for idx, para in enumerate(paragraphs[1:], 2):
+            blocks.append({"block_id": f"p{idx}", "type": "prose", "text": para})
+    _check_budget(blocks, budget, "章节正文", json_output)
+    session = _session(ctx)
+    body = {
+        "idempotency_key": f"cli-chapter-propose-{__import__('time').time_ns()}",
+        "blocks": blocks,
+    }
+    result = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/propose",
+        json_body=body,
+        write=True,
+    )
+    _emit(result, json_output)
+
+
 @chapter_group.command("quality")
 @click.argument("project_id")
 @click.argument("chapter_id")
