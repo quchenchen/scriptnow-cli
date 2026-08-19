@@ -592,6 +592,123 @@ def admin_skill_update(
     _emit(result, json_output)
 
 
+@admin_group.command("supply")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_supply(ctx: click.Context, json_output: bool) -> None:
+    """模型供给总览：第三方提供商 / 语言模型 / 生图模型 / 等级。"""
+    result = _api_request(ctx, "GET", "/admin/api/supply")
+    if not json_output:
+        click.echo(ui.section("=== 提供商 ==="), err=True)
+        for item in (result.get("providers") or [])[:30]:
+            mark = ui.ok("connected") if item.get("status") == "connected" else ui.error(item.get("status"))
+            click.echo(
+                f"  {ui.kv(item.get('id'), item.get('name'))} {item.get('key')} {mark} "
+                f"{item.get('base_url') or ''}",
+                err=True,
+            )
+        click.echo(ui.section("=== 语言模型 ==="), err=True)
+        for item in (result.get("models") or [])[:30]:
+            click.echo(
+                f"  {ui.kv(item.get('key'), item.get('display_name'))} "
+                f"[{item.get('provider_name')}] {item.get('agentscope_class')} "
+                f"min_tier={item.get('min_tier_code')} {'✓' if item.get('enabled') else '✗'}",
+                err=True,
+            )
+        return
+    _emit(result, json_output)
+
+
+@admin_group.command("provider-connect")
+@click.option("--key", required=True, help="provider key（小写字母数字下划线，如 beeapi）")
+@click.option("--name", required=True, help="显示名，如 BeeAPI (OpenAI-compatible)")
+@click.option("--base-url", required=True, help="OpenAI 兼容接口地址，如 https://beeapi.ai/v1")
+@click.option("--credential", required=True, help="API Key（写操作，不会回显/存储明文外的内容）")
+@click.option("--usage", type=click.Choice(["general", "evaluation", "economy"]), default="general")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_provider_connect(
+    ctx: click.Context,
+    key: str,
+    name: str,
+    base_url: str,
+    credential: str,
+    usage: str,
+    json_output: bool,
+) -> None:
+    """一步接入第三方 OpenAI 兼容提供商：验证 → 探测模型 → 同步 → 绑定最低等级。
+
+    如 openai SDK：OpenAI(api_key=..., base_url=...) —— 本命令注册同款
+    base_url + api_key，之后 AgentScope 以 OpenAIChatModel 调用。
+    """
+    result = _api_request(
+        ctx,
+        "POST",
+        "/admin/api/providers/connect",
+        json_body={
+            "key": key,
+            "name": name,
+            "base_url": base_url,
+            "credential": credential,
+            "default_usage": usage,
+        },
+        write=True,
+        timeout=120,
+    )
+    if not json_output:
+        provider = result.get("provider") or {}
+        click.echo(ui.ok(f"提供商已接入：{provider.get('name')}（{provider.get('key')}，{provider.get('status')}）"))
+        synced = result.get("synchronized_models") or []
+        click.echo(ui.dim(f"同步模型 {len(synced)} 个：{', '.join(m.get('key') for m in synced[:20])}"), err=True)
+    _emit(result, json_output)
+
+
+@admin_group.command("model-add")
+@click.option("--key", required=True, help="模型 key，如 gpt-5.1")
+@click.option("--name", required=True, help="显示名")
+@click.option("--provider", "provider_id", required=True, help="提供商 id（admin supply 查看）")
+@click.option("--class", "agentscope_class", default="OpenAIChatModel", help="AgentScope 模型类")
+@click.option("--tier", "min_tier_code", required=True, help="最低可用等级代码")
+@click.option("--in-price", type=float, required=True, help="输入价格（美元/百万 token）")
+@click.option("--out-price", type=float, required=True, help="输出价格（美元/百万 token）")
+@click.option("--context", type=int, default=32768, help="上下文窗口")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_model_add(
+    ctx: click.Context,
+    key: str,
+    name: str,
+    provider_id: str,
+    agentscope_class: str,
+    min_tier_code: str,
+    in_price: float,
+    out_price: float,
+    context: int,
+    json_output: bool,
+) -> None:
+    """手动注册语言模型（connect 未发现时用）。"""
+    result = _api_request(
+        ctx,
+        "POST",
+        "/admin/api/models",
+        json_body={
+            "key": key,
+            "display_name": name,
+            "provider_id": provider_id,
+            "agentscope_class": agentscope_class,
+            "min_tier_code": min_tier_code,
+            "input_price_per_million": in_price,
+            "output_price_per_million": out_price,
+            "context_window": context,
+            "enabled": True,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"模型已注册：{result.get('key')}（{result.get('display_name')}，enabled={result.get('enabled')}）"))
+    _emit(result, json_output)
+
+
 # ------------------------------------------------------------ work interpretation
 
 
