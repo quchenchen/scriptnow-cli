@@ -1071,11 +1071,12 @@ def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str
 @novel_group.command("bootstrap")
 @click.argument("project_id")
 @click.option("--cores-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="故事核心回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+              help="故事核心回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
 @click.option("--blueprint-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="蓝图回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+              help="蓝图回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
 @click.option("--storymap-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="StoryMap 回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+              help="StoryMap 回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
+@click.option("--budget", type=int, default=None, help="回填内容 token 预算上限（中文≈1 token/字，英文≈1 token/4 字符）")
 @click.option("--cores-feedback", default=None, help="故事核心生成反馈（仅平台生成时使用）")
 @click.option("--blueprint-feedback", default=None, help="蓝图生成反馈（仅平台生成时使用）")
 @click.option("--stop-at", type=click.Choice(["cores", "blueprint", "storymap"]), default=None, help="在哪个阶段后停止（默认跑完整规划）")
@@ -1087,6 +1088,7 @@ def novel_bootstrap(
     cores_file: str | None,
     blueprint_file: str | None,
     storymap_file: str | None,
+    budget: int | None,
     cores_feedback: str | None,
     blueprint_feedback: str | None,
     stop_at: str | None,
@@ -1125,6 +1127,7 @@ def novel_bootstrap(
         drafts = (data or {}).get("drafts") or []
         if not 1 <= len(drafts) <= 3:
             raise click.ClickException("cores 回填需要 1 到 3 个 draft")
+        _check_budget(drafts, budget, "故事方向回填", json_output)
         result = session.request(
             "POST",
             f"/novel/projects/{project_id}/story-cores/propose",
@@ -1170,6 +1173,7 @@ def novel_bootstrap(
     if blueprint_file:
         data = load_json(blueprint_file)
         anchors = (data or {}).get("anchors") or []
+        _check_budget(anchors, budget, "蓝图回填", json_output)
         if not anchors:
             raise click.ClickException("blueprint 回填需要至少 1 个 anchor")
         allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
@@ -1222,6 +1226,7 @@ def novel_bootstrap(
     if storymap_file:
         data = load_json(storymap_file)
         volumes = (data or {}).get("volumes") or []
+        _check_budget(volumes, budget, "卷章结构回填", json_output)
         if not volumes:
             raise click.ClickException("storymap 回填需要至少 1 个 volume")
         state = session.request("GET", f"/novel/projects/{project_id}/state")
