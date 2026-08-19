@@ -727,7 +727,7 @@ LOCAL_SKILL_SPEC = """\
 
 @interpret_group.command("local")
 @click.argument("work_file", type=click.Path(exists=True, dir_okay=False))
-@click.option("--project-id", "project_id", default=None, help="挂载目标项目 id（提交时用于挂载 skill）")
+@click.option("--project-id", "project_id", default=None, help="可选：额外挂载到该项目（不传则只创建个人 Skill）")
 @click.option("--submit", "submit_file", default=None, help="提交解读结果：@skill.json（Agent 按上方规范产出）")
 @click.option("--spec", is_flag=True, help="仅输出平台 skill 规范（供 Agent 本地解读参考）")
 @click.option("--json", "json_output", is_flag=True)
@@ -745,8 +745,9 @@ def interpret_local(
     流程：
       1. 先运行本命令（不带 --submit）输出平台 skill 规范（--spec）——Agent 读作品原文，
          按规范产出 skill JSON。
-      2. Agent 完成后，运行 `interpret local <作品> --submit @skill.json --project-id <pid>`：
-         校验规范 → skill create 回传 → 挂载到项目。
+      2. Agent 完成后，运行 `interpret local <作品> --submit @skill.json`：
+         校验规范 → 直接创建个人 Skill（不建项目）。
+      3. 可选：需要给某项目用时，加 `--project-id <pid>` 额外挂载到该项目。
 
     样本内容全程在本地，平台只接收最终方法论，不接触作品原文。
     """
@@ -767,8 +768,8 @@ def interpret_local(
             json_output,
         )
         return
-    if not project_id:
-        raise click.ClickException("提交回传需要 --project-id（挂载目标项目）")
+    # project_id 可选：默认只创建个人 Skill，不建项目、不挂载；
+    # 传 --project-id 才额外挂载到该项目（用户明确指定时）。
     raw = Path(submit_file[1:] if submit_file.startswith("@") else submit_file).read_text(
         encoding="utf-8"
     )
