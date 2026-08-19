@@ -40,12 +40,11 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 | novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap, 支持 --adopt) |
 | script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show |
 | translate | create, analyze-source, target-contract, strategies, mappings |
-| cover | models, specs, generate, list, delete |
+| cover | package (generate the work package — required before cover generation), package-propose (agent-submitted packaging draft), package-show, models, specs, generate (defaults to a single 1024×1600 output), list, delete |
 | export | options, create, download (novel/script) |
 | skill | list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
-| admin | status, tenant-status, skills, skill-show, skill-update — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
+| admin | status, tenant-status, skills, skill-show, skill-update, supply (provider/model overview), provider-connect (one-step OpenAI-compatible provider), model-add, image-model-add — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
 | run | status, events |
-| account | summary |
 | login | — |
 
 ## For AI Agents
@@ -117,9 +116,13 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   (platform diagnostics), `admin tenant-status` (activate/suspend a tenant),
   `admin skills`/`skill-show`/`skill-update` (main-site skill governance &
   capability evolution; `skill-update` requires the current `--expected-digest`
-  to prevent concurrent overwrites). Per product policy, token consumption,
-  quota, billing and other financial operations are deliberately NOT exposed in
-  the CLI — use the admin console for those.
+  to prevent concurrent overwrites). Model supply: `admin supply` (providers/
+  models overview), `admin provider-connect --base-url <url> --credential <key>`
+  (one-step OpenAI-compatible provider: verify → discover → sync → bind lowest
+  tier), `admin model-add` / `admin image-model-add` for manual registration.
+  Per product policy, token consumption, quota, billing and other financial
+  operations are deliberately NOT exposed in the CLI — use the admin console
+  for those.
 - **Skill capability evolution** (`scriptnow skill growth *`): after a project
   accumulates accepted work, run `skill growth start <pid> --domain novel|script`,
   review candidates with `skill growth workspace <pid>`, decide per candidate
