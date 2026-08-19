@@ -100,7 +100,6 @@ scriptnow export download <pid> <manifest> -o 书.docx
 | skill | Skill 工坊：list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化：workspace/start/decide/candidate/evaluate/preview/publish）；**canary**（版本灰度：list/decide） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update（token 消费、额度与财务命令一律不纳入 CLI） |
 | run | 运行排查：status / events |
-| account | 账户额度查询 |
 
 ## 已知 CLI 缺口（后端已具备、CLI 未覆盖）
 

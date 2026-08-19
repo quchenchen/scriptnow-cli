@@ -421,11 +421,6 @@ def project_direction(
         "direction": dict(updated.get("direction") or {}),
     }
     _emit(result, json_output)
-@click.option("--json", "json_output", is_flag=True)
-@click.pass_context
-def account_summary(ctx: click.Context, json_output: bool) -> None:
-    """Show account summary (plan, quota, credits) — check before long runs."""
-    _emit(_session(ctx).request("GET", "/account/summary"), json_output)
 
 
 @main.group("run")
