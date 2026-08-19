@@ -469,6 +469,134 @@ def run_events(ctx: click.Context, run_id: str, last_event_id: str | None, json_
     _emit(payload, json_output)
 
 
+# -------------------------------------------------------------- admin（仅管理员）
+
+
+def _admin_request(ctx: click.Context, method: str, path: str, **kwargs: Any) -> Any:
+    """Admin / skill-evolution requests with friendly error rendering
+    (auth failures and 4xx/5xx surface as ClickException, not a traceback)."""
+    try:
+        return _session(ctx).request(method, path, **kwargs)
+    except ScriptNowError as error:
+        raise click.ClickException(str(error)) from error
+
+
+@main.group("admin")
+@click.pass_context
+def admin_group(ctx: click.Context) -> None:
+    """管理员专用支线（后端 is_admin 校验，非管理员一律 403）：
+    平台系统状态 / 租户状态 / 主站 Skill 治理与进化。
+    注意：涉及 token 消费、额度与财务的命令一律不纳入 CLI（走管理后台）。"""
+
+
+def _admin_summary(result: dict[str, object]) -> None:
+    """Human-readable summary for admin outputs (kept thin; --json is the contract)."""
+    click.echo(ui.section("=== 平台系统状态 ==="), err=True)
+    for item in result.get("items", []) or []:
+        status = str(item.get("status") or "unobserved")
+        mark = ui.ok(status) if status == "healthy" else ui.error(status)
+        click.echo(f"  {ui.kv(item.get('key'), item.get('label'))} {mark} — {item.get('summary')}", err=True)
+    click.echo(ui.dim(f"overall: {result.get('overall_status')}"), err=True)
+
+
+@admin_group.command("status")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_status(ctx: click.Context, json_output: bool) -> None:
+    """平台系统状态（数据库 / 模型服务 / 队列等能力级诊断）。"""
+    result = _admin_request(ctx, "GET", "/admin/api/system-status")
+    if not json_output:
+        _admin_summary(result)
+        return
+    _emit(result, json_output)
+
+
+@admin_group.command("tenant-status")
+@click.argument("tenant_id")
+@click.argument("status", type=click.Choice(["active", "suspended"]))
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_tenant_status(ctx: click.Context, tenant_id: str, status: str, json_output: bool) -> None:
+    """启用 / 暂停租户（不能暂停当前管理员所在租户）。"""
+    _admin_request(
+        ctx,
+        "PATCH",
+        f"/admin/api/tenants/{tenant_id}/status",
+        json_body={"status": status},
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"租户 {tenant_id} → {status}"))
+    else:
+        _emit({"tenant_id": tenant_id, "status": status}, json_output)
+
+
+@admin_group.command("skills")
+@click.option("--domain", type=click.Choice(["platform", "novel", "script"]), default=None)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_skills(ctx: click.Context, domain: str | None, json_output: bool) -> None:
+    """主站 Skill 目录（能力 / 准入 / 质量状态）。"""
+    params = {"domain": domain} if domain else None
+    result = _admin_request(ctx, "GET", "/admin/api/skills", params=params)
+    if not json_output:
+        click.echo(ui.section("=== 主站 Skill 目录 ==="), err=True)
+        for item in (result.get("skills") or [])[:60]:
+            click.echo(
+                f"  {ui.kv(item['name'], item.get('description'))} "
+                f"[{item.get('domain')}] admission={item.get('admission_status')} quality={item.get('quality_status')}",
+                err=True,
+            )
+        return
+    _emit(result, json_output)
+
+
+@admin_group.command("skill-show")
+@click.argument("skill_name")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_skill_show(ctx: click.Context, skill_name: str, json_output: bool) -> None:
+    """主站 Skill 详情（含 instructions 全文与准入基准）。"""
+    result = _admin_request(ctx, "GET", f"/admin/api/skills/{skill_name}")
+    if not json_output:
+        _emit({k: v for k, v in result.items() if k != "instructions"}, json_output)
+        click.echo(ui.dim(f"instructions（{len(result.get('instructions') or '')} 字符）见 --json"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@admin_group.command("skill-update")
+@click.argument("skill_name")
+@click.option("--description", required=True)
+@click.option("--instructions", required=True, help="新指令全文（能力进化，最长 100,000）")
+@click.option("--expected-digest", required=True, help="当前版本 digest（64 位 hex，防并发覆盖）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_skill_update(
+    ctx: click.Context,
+    skill_name: str,
+    description: str,
+    instructions: str,
+    expected_digest: str,
+    json_output: bool,
+) -> None:
+    """更新主站 Skill（能力进化，写操作；digest 不匹配则拒绝）。"""
+    result = _admin_request(
+        ctx,
+        "PUT",
+        f"/admin/api/skills/{skill_name}",
+        json_body={
+            "description": description,
+            "instructions": instructions,
+            "expected_digest": expected_digest,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"Skill {skill_name} 已更新（digest {result.get('digest')}）"))
+    _emit(result, json_output)
+
+
 # ------------------------------------------------------------ work interpretation
 
 
@@ -2638,6 +2766,268 @@ def skill_upload(ctx: click.Context, file_path: str, json_output: bool) -> None:
             "/skills/personal/upload",
             files={"file": (Path(file_path).name, handle)},
             write=True,
+        )
+    _emit(result, json_output)
+
+
+# ------------------------------------------------------- skill 进化：method-growth
+
+
+@skill_group.group("growth")
+@click.pass_context
+def skill_growth_group(ctx: click.Context) -> None:
+    """Skill 能力进化（方法论成长）：从创作实绩提炼方法论 → 候选 → 评估 → 发布为新 Skill 版本。
+    这是「主站 Skill 进化」的作者侧链路：run → candidates → decide → evaluate → preview → publish。"""
+
+
+@skill_growth_group.command("workspace")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_workspace(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """项目的方法论成长工作台（候选 / 证据 / 可发布物）。"""
+    _emit(
+        _admin_request(ctx, "GET", "/skills/method-growth", params={"project_id": project_id}),
+        json_output,
+    )
+
+
+@skill_growth_group.command("start")
+@click.argument("project_id")
+@click.option("--domain", type=click.Choice(["novel", "script"]), required=True)
+@click.option("--episode-ids", default=None, help="逗号分隔的 episode/章节 id（默认自动取全部 eligible）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_start(
+    ctx: click.Context, project_id: str, domain: str, episode_ids: str | None, json_output: bool
+) -> None:
+    """启动方法论成长分析（后台执行，产出成长候选）。"""
+    body: dict[str, Any] = {
+        "domain": domain,
+        "episode_ids": [item.strip() for item in episode_ids.split(",") if item.strip()]
+        if episode_ids
+        else [],
+        "idempotency_key": f"cli-growth-{__import__('time').time_ns()}",
+    }
+    result = _admin_request(
+        ctx,
+        "POST",
+        f"/skills/method-growth/projects/{project_id}/runs",
+        json_body=body,
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"方法论成长分析已启动：run {result.get('id')}（{result.get('status')}）"))
+        click.echo(ui.dim("完成后用 skill growth workspace 查看候选，再 decide → evaluate → publish。"), err=True)
+    _emit(result, json_output)
+
+
+@skill_growth_group.command("decide")
+@click.argument("candidate_id")
+@click.option(
+    "--action",
+    type=click.Choice(["only_project", "accept", "edit", "defer", "reject", "suppress", "withdraw"]),
+    required=True,
+)
+@click.option("--edit", "edit_file", default=None, help="@edited_change.json（action=edit 时的修改内容）")
+@click.option("--reason", default=None)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_decide(
+    ctx: click.Context,
+    candidate_id: str,
+    action: str,
+    edit_file: str | None,
+    reason: str | None,
+    json_output: bool,
+) -> None:
+    """对成长候选做决策（accept 采纳进入评估 / reject 拒绝 / edit 修改后采纳…）。"""
+    import json as _json
+
+    body: dict[str, Any] = {
+        "action": action,
+        "idempotency_key": f"cli-growth-decide-{__import__('time').time_ns()}",
+    }
+    if edit_file:
+        raw = Path(edit_file[1:] if edit_file.startswith("@") else edit_file).read_text(encoding="utf-8")
+        body["edited_change"] = _json.loads(raw)
+    if reason:
+        body["reason"] = reason
+    result = _admin_request(ctx, 
+        "POST", f"/skills/method-growth/candidates/{candidate_id}/decisions", json_body=body, write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"候选 {candidate_id} → {action}（{result.get('resulting_state')}）"))
+    _emit(result, json_output)
+
+
+@skill_growth_group.command("candidate")
+@click.option("--from", "source_ids", required=True, help="逗号分隔的已采纳 source_candidate_ids")
+@click.option("--skill", "target_skill_id", required=True, help="目标个人 Skill id")
+@click.option("--intent", "author_intent", required=True, help="作者意图说明（≤2000）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_candidate(
+    ctx: click.Context, source_ids: str, target_skill_id: str, author_intent: str, json_output: bool
+) -> None:
+    """把已采纳的项目证据显式聚合为一个个人成长候选。"""
+    body: dict[str, Any] = {
+        "source_candidate_ids": [item.strip() for item in source_ids.split(",") if item.strip()],
+        "target_skill_id": target_skill_id,
+        "author_intent": author_intent,
+        "idempotency_key": f"cli-growth-cand-{__import__('time').time_ns()}",
+    }
+    result = _admin_request(ctx, 
+        "POST", "/skills/method-growth/personal-candidates", json_body=body, write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"个人候选已创建：{result.get('id')}（{result.get('state')}）"))
+    _emit(result, json_output)
+
+
+@skill_growth_group.command("evaluate")
+@click.argument("candidate_id")
+@click.option("--policy-version", default=None, help="评估策略版本 id（默认取最新 active）")
+@click.option("--attribution", type=click.Choice(["combination", "ablation"]), default="combination")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_evaluate(
+    ctx: click.Context, candidate_id: str, policy_version: str | None, attribution: str, json_output: bool
+) -> None:
+    """对候选启动评估回放（后台执行，产出 evaluation_result_id 供 publish 用）。"""
+    body: dict[str, Any] = {
+        "policy_version_id": policy_version,
+        "attribution_mode": attribution,
+        "idempotency_key": f"cli-growth-eval-{__import__('time').time_ns()}",
+    }
+    result = _admin_request(ctx, 
+        "POST",
+        f"/skills/method-growth/candidates/{candidate_id}/evaluation-runs",
+        json_body=body,
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"评估已启动：replay {result.get('id')}（{result.get('status')}，{result.get('pair_count')} 对）"))
+    _emit(result, json_output)
+
+
+@skill_growth_group.command("preview")
+@click.argument("candidate_id")
+@click.option("--evaluation-result", "evaluation_result_id", required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_preview(
+    ctx: click.Context, candidate_id: str, evaluation_result_id: str, json_output: bool
+) -> None:
+    """发布前预览：Skill 能力进化后的版本物料与 mount 影响。"""
+    _emit(
+        _admin_request(ctx, 
+            "GET",
+            f"/skills/method-growth/candidates/{candidate_id}/promotion-preview",
+            params={"evaluation_result_id": evaluation_result_id},
+        ),
+        json_output,
+    )
+
+
+@skill_growth_group.command("publish")
+@click.argument("candidate_id")
+@click.option("--evaluation-result", "evaluation_result_id", required=True)
+@click.option("--description", required=True)
+@click.option("--instructions", required=True, help="进化后的方法论正文（≤100,000）")
+@click.option("--role", type=click.Choice(["director", "architect", "writer", "reviewer"]), default="writer")
+@click.option("--stage", type=click.Choice(["ideation", "planning", "writing", "revision", "review"]), default="writing")
+@click.option("--mount", "mount_ids", default=None, help="逗号分隔的挂载项目 id（触发 canary 灰度）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_growth_publish(
+    ctx: click.Context,
+    candidate_id: str,
+    evaluation_result_id: str,
+    description: str,
+    instructions: str,
+    role: str,
+    stage: str,
+    mount_ids: str | None,
+    json_output: bool,
+) -> None:
+    """发布进化后的 Skill 版本（写操作）：评估通过 → 新版本 → 可选 canary 灰度。"""
+    body: dict[str, Any] = {
+        "evaluation_result_id": evaluation_result_id,
+        "description": description,
+        "roles": [role],
+        "stages": [stage],
+        "instructions": instructions,
+        "mount_project_ids": [item.strip() for item in mount_ids.split(",") if item.strip()]
+        if mount_ids
+        else [],
+    }
+    result = _admin_request(ctx, 
+        "POST",
+        f"/skills/method-growth/candidates/{candidate_id}/publish",
+        json_body=body,
+        write=True,
+    )
+    if not json_output:
+        click.echo(
+            ui.ok(
+                f"Skill 已进化发布：{result.get('id')} 版本 {result.get('version')}（version_id {result.get('version_id')}）"
+            )
+        )
+        if result.get("canary_id"):
+            click.echo(ui.dim(f"canary 灰度：{result.get('canary_id')}（{result.get('canary_status')}）"), err=True)
+    _emit(result, json_output)
+
+
+# ------------------------------------------------------- skill 版本进化：canary 灰度
+
+
+@skill_group.group("canary")
+@click.pass_context
+def skill_canary_group(ctx: click.Context) -> None:
+    """Skill 版本进化（金丝雀灰度）：新版发布后在小范围项目上观察，作者决策
+    retain（全量保留）/ limit（限量）/ need_evidence（需更多证据）/ rollback（回滚旧版）。"""
+
+
+@skill_canary_group.command("list")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_canary_list(ctx: click.Context, json_output: bool) -> None:
+    """我发起的 Skill canary 灰度列表。"""
+    _emit(_admin_request(ctx, "GET", "/skills/canaries"), json_output)
+
+
+@skill_canary_group.command("decide")
+@click.argument("canary_id")
+@click.option("--action", type=click.Choice(["retain", "limit", "need_evidence", "rollback"]), required=True)
+@click.option("--project-ids", default=None, help="逗号分隔的保留/限量项目 id（action=retain/limit 时）")
+@click.option("--reason", default=None)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_canary_decide(
+    ctx: click.Context,
+    canary_id: str,
+    action: str,
+    project_ids: str | None,
+    reason: str | None,
+    json_output: bool,
+) -> None:
+    """对 Skill canary 灰度做决策（版本进化方向）。"""
+    body: dict[str, Any] = {
+        "action": action,
+        "retained_project_ids": [item.strip() for item in project_ids.split(",") if item.strip()]
+        if project_ids
+        else [],
+        "idempotency_key": f"cli-canary-{__import__('time').time_ns()}",
+    }
+    if reason:
+        body["reason"] = reason
+    result = _session(ctx).request(
+        "POST", f"/skills/canaries/{canary_id}/decisions", json_body=body, write=True
+    )
+    if not json_output:
+        click.echo(
+            ui.ok(f"canary {canary_id} → {action}（{result.get('previous_status')} → {result.get('resulting_status')}）")
         )
     _emit(result, json_output)
 

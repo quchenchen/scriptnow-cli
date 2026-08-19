@@ -88,18 +88,25 @@ scriptnow export download <pid> <manifest> -o 书.docx
 | 组 | 用途 |
 |----|------|
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 查看与设定创作方向（含灵感模式） |
-| interpret | 一书一 Skill：go（一键解读）/ create / read / status / decide |
-| book | 全书托管创作规划（Agent 编排原语） |
-| chapter | 小说章节：list / show / generate / quality / adopt |
+| interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
+| book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
+| chapter | 小说章节：list / show / generate / quality / adopt / propose（Agent 本地回传） |
 | storymap | 小说卷章结构：state / generate / adopt |
-| novel | 小说创作链：story-cores / blueprint / bootstrap（一键规划）/ propose（本地 JSON 导入） |
-| script | 剧本创作链：state / scene-list / scene-show / scene / storymap / blueprint / story-cores |
+| novel | 小说创作链：story-cores / blueprint / bootstrap（一键规划）/ propose（本地 JSON 导入）/ orchestrate |
+| script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（Agent 本地回传）/ storymap / blueprint / story-cores / propose |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：models / specs / generate / list / delete |
 | export | 导出交付：options / create / download |
-| skill | Skill 工坊：list / create / update / versions / archive / mount / upload |
+| skill | Skill 工坊：list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化：workspace/start/decide/candidate/evaluate/preview/publish）；**canary**（版本灰度：list/decide） |
+| admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update（token 消费、额度与财务命令一律不纳入 CLI） |
 | run | 运行排查：status / events |
 | account | 账户额度查询 |
+
+## 已知 CLI 缺口（后端已具备、CLI 未覆盖）
+
+- `narrative-graph`（小说叙事图谱）、`onboarding`（引导）、`commerce`（订阅/Paddle）、
+  `review-agent`（审读工作台）、`evaluation v9`（深度评估）、`work-completion`（作品完结）、
+  `invitations`（邀请码）——按需补齐，见 docs/EXPERIMENTS.md 核查报告。
 
 ## Agent 使用提示
 
