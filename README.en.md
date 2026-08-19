@@ -1,0 +1,184 @@
+# scriptnow-cli
+
+**From spark to finished book — the agent-native creation CLI**
+
+[English](README.en.md) · [中文](README.md)
+
+> Built for **terminal users and AI agents**: projects, one-work-one-skill
+> interpretation, novel/script creation, skill evolution, covers and exports —
+> all from the command line. Non-CLI creators should use the web app.
+
+A one-stop CLI built on the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) pattern,
+covering **two creation domains (dual-domain): novels and scripts**. Every command supports
+`--json` structured output for direct agent orchestration.
+
+## Highlights
+
+- **Dual-domain creation chains**: novel (volumes × chapters) and script (episodes × scenes)
+  share "project → direction → planning → writing → delivery", with per-domain planning and
+  writing loops that agents orchestrate separately.
+- **Samples never leave your machine**: one-work-one-skill uses `interpret local` — the agent
+  reads the work locally, distills the methodology and returns only the skill JSON; adapted
+  drafts return via `chapter propose` / `script scene-propose` without platform text generation.
+- **Skill capability & version evolution**: `skill growth` distills methodology from accepted
+  work, evaluates it and publishes a new skill version; `skill canary` steers a new version via
+  rollout decisions (retain / limit / need_evidence / rollback).
+- **Admin branch**: the `admin` group is gated by `is_admin` (403 otherwise). Token consumption,
+  quota and financial commands are deliberately **not** part of the CLI.
+- **Token budget control**: local imports (propose / scene-propose / interpret local) gate with
+  `--budget` estimation.
+- **Review is the agent's own judgment**: no fixed platform rubric — read the text, judge, and
+  drive fixes with `--feedback`.
+
+## Installation
+
+Requires Python 3.10+. On macOS/Linux system Pythons (Homebrew, python.org) guarded by
+PEP 668, install inside a virtual environment first:
+
+```bash
+# From source (editable — recommended for development)
+git clone https://github.com/quchenchen/scriptnow-cli.git
+cd scriptnow-cli && pip install -e .
+
+# Or straight from the latest GitHub code (codeload direct, no clone needed)
+curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
+pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
+```
+
+## Login
+
+```bash
+scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'
+```
+
+The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
+(cookie only, no password, mode 0600). Alternatively use the `SCRIPTNOW_BASE_URL` /
+`SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` environment variables.
+
+## Quick start (dual-domain)
+
+**Prerequisite — check Skill support** (before writing): if the project has no methodology
+skill mounted, create one first:
+
+```bash
+scriptnow skill mounts <pid>                  # which skills are mounted?
+# none → one-work-one-skill distillation (samples stay local): interpret local draft.docx --spec
+#         → read locally → --submit @skill.json --project-id <pid>
+#    or a personal skill: skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
+```
+
+**Novel (volumes × chapters)**
+
+```bash
+scriptnow project create --name "My Novel" --medium novel --volume-one 1 --volume-two 15 --chapter-target-words 1200
+scriptnow project direction <pid> --apply @direction.json     # agent curates the full direction
+# Planning (agent-side import; a single curated core adopts directly)
+scriptnow novel propose <pid> cores @cores.json --adopt
+scriptnow novel propose <pid> blueprint @blueprint.json --adopt
+scriptnow novel propose <pid> storymap @storymap.json
+scriptnow novel orchestrate <pid> --accept                    # review → adopt → full plan
+# Writing loop (agent-driven review)
+scriptnow book <pid>                                          # hosted plan: adopted/needs-generation/pending
+scriptnow chapter show <pid> chapter-1-1 --plain
+scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "your notes"
+scriptnow chapter adopt <pid> chapter-1-1 <rev>
+# Adapted draft return: chapter propose <pid> chapter-1-1 --file @blocks.json
+```
+
+**Script (episodes × scenes)**
+
+```bash
+scriptnow project create --name "My Script" --medium script
+scriptnow project direction <pid> --apply @direction.json
+# Planning
+scriptnow script propose <pid> cores @cores.json --adopt
+scriptnow script propose <pid> blueprint @blueprint.json --adopt
+scriptnow script propose <pid> storymap @storymap.json
+# Writing loop
+scriptnow script scene-list <pid>
+scriptnow script scene-show <pid> scene-1-1 --plain
+scriptnow script scene <pid> scene-1-1 --wait --feedback "your notes"
+scriptnow script adopt-scene <pid> scene-1-1 <rev>
+# Adapted draft return: script scene-propose <pid> scene-1-1 --file @blocks.json
+```
+
+**Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1` →
+`export download -o book.docx`.
+
+## Command groups
+
+| Group | Purpose |
+|-------|---------|
+| project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
+| interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
+| book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
+| chapter | Novel chapters: list / show / generate / quality / adopt / propose (local return) |
+| storymap | Novel volumes×chapters: state / generate / adopt |
+| novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
+| script | Script chain: state / scene-list / scene-show / scene / scene-propose / storymap / blueprint / story-cores / propose |
+| translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
+| cover | Covers: models / specs / generate / list / delete |
+| export | Delivery: options / create / download (novel/script) |
+| skill | Skill workshop: list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
+| admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update |
+| run | Ops: status / events |
+
+## Skill capability & version evolution
+
+```bash
+# Capability evolution (methodology growth): distill from accepted work → evaluate → publish
+scriptnow skill growth start <pid> --domain novel        # start analysis (background)
+scriptnow skill growth workspace <pid>                   # candidates & run history
+scriptnow skill growth decide <candidate_id> --action accept|edit|reject ...
+scriptnow skill growth evaluate <candidate_id>           # evaluation replay (background)
+scriptnow skill growth preview <candidate_id> --evaluation-result <id>
+scriptnow skill growth publish <candidate_id> --evaluation-result <id> \
+  --description "..." --instructions "..." --mount <pid> # publish new version (--mount starts a canary)
+
+# Version evolution (canary rollout)
+scriptnow skill canary list
+scriptnow skill canary decide <canary_id> --action retain|limit|need_evidence|rollback
+```
+
+## Administrator CLI
+
+The `admin` group is available to `is_admin` users only (server-enforced, 403 otherwise):
+platform system status, tenant activate/suspend, main-site Skill governance and capability
+evolution (`skill-update` requires `--expected-digest` to prevent concurrent overwrites).
+**Token consumption, quota and financial commands are deliberately NOT in the CLI** — use
+the admin console for those.
+
+## Known gaps (backend has it, CLI does not yet)
+
+narrative-graph, onboarding, commerce (Paddle subscriptions), review-agent workbench,
+evaluation v9 (deep evaluation), work-completion, invitations — to be added on demand.
+
+## AI Agent installation (SKILL system)
+
+Agents (Claude Code / npx skills compatible) can discover capabilities via SKILL.md:
+
+```bash
+npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
+```
+
+SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptnow/skills/SKILL.md).
+
+## Tips for AI agents
+
+- **MANDATORY: check Skill support before writing** — `skill mounts <pid>`; if empty, create
+  one first (interpret local distillation or skill create) and mount it. `book` also flags
+  missing Skill support.
+- **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
+  genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
+  do not rely on `--inspire` and do not create bare projects.
+- Prefer `--json`; generation commands run in background by default, `--wait` blocks.
+- Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent
+  candidates are not part of the baseline.
+- Review is the agent's own judgment: read the text → judge → drive fixes with `--feedback`.
+
+## Security notes
+
+- Session stores cookies only (no passwords), file mode 0600.
+- All writes go through the platform's auth (cookie + CSRF + tenant isolation); no cross-tenant access.
+- Platform internals (built-in skills, admin endpoints, tool catalog) are not exposed via the CLI —
+  the admin group is is_admin-gated.
