@@ -467,7 +467,7 @@ def run_events(ctx: click.Context, run_id: str, last_event_id: str | None, json_
 # -------------------------------------------------------------- admin（仅管理员）
 
 
-def _admin_request(ctx: click.Context, method: str, path: str, **kwargs: Any) -> Any:
+def _api_request(ctx: click.Context, method: str, path: str, **kwargs: Any) -> Any:
     """Admin / skill-evolution requests with friendly error rendering
     (auth failures and 4xx/5xx surface as ClickException, not a traceback)."""
     try:
@@ -499,7 +499,7 @@ def _admin_summary(result: dict[str, object]) -> None:
 @click.pass_context
 def admin_status(ctx: click.Context, json_output: bool) -> None:
     """平台系统状态（数据库 / 模型服务 / 队列等能力级诊断）。"""
-    result = _admin_request(ctx, "GET", "/admin/api/system-status")
+    result = _api_request(ctx, "GET", "/admin/api/system-status")
     if not json_output:
         _admin_summary(result)
         return
@@ -513,7 +513,7 @@ def admin_status(ctx: click.Context, json_output: bool) -> None:
 @click.pass_context
 def admin_tenant_status(ctx: click.Context, tenant_id: str, status: str, json_output: bool) -> None:
     """启用 / 暂停租户（不能暂停当前管理员所在租户）。"""
-    _admin_request(
+    _api_request(
         ctx,
         "PATCH",
         f"/admin/api/tenants/{tenant_id}/status",
@@ -533,7 +533,7 @@ def admin_tenant_status(ctx: click.Context, tenant_id: str, status: str, json_ou
 def admin_skills(ctx: click.Context, domain: str | None, json_output: bool) -> None:
     """主站 Skill 目录（能力 / 准入 / 质量状态）。"""
     params = {"domain": domain} if domain else None
-    result = _admin_request(ctx, "GET", "/admin/api/skills", params=params)
+    result = _api_request(ctx, "GET", "/admin/api/skills", params=params)
     if not json_output:
         click.echo(ui.section("=== 主站 Skill 目录 ==="), err=True)
         for item in (result.get("skills") or [])[:60]:
@@ -552,7 +552,7 @@ def admin_skills(ctx: click.Context, domain: str | None, json_output: bool) -> N
 @click.pass_context
 def admin_skill_show(ctx: click.Context, skill_name: str, json_output: bool) -> None:
     """主站 Skill 详情（含 instructions 全文与准入基准）。"""
-    result = _admin_request(ctx, "GET", f"/admin/api/skills/{skill_name}")
+    result = _api_request(ctx, "GET", f"/admin/api/skills/{skill_name}")
     if not json_output:
         _emit({k: v for k, v in result.items() if k != "instructions"}, json_output)
         click.echo(ui.dim(f"instructions（{len(result.get('instructions') or '')} 字符）见 --json"), err=True)
@@ -576,7 +576,7 @@ def admin_skill_update(
     json_output: bool,
 ) -> None:
     """更新主站 Skill（能力进化，写操作；digest 不匹配则拒绝）。"""
-    result = _admin_request(
+    result = _api_request(
         ctx,
         "PUT",
         f"/admin/api/skills/{skill_name}",
@@ -2782,7 +2782,7 @@ def skill_growth_group(ctx: click.Context) -> None:
 def skill_growth_workspace(ctx: click.Context, project_id: str, json_output: bool) -> None:
     """项目的方法论成长工作台（候选 / 证据 / 可发布物）。"""
     _emit(
-        _admin_request(ctx, "GET", "/skills/method-growth", params={"project_id": project_id}),
+        _api_request(ctx, "GET", "/skills/method-growth", params={"project_id": project_id}),
         json_output,
     )
 
@@ -2804,7 +2804,7 @@ def skill_growth_start(
         else [],
         "idempotency_key": f"cli-growth-{__import__('time').time_ns()}",
     }
-    result = _admin_request(
+    result = _api_request(
         ctx,
         "POST",
         f"/skills/method-growth/projects/{project_id}/runs",
@@ -2848,7 +2848,7 @@ def skill_growth_decide(
         body["edited_change"] = _json.loads(raw)
     if reason:
         body["reason"] = reason
-    result = _admin_request(ctx, 
+    result = _api_request(ctx, 
         "POST", f"/skills/method-growth/candidates/{candidate_id}/decisions", json_body=body, write=True
     )
     if not json_output:
@@ -2872,7 +2872,7 @@ def skill_growth_candidate(
         "author_intent": author_intent,
         "idempotency_key": f"cli-growth-cand-{__import__('time').time_ns()}",
     }
-    result = _admin_request(ctx, 
+    result = _api_request(ctx, 
         "POST", "/skills/method-growth/personal-candidates", json_body=body, write=True
     )
     if not json_output:
@@ -2895,7 +2895,7 @@ def skill_growth_evaluate(
         "attribution_mode": attribution,
         "idempotency_key": f"cli-growth-eval-{__import__('time').time_ns()}",
     }
-    result = _admin_request(ctx, 
+    result = _api_request(ctx, 
         "POST",
         f"/skills/method-growth/candidates/{candidate_id}/evaluation-runs",
         json_body=body,
@@ -2916,7 +2916,7 @@ def skill_growth_preview(
 ) -> None:
     """发布前预览：Skill 能力进化后的版本物料与 mount 影响。"""
     _emit(
-        _admin_request(ctx, 
+        _api_request(ctx, 
             "GET",
             f"/skills/method-growth/candidates/{candidate_id}/promotion-preview",
             params={"evaluation_result_id": evaluation_result_id},
@@ -2957,7 +2957,7 @@ def skill_growth_publish(
         if mount_ids
         else [],
     }
-    result = _admin_request(ctx, 
+    result = _api_request(ctx, 
         "POST",
         f"/skills/method-growth/candidates/{candidate_id}/publish",
         json_body=body,
@@ -2989,7 +2989,7 @@ def skill_canary_group(ctx: click.Context) -> None:
 @click.pass_context
 def skill_canary_list(ctx: click.Context, json_output: bool) -> None:
     """我发起的 Skill canary 灰度列表。"""
-    _emit(_admin_request(ctx, "GET", "/skills/canaries"), json_output)
+    _emit(_api_request(ctx, "GET", "/skills/canaries"), json_output)
 
 
 @skill_canary_group.command("decide")
@@ -3033,7 +3033,93 @@ def skill_canary_decide(
 @main.group("cover")
 @click.pass_context
 def cover_group(ctx: click.Context) -> None:
-    """作品封面：生成 / 查看 / 删除（需先创建包装包 generate）。"""
+    """作品封面：先生成作品包装包（package）→ 选生图模型 → 生成封面。"""
+
+
+@cover_group.command("package")
+@click.argument("project_id")
+@click.option("--feedback", default=None, help="对现有包装的修改意见（可选）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def cover_package(ctx: click.Context, project_id: str, feedback: str | None, json_output: bool) -> None:
+    """生成 / 重建作品包装包（title/synopsis/tags/cover_brief/cover_prompt）。
+    生图前置：未生成包装包时无法生图。同步等待（可能数分钟）。"""
+    body: dict[str, Any] = {
+        "idempotency_key": f"cli-package-{__import__('time').time_ns()}",
+    }
+    if feedback:
+        body["feedback"] = feedback
+    result = _api_request(
+        ctx,
+        "POST",
+        f"/projects/{project_id}/packaging/generate",
+        json_body=body,
+        write=True,
+        timeout=600,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"作品包装包已生成：{result.get('title')}（v{result.get('version')}）"))
+    _emit(result, json_output)
+
+
+@cover_group.command("package-propose")
+@click.argument("project_id")
+@click.option("--file", "draft_file", required=True, help="@package.json（Agent 本地产出的包装文案）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def cover_package_propose(ctx: click.Context, project_id: str, draft_file: str, json_output: bool) -> None:
+    """Agent 自主提交作品包装文案 → 最新包装包（不经平台 AI 生成）。
+
+    与 chapter/scene propose 同构：Agent 在本地按规范写好
+    {title, synopsis(≥100字), tags(3-12), cover_brief:{subject, setting,
+    visual_metaphor, palette, composition, title_safe_area, style,
+    forbidden_elements}}，平台只做校验、幂等与落库。
+    """
+    import json as _json
+
+    raw = Path(draft_file[1:] if draft_file.startswith("@") else draft_file).read_text(
+        encoding="utf-8"
+    )
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"包装文案 JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("包装文案必须是对象（title/synopsis/tags/cover_brief）")
+    result = _api_request(
+        ctx,
+        "POST",
+        f"/projects/{project_id}/packaging/propose",
+        json_body={
+            "idempotency_key": f"cli-pkg-propose-{__import__('time').time_ns()}",
+            "draft": data,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"作品包装包已提交：{result.get('title')}（v{result.get('version')}）"))
+    _emit(result, json_output)
+
+
+@cover_group.command("package-show")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def cover_package_show(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """查看最新作品包装包（封面 brief 与 prompt）。"""
+    result = _api_request(ctx, "GET", f"/projects/{project_id}/packaging")
+    if result is None:
+        if not json_output:
+            click.echo(ui.warn("该项目尚未生成作品包装包 —— 先运行 cover package <pid> 生成后再生图。"), err=True)
+        return
+    if not json_output:
+        click.echo(ui.section(f"=== 作品包装包 {result.get('id')}（v{result.get('version')}）==="), err=True)
+        click.echo(f"  {ui.kv('title', result.get('title'))}", err=True)
+        click.echo(f"  {ui.kv('synopsis', result.get('synopsis'))}", err=True)
+        click.echo(f"  {ui.kv('language', result.get('language'))}", err=True)
+        click.echo(ui.dim("cover_brief / cover_prompt 见 --json 输出"), err=True)
+        return
+    _emit(result, json_output)
 
 
 @cover_group.command("models")
@@ -3057,7 +3143,7 @@ def cover_specs(ctx: click.Context, project_id: str, json_output: bool) -> None:
 @cover_group.command("generate")
 @click.argument("project_id")
 @click.option("--image-model-id", required=True, help="生图模型 id（用 cover models 查看）")
-@click.option("--output-keys", default=None, help="逗号分隔的输出规格 key（默认全部）")
+@click.option("--output-keys", default=None, help="逗号分隔的输出规格 key（默认 1 个：wattpad_hd = 1024×1600）")
 @click.option("--prompt", default=None, help="覆盖封面 prompt（默认由平台根据作品生成）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -3069,10 +3155,14 @@ def cover_generate(
     prompt: str | None,
     json_output: bool,
 ) -> None:
-    """为作品生成封面候选（同步返回封面列表）。"""
+    """为作品生成封面候选（同步返回封面列表）。默认只生成 1 个规格：1024×1600（wattpad_hd）。"""
     body: dict[str, Any] = {"image_model_id": image_model_id}
-    if output_keys:
-        body["output_keys"] = tuple(key.strip() for key in output_keys.split(",") if key.strip())
+    # 默认 1 个规格 1024×1600；--output-keys 可覆盖
+    body["output_keys"] = (
+        tuple(key.strip() for key in output_keys.split(",") if key.strip())
+        if output_keys
+        else ("wattpad_hd",)
+    )
     if prompt:
         body["prompt"] = prompt
     _emit(
