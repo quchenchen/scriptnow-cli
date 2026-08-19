@@ -4,6 +4,10 @@
 
 [English](README.en.md) · [中文](README.md)
 
+<p align="center">
+  <img src="assets/ascii-banner.png" alt="ScriptNow CLI — Matrix ASCII banner" width="100%" style="max-width:1200px" />
+</p>
+
 > Built for **terminal users and AI agents**: projects, one-work-one-skill
 > interpretation, novel/script creation, skill evolution, covers and exports —
 > all from the command line. Non-CLI creators should use the web app.

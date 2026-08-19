@@ -4,6 +4,10 @@
 
 [English](README.en.md) · [中文](README.md)
 
+<p align="center">
+  <img src="assets/ascii-banner.png" alt="ScriptNow CLI — Matrix ASCII banner" width="100%" style="max-width:1200px" />
+</p>
+
 > 面向**命令行用户与 AI Agent**：建项目、一书一 Skill 解读、小说/剧本创作、Skill 进化、
 > 封面生成、导出交付，全部可用命令行完成。非命令行创作者请使用网页端。
 
