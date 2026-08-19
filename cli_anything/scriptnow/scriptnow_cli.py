@@ -138,7 +138,7 @@ _MAIN_HELP = (
 @click.version_option(
     VERSION,
     prog_name="scriptnow",
-    message=f"{ui.paint('ScriptNow CLI', ui.GOLD)} %(version)s",
+    message=f"{ui.paint('ScriptNow CLI', ui.MATRIX)} %(version)s",
 )
 @click.pass_context
 def main(

@@ -14,8 +14,11 @@ import sys
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 
-# ScriptNow 品牌金（与 Hermes Agent CLI 的金色一致）：LOGO 与主强调。
+# ScriptNow 品牌金（与 Hermes Agent CLI 的金色一致）：常规强调。
 GOLD = "\033[1;38;2;255;215;0m"
+# Matrix 荧光绿（黑底绿字）：进入横幅主题色。
+MATRIX = "\033[1;38;2;0;255;65m"
+MATRIX_DIM = "\033[2;38;2;0;200;50m"
 CYAN = "\033[36m"     # 标题 / key
 GREEN = "\033[32m"    # 成功
 RED = "\033[31m"      # 错误
@@ -64,10 +67,11 @@ def paint(text: str, code: str = "") -> str:
 
 def banner(version: str, *, logo: bool = True) -> str:
     """Concise brand banner. 规范、不复杂：``logo=True`` 时带进入横幅字符画
-    （裸运行欢迎页），``logo=False`` 只输出品牌行（--help 顶部，避免干扰）。"""
-    head = [paint("ScriptNow CLI", GOLD), paint(f"v{version} · {TAGLINE}", GREY)]
+    （裸运行欢迎页），``logo=False`` 只输出品牌行（--help 顶部，避免干扰）。
+    Matrix 主题：荧光绿字（黑底绿字）。"""
+    head = [paint("ScriptNow CLI", MATRIX), paint(f"v{version} · {TAGLINE}", MATRIX_DIM)]
     if logo:
-        return "\n".join([paint(LOGO, GOLD), *head])
+        return "\n".join([paint(LOGO, MATRIX), *head])
     return "\n".join(head)
 
 
