@@ -270,15 +270,17 @@ def project_direction(
 ) -> None:
     """查看 / 灵感生成 / 客户端梳理回填 / 手动补齐项目的创作方向（direction）。
 
-    推荐流程（客户端 Agent 梳理 → 回填）：
+    推荐流程（客户端 Agent 梳理 → 回填，作为优先项）：
       1. 客户端 Agent 先了解创作要求，梳理出完整方向（premise/tone/
          world_setting/genre/structure/volume/字数 等）。
       2. 用 --apply 一次写入：
          scriptnow project direction <pid> --apply '{"premise":"...","tone":"...",...}'
          或 --apply @direction.json（从文件读）。
+    优先级：--set（手动指定）> --apply（Agent 梳理回填）> --inspire（平台 AI）。
+    --inspire 只填充 Agent 未提供的空缺字段，不会覆盖 --apply 的方向。
     备选：
-      --inspire：交给平台 AI 根据一句话种子生成方向。
-      --set key=value：手动补齐单个字段。
+      --inspire：交给平台 AI 根据一句话种子生成方向（仅补缺）。
+      --set key=value：手动补齐单个字段（最高优先级）。
     """
     session = _session(ctx)
     if show and not inspire and not apply_json and not set_pairs:
@@ -313,15 +315,19 @@ def project_direction(
             "creative_variance": variance,
         }
         insp = session.request("POST", "/creative-inspiration", json_body=body, write=True, timeout=180)
-        direction["premise"] = str(insp.get("premise") or "").strip()
-        direction["tone"] = str(insp.get("tone") or "").strip()
-        direction["world_setting"] = str(insp.get("world_setting") or "").strip()
+        # Agent-梳理方向（--apply）优先：平台 AI 生成的字段只填充客户端未
+        # 提供的空缺，绝不覆盖 agent 已梳理好的方向；--set 手动字段在之后
+        # 统一覆盖，保持 手动 > agent 梳理 > 平台 AI 的优先级。
+        direction.setdefault("premise", str(insp.get("premise") or "").strip())
+        direction.setdefault("tone", str(insp.get("tone") or "").strip())
+        direction.setdefault("world_setting", str(insp.get("world_setting") or "").strip())
         suggested = [str(g).strip() for g in (insp.get("genre_suggestions") or []) if str(g).strip()]
-        if suggested:
+        if suggested and not direction.get("genre"):
             direction["genre"] = ", ".join(suggested[:4])
         if not json_output:
+            echo_mode = "平台 AI 补全空缺" if direction.get("premise") or direction.get("tone") else "平台 AI 生成"
             click.echo(
-                f"灵感已生成：{insp.get('title')}（模型 {insp.get('model_key')}）", err=True
+                f"{echo_mode}：{insp.get('title')}（模型 {insp.get('model_key')}）", err=True
             )
     for pair in set_pairs:
         if "=" not in pair:
@@ -926,7 +932,15 @@ def novel_group(ctx: click.Context) -> None:
 def novel_story_cores(
     ctx: click.Context, project_id: str, feedback: str | None, wait: bool, json_output: bool
 ) -> None:
-    """Generate story core candidates (novel)."""
+    """Generate story core candidates (novel) via platform AI [后备].
+
+    推荐由 Agent 本地生成方向后回填（不消耗平台生成资源、结果可控）：
+      scriptnow novel propose <project_id> cores <file.json>
+      -- 文件格式：{"drafts": [{"title","premise","point_of_view",
+      "narrative_constraints":[],"angles":[]}]}，1-3 个 draft；
+      可加 --adopt 直接采纳最佳候选。
+    本命令是平台 AI 生成，仅在 Agent 无法自行产出方向时使用。
+    """
     session = _session(ctx)
     body = {"idempotency_key": f"cli-cores-{__import__('time').time_ns()}", "feedback": feedback}
     result = session.request(
@@ -967,7 +981,15 @@ def novel_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, jso
 def novel_blueprint(
     ctx: click.Context, project_id: str, feedback: str | None, wait: bool, json_output: bool
 ) -> None:
-    """Generate a blueprint candidate (novel)."""
+    """Generate a blueprint candidate (novel) via platform AI [后备].
+
+    推荐由 Agent 本地生成锚点后回填：
+      scriptnow novel propose <project_id> blueprint <file.json>
+      -- {"anchors":[{"id":"kind:key","kind":"world|character|relationship|
+      character_arc|plot|foreshadow|motif","name","payload":{}}]}
+      可加 --adopt 直接采纳。
+    本命令是平台 AI 生成，仅在 Agent 无法自行产出蓝图时使用。
+    """
     session = _session(ctx)
     body = {"idempotency_key": f"cli-bp-{__import__('time').time_ns()}", "feedback": feedback}
     result = session.request(
@@ -1001,14 +1023,23 @@ def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str
 
 @novel_group.command("bootstrap")
 @click.argument("project_id")
-@click.option("--cores-feedback", default=None, help="故事核心生成反馈")
-@click.option("--blueprint-feedback", default=None, help="蓝图生成反馈")
+@click.option("--cores-file", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="故事核心回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+@click.option("--blueprint-file", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="蓝图回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+@click.option("--storymap-file", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="StoryMap 回填 JSON（Agent 本地生成 → propose；不传则平台 AI 生成）")
+@click.option("--cores-feedback", default=None, help="故事核心生成反馈（仅平台生成时使用）")
+@click.option("--blueprint-feedback", default=None, help="蓝图生成反馈（仅平台生成时使用）")
 @click.option("--stop-at", type=click.Choice(["cores", "blueprint", "storymap"]), default=None, help="在哪个阶段后停止（默认跑完整规划）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_bootstrap(
     ctx: click.Context,
     project_id: str,
+    cores_file: str | None,
+    blueprint_file: str | None,
+    storymap_file: str | None,
     cores_feedback: str | None,
     blueprint_feedback: str | None,
     stop_at: str | None,
@@ -1016,9 +1047,11 @@ def novel_bootstrap(
 ) -> None:
     """一键完成小说规划：故事核心(3候选)→采纳→蓝图→采纳→StoryMap→采纳。
 
-    平台要求严格按序生成；本命令自动执行并采纳每一步，产出可开始逐章创作的
-    完整 StoryMap。可 --stop-at cores|blueprint 在中间停下让人审阅候选。
+    Agent 处理优先：传入 --*-file（本地生成的 JSON）则走 propose 回填，
+    未传该文件时才由平台 AI 生成（后备）。可 --stop-at cores|blueprint 在
+    中间停下让人审阅候选。
     """
+    import json as _json
     import time as _time
 
     session = _session(ctx)
@@ -1030,22 +1063,48 @@ def novel_bootstrap(
             mark = "✓" if ok else "✗"
             click.echo(f"  {mark} {step}{(' · ' + detail) if detail else ''}", err=True)
 
+    def load_json(file_path: str | None) -> dict[str, Any] | None:
+        if not file_path:
+            return None
+        try:
+            return _json.loads(Path(file_path).read_text(encoding="utf-8"))
+        except (_json.JSONDecodeError, OSError) as error:
+            raise click.ClickException(f"回填 JSON 解析失败（{file_path}）：{error}") from error
+
     # ① story cores
-    gen = session.request(
-        "POST",
-        f"/novel/projects/{project_id}/story-cores/generate?background=true",
-        json_body={
-            "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
-            "feedback": cores_feedback,
-        },
-        write=True,
-    )
-    if gen.get("run_id"):
-        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    cores_source = "Agent 回填" if cores_file else "平台 AI"
+    if cores_file:
+        data = load_json(cores_file)
+        drafts = (data or {}).get("drafts") or []
+        if not 1 <= len(drafts) <= 3:
+            raise click.ClickException("cores 回填需要 1 到 3 个 draft")
+        result = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-cores/propose",
+            json_body={
+                "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
+                "drafts": drafts,
+            },
+            write=True,
+        )
+        if isinstance(result, list):
+            result = result[0] if result else {}
+    else:
+        gen = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-cores/generate?background=true",
+            json_body={
+                "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
+                "feedback": cores_feedback,
+            },
+            write=True,
+        )
+        if gen.get("run_id"):
+            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
     state = session.request("GET", f"/novel/projects/{project_id}/state")
     cores = [c for c in state.get("story_cores") or [] if c.get("status") in ("candidate", "active")]
     if not cores:
-        note("故事核心生成", False, "没有候选，请检查 direction 是否完整")
+        note(f"故事核心（{cores_source}）", False, "没有候选，请检查 direction 是否完整")
         _emit({"project_id": project_id, "steps": steps}, json_output)
         return
     cores.sort(key=lambda c: c.get("ordinal", 0))
@@ -1054,27 +1113,49 @@ def novel_bootstrap(
         f"/novel/projects/{project_id}/story-cores/{cores[0]['id']}/adopt",
         write=True,
     )
-    note("故事核心生成并采纳", True, cores[0].get("title"))
+    note(f"故事核心生成并采纳（{cores_source}）", True, cores[0].get("title"))
     if stop_at == "cores":
         _emit({"project_id": project_id, "steps": steps}, json_output)
         return
 
     # ② blueprint
-    gen = session.request(
-        "POST",
-        f"/novel/projects/{project_id}/blueprints/generate?background=true",
-        json_body={
-            "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
-            "feedback": blueprint_feedback,
-        },
-        write=True,
-    )
-    if gen.get("run_id"):
-        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    blueprint_source = "Agent 回填" if blueprint_file else "平台 AI"
+    if blueprint_file:
+        data = load_json(blueprint_file)
+        anchors = (data or {}).get("anchors") or []
+        if not anchors:
+            raise click.ClickException("blueprint 回填需要至少 1 个 anchor")
+        allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
+        for anchor in anchors:
+            if anchor.get("kind") not in allowed:
+                raise click.ClickException(
+                    f"anchor kind 必须是 {sorted(allowed)}，收到：{anchor.get('kind')}"
+                )
+        session.request(
+            "POST",
+            f"/novel/projects/{project_id}/blueprints/propose",
+            json_body={
+                "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
+                "anchors": anchors,
+            },
+            write=True,
+        )
+    else:
+        gen = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/blueprints/generate?background=true",
+            json_body={
+                "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
+                "feedback": blueprint_feedback,
+            },
+            write=True,
+        )
+        if gen.get("run_id"):
+            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
     state = session.request("GET", f"/novel/projects/{project_id}/state")
     bp = next((c for c in state.get("blueprint_candidates") or [] if c.get("status") == "active"), None)
     if bp is None:
-        note("蓝图生成", False, "没有候选")
+        note(f"蓝图（{blueprint_source}）", False, "没有候选")
         _emit({"project_id": project_id, "steps": steps}, json_output)
         return
     session.request(
@@ -1082,27 +1163,48 @@ def novel_bootstrap(
         f"/novel/projects/{project_id}/blueprints/{bp['id']}/adopt",
         write=True,
     )
-    note("蓝图生成并采纳", True, f"锚点 {len(state.get('blueprint') or {}).get('anchors', []) if state.get('blueprint') else 0} 个")
+    anchor_count = len((state.get("blueprint") or {}).get("anchors") or [])
+    note(f"蓝图生成并采纳（{blueprint_source}）", True, f"锚点 {anchor_count} 个")
     if stop_at == "blueprint":
         _emit({"project_id": project_id, "steps": steps}, json_output)
         return
 
     # ③ storymap
-    gen = session.request(
-        "POST",
-        f"/novel/projects/{project_id}/story-map/generate?background=true",
-        json_body={
-            "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
-            "feedback": None,
-        },
-        write=True,
-    )
-    if gen.get("run_id"):
-        _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
+    # ③ storymap
+    storymap_source = "Agent 回填" if storymap_file else "平台 AI"
+    if storymap_file:
+        data = load_json(storymap_file)
+        volumes = (data or {}).get("volumes") or []
+        if not volumes:
+            raise click.ClickException("storymap 回填需要至少 1 个 volume")
+        state = session.request("GET", f"/novel/projects/{project_id}/state")
+        version = int((state.get("story_map") or {}).get("version") or 1)
+        session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/propose",
+            json_body={
+                "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
+                "expected_version": version,
+                "volumes": volumes,
+            },
+            write=True,
+        )
+    else:
+        gen = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/generate?background=true",
+            json_body={
+                "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
+                "feedback": None,
+            },
+            write=True,
+        )
+        if gen.get("run_id"):
+            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
     state = session.request("GET", f"/novel/projects/{project_id}/state")
     sm = next((c for c in state.get("story_map_candidates") or [] if c.get("status") == "active"), None)
     if sm is None:
-        note("StoryMap 生成", False, "没有候选")
+        note(f"StoryMap（{storymap_source}）", False, "没有候选")
         _emit({"project_id": project_id, "steps": steps}, json_output)
         return
     session.request(
@@ -1112,13 +1214,13 @@ def novel_bootstrap(
     )
     volumes = state.get("story_map", {}).get("volumes", [])
     total_chapters = sum(len(v.get("chapters", [])) for v in volumes)
-    note("StoryMap 生成并采纳", True, f"{len(volumes)} 卷 {total_chapters} 章")
+    note(f"StoryMap 生成并采纳（{storymap_source}）", True, f"{len(volumes)} 卷 {total_chapters} 章")
     _emit({"project_id": project_id, "steps": steps, "story_map_ready": True}, json_output)
 
 
 @novel_group.command("propose")
 @click.argument("project_id")
-@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap"]))
+@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
 @click.option("--json", "json_output", is_flag=True)
@@ -1136,7 +1238,10 @@ def novel_propose(
       storymap   — 卷章结构：{"volumes":[{"id","ordinal","title","chapters":[
                    {"id","ordinal","title","target_words","point_of_view","beats":[
                    {"id","objective","anchor_ids":[]}]}]}]}
-    storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）。
+      bibles     — 人物圣经（逐条采纳）：{"bibles":[{"character_key","display_name","profile":{},
+                   "source_note"?}]}
+    storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）；
+    bibles 建议在采纳 blueprint 后回填（character_key 通常与蓝图锚点一致）。
     """
     import json as _json
 
@@ -1189,6 +1294,31 @@ def novel_propose(
         result = session.request(
             "POST", f"/novel/projects/{project_id}/story-map/propose", json_body=body, write=True
         )
+    if kind == "bibles":
+        # 人物圣经是逐条采纳（PUT），不是 propose→adopt；--adopt 参数在此无意义。
+        bibles = data.get("bibles") or []
+        if not bibles:
+            raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        adopted = []
+        for bible in bibles:
+            if not bible.get("character_key") or not bible.get("display_name"):
+                raise click.ClickException("每条 bible 需要 character_key 与 display_name")
+            record = session.request(
+                "PUT",
+                f"/novel/projects/{project_id}/characters/bibles",
+                json_body={
+                    "character_key": bible["character_key"],
+                    "display_name": bible["display_name"],
+                    "profile": dict(bible.get("profile") or {}),
+                    "source_note": bible.get("source_note"),
+                },
+                write=True,
+            )
+            adopted.append(
+                {"character_key": record.get("character_key"), "status": record.get("status")}
+            )
+        _emit({"adopted_bibles": adopted}, json_output)
+        return
     candidate_id = str(result.get("id") or "")
     payload: dict[str, Any] = {"candidate_id": candidate_id, "status": result.get("status")}
     if adopt and candidate_id:
@@ -1214,6 +1344,41 @@ def novel_propose(
             )
             payload["adopted"] = adopted.get("status")
     _emit(payload, json_output)
+
+
+@novel_group.command("planning-quality")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_planning_quality(
+    ctx: click.Context, project_id: str, kind: str, file_path: str, json_output: bool
+) -> None:
+    """评估规划产物质量（cores/blueprint/storymap/bibles）。
+
+    校验必须交付字段（风格/类型/语言/卷章规划）与内容长度标准；bibles 还会
+    对照已采纳蓝图锚点。产物内容从本地 JSON 读取（与 propose 相同的格式），
+    服务端确定性评估，输出 pass/revise/block 与 evidence。
+    """
+    import json as _json
+
+    raw = Path(file_path).read_text(encoding="utf-8")
+    try:
+        artifact = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    if not isinstance(artifact, dict):
+        raise click.ClickException("JSON 根必须是对象")
+    _emit(
+        _session(ctx).request(
+            "POST",
+            f"/novel/projects/{project_id}/planning-quality",
+            json_body={"artifact_kind": kind, "artifact": artifact},
+            write=True,
+        ),
+        json_output,
+    )
 
 
 @novel_group.command("orchestrate")
@@ -1474,7 +1639,16 @@ def script_scene_show(
 def script_story_cores(
     ctx: click.Context, project_id: str, feedback: str | None, wait: bool, json_output: bool
 ) -> None:
-    """Generate story core candidates (script)."""
+    """Generate story core candidates (script) via platform AI [后备].
+
+    推荐由 Agent 本地生成方向后回填（不消耗平台生成资源、结果可控）：
+      scriptnow script propose <project_id> cores <file.json>
+      -- 文件格式：{"drafts": [{"title","concept","angles":[...],
+      "details":{"narrative_engine":[],"viewpoint_anchor":[],"pacing_recipe":[],
+      "market_judgement":[]}}]}，1-3 个 draft；
+      可加 --adopt 直接采纳最佳候选。
+    本命令是平台 AI 生成，仅在 Agent 无法自行产出方向时使用。
+    """
     session = _session(ctx)
     body = {"idempotency_key": f"cli-scores-{__import__('time').time_ns()}", "feedback": feedback}
     result = session.request(
@@ -1504,6 +1678,169 @@ def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, js
     )
 
 
+@script_group.command("planning-quality")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_planning_quality(
+    ctx: click.Context, project_id: str, kind: str, file_path: str, json_output: bool
+) -> None:
+    """评估剧本规划产物质量（cores/blueprint/storymap/bibles）。
+
+    校验必须交付字段（风格/类型/语言/分集时长规划）与内容长度标准；bibles
+    对照已采纳蓝图锚点。产物内容从本地 JSON 读取，服务端确定性评估。
+    """
+    import json as _json
+
+    raw = Path(file_path).read_text(encoding="utf-8")
+    try:
+        artifact = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    if not isinstance(artifact, dict):
+        raise click.ClickException("JSON 根必须是对象")
+    _emit(
+        _session(ctx).request(
+            "POST",
+            f"/script/projects/{project_id}/planning-quality",
+            json_body={"artifact_kind": kind, "artifact": artifact},
+            write=True,
+        ),
+        json_output,
+    )
+
+
+@script_group.command("propose")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_propose(
+    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, json_output: bool
+) -> None:
+    """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
+
+    kind:
+      cores      — 1 到 3 个故事方向候选（可只给 1 个主推，直接采纳）：{"drafts":[
+                   {"title","concept","angles":["欲望","阻力","情感承诺","道德困境","结局代价"],
+                   "details":{"narrative_engine":[],"viewpoint_anchor":[],"pacing_recipe":[],
+                   "market_judgement":[]}}]}
+      blueprint  — 蓝图锚点：{"anchors":[{"id":"kind:key","kind":"world|character|relationship|
+                   character_arc|plot|foreshadow|motif","name","payload":{}}]}
+      storymap   — 分集场次结构：{"episodes":[{"id","ordinal","title","scenes":[
+                   {"id","ordinal","title","duration_seconds_target","beats":[{"id","objective",
+                   "anchor_ids":[]}]}]}]}
+      bibles     — 人物圣经（逐条采纳）：{"bibles":[{"character_key","display_name","profile":{},
+                   "source_note"?}]}
+    storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）；
+    bibles 建议在采纳 blueprint 后回填（character_key 通常与蓝图锚点一致）。
+    """
+    import json as _json
+
+    raw = Path(file_path).read_text(encoding="utf-8")
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("JSON 根必须是对象")
+    session = _session(ctx)
+    idem = f"cli-script-propose-{kind}-{__import__('time').time_ns()}"
+
+    if kind == "cores":
+        drafts = data.get("drafts") or []
+        if not 1 <= len(drafts) <= 3:
+            raise click.ClickException("script story cores 需要 1 到 3 个 draft（可只给 1 个主推方向）")
+        body = {"idempotency_key": idem, "drafts": drafts}
+        result = session.request(
+            "POST", f"/script/projects/{project_id}/story-cores/propose", json_body=body, write=True
+        )
+        if isinstance(result, list):
+            result = result[0] if result else {}
+    elif kind == "blueprint":
+        anchors = data.get("anchors") or []
+        if not anchors:
+            raise click.ClickException("blueprint 需要至少 1 个 anchor")
+        allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
+        for anchor in anchors:
+            if anchor.get("kind") not in allowed:
+                raise click.ClickException(
+                    f"anchor kind 必须是 {sorted(allowed)}，收到：{anchor.get('kind')}"
+                )
+        body = {"idempotency_key": idem, "anchors": anchors}
+        result = session.request(
+            "POST", f"/script/projects/{project_id}/blueprints/propose", json_body=body, write=True
+        )
+    else:  # storymap
+        episodes = data.get("episodes") or []
+        if not episodes:
+            raise click.ClickException("storymap 需要至少 1 个 episode")
+        state = session.request("GET", f"/script/projects/{project_id}/state")
+        version = int((state.get("story_map") or {}).get("version") or 1)
+        body = {
+            "idempotency_key": idem,
+            "expected_version": version,
+            "episodes": episodes,
+        }
+        result = session.request(
+            "POST", f"/script/projects/{project_id}/story-map/propose", json_body=body, write=True
+        )
+    if kind == "bibles":
+        # 人物圣经是逐条采纳（PUT），不是 propose→adopt；--adopt 参数在此无意义。
+        bibles = data.get("bibles") or []
+        if not bibles:
+            raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        adopted = []
+        for bible in bibles:
+            if not bible.get("character_key") or not bible.get("display_name"):
+                raise click.ClickException("每条 bible 需要 character_key 与 display_name")
+            record = session.request(
+                "PUT",
+                f"/script/projects/{project_id}/characters/bibles",
+                json_body={
+                    "character_key": bible["character_key"],
+                    "display_name": bible["display_name"],
+                    "profile": dict(bible.get("profile") or {}),
+                    "source_note": bible.get("source_note"),
+                },
+                write=True,
+            )
+            adopted.append(
+                {"character_key": record.get("character_key"), "status": record.get("status")}
+            )
+        _emit({"adopted_bibles": adopted}, json_output)
+        return
+    candidate_id = str(result.get("id") or "")
+    payload: dict[str, Any] = {"candidate_id": candidate_id, "status": result.get("status")}
+    if adopt and candidate_id:
+        if kind == "cores":
+            adopted = session.request(
+                "POST",
+                f"/script/projects/{project_id}/story-cores/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+        elif kind == "blueprint":
+            adopted = session.request(
+                "POST",
+                f"/script/projects/{project_id}/blueprints/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+        else:
+            adopted = session.request(
+                "POST",
+                f"/script/projects/{project_id}/story-map/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+    _emit(payload, json_output)
+
+
 @script_group.command("blueprint")
 @click.argument("project_id")
 @click.option("--feedback", default=None)
@@ -1513,7 +1850,15 @@ def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, js
 def script_blueprint(
     ctx: click.Context, project_id: str, feedback: str | None, wait: bool, json_output: bool
 ) -> None:
-    """Generate a blueprint candidate (script)."""
+    """Generate a blueprint candidate (script) via platform AI [后备].
+
+    推荐由 Agent 本地生成锚点后回填：
+      scriptnow script propose <project_id> blueprint <file.json>
+      -- {"anchors":[{"id":"kind:key","kind":"world|character|relationship|
+      character_arc|plot|foreshadow|motif","name","payload":{}}]}
+      可加 --adopt 直接采纳。
+    本命令是平台 AI 生成，仅在 Agent 无法自行产出蓝图时使用。
+    """
     session = _session(ctx)
     body = {"idempotency_key": f"cli-sbp-{__import__('time').time_ns()}", "feedback": feedback}
     result = session.request(
@@ -1552,7 +1897,15 @@ def script_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: st
 def script_storymap(
     ctx: click.Context, project_id: str, feedback: str | None, wait: bool, json_output: bool
 ) -> None:
-    """Generate a script StoryMap (episodes -> scenes) candidate."""
+    """Generate a script StoryMap (episodes -> scenes) candidate via platform AI [后备].
+
+    推荐由 Agent 本地生成分集场次后回填：
+      scriptnow script propose <project_id> storymap <file.json>
+      -- {"episodes":[{"id","ordinal","title","scenes":[{"id","ordinal","title",
+      "duration_seconds_target","beats":[{"id","objective","anchor_ids":[]}]}]}]}
+      可加 --adopt 直接采纳。
+    本命令是平台 AI 生成，仅在 Agent 无法自行产出 StoryMap 时使用。
+    """
     session = _session(ctx)
     body = {"idempotency_key": f"cli-ssm-{__import__('time').time_ns()}", "feedback": feedback}
     result = session.request(
