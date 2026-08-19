@@ -15,53 +15,71 @@ pip install -e .
 scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'
 ```
 
-## 典型创作流程
+## 典型创作流程（双域：小说 / 剧本）
+
+小说与剧本共享「项目 → 方向 → 规划 → 创作 → 导出」，但规划结构与创作循环有差异。
+**编排前置：确认方法论 Skill 支撑**（见第 0 步）——缺 Skill 时先创建再创作，不要裸写。
 
 ```bash
-# 1. 建项目（小说）——平台要求完整创作方向（卷数/章数/字数/结构等）
+# ── 0. Skill 支撑检查（创作前必做）────────────────────────────
+scriptnow skill mounts <pid>                 # 项目已挂载哪些方法论 Skill？
+# 无 → 先创建（两种方式任选）：
+#   ① 一书一 Skill 蒸馏（推荐，样本不传平台，Agent 本地解读回传）：
+scriptnow interpret local 手稿.docx --spec  # Agent 读作品原文 → 按规范产出 skill JSON
+scriptnow interpret local 手稿.docx --submit @skill.json --project-id <pid>   # 创建并挂载
+#   ② 个人 Skill 直接提交：
+scriptnow skill create --name my-method --description "..." --domain novel \
+  --role writer --stage writing --instructions "方法论正文"
+#   然后挂载到项目：
+scriptnow skill mounts <pid>                 # 查 version_id
+scriptnow skill mount <pid> <skill_id> <version_id>
+
+# ── 1. 建项目 + 完整方向（Agent 主动梳理回填，不依赖平台灵感）──
+# 小说：
 scriptnow project create --name 新作 --medium novel --genre "mystery, werewolf" \
   --volume-one 1 --volume-two 15 --chapter-target-words 1200
+# 剧本：
+scriptnow project create --name 新剧 --medium script
+# 两域都推荐用 --apply 一次写入完整 direction（premise/tone/world_setting/structure/卷章数…）：
+scriptnow project direction <pid> --apply @direction.json
 
-# 1b. 客户端 Agent 梳理方向 → 回填（推荐：Agent 按创作要求梳理后一次写入）
-scriptnow project direction <pid> --apply '{"premise":"...","tone":"...","world_setting":"...","genre":"mystery, werewolf","structure":"hero_journey","volume_one":"1","volume_two":"15","chapter_target_words":"1500"}'
-#     或从文件读：scriptnow project direction <pid> --apply @direction.json
-
-# 2. 一书一 Skill：上传作品 → 通读 → 源分析 + 创作方法论
-scriptnow interpret go 手稿.docx
-
-# 3. 规划全书（两种方式）
-# ① Agent 本地生成导入（零平台压力，故事方向可单推直接采纳）
-scriptnow novel propose <pid> cores @cores.json --adopt      # 可只给 1 个主推
+# ── 2. 规划全书（双域差异）───────────────────────────────────
+# 小说（卷章结构，两种方式）：
+#   ① Agent 本地生成导入（零平台压力，可只给 1 个主推方向直接采纳）
+scriptnow novel propose <pid> cores @cores.json --adopt
 scriptnow novel propose <pid> blueprint @blueprint.json --adopt
 scriptnow novel propose <pid> storymap @storymap.json
-scriptnow novel orchestrate <pid> --accept                  # 审阅 → 采纳 → 全书计划
-# ② 平台生成
+scriptnow novel orchestrate <pid> --accept          # 审阅 → 采纳 → 全书计划
+#   ② 平台生成
 scriptnow storymap generate <pid> --wait
 scriptnow novel orchestrate <pid> --accept
+# 剧本（剧集 × 场次，结构 propose 与小说同构）：
+scriptnow script propose <pid> cores @cores.json --adopt
+scriptnow script propose <pid> blueprint @blueprint.json --adopt
+scriptnow script propose <pid> storymap @storymap.json
+#     或平台生成：script story-cores --wait → adopt-core → script blueprint → … → script storymap
 
-# 4. 查看全书托管创作规划
-scriptnow book <pid>
-
-# 5. 逐章创作（Agent 审读驱动）
-scriptnow chapter list <pid>
-scriptnow chapter show <pid> chapter-1-1 --plain     # 读正文
-scriptnow chapter generate <pid> chapter-1-1 --wait  # 生成候选
-scriptnow chapter quality <pid> chapter-1-1 <rev>    # 可选质量评估
-scriptnow chapter adopt <pid> chapter-1-1 <rev>      # 采纳
-
-# 6. 剧本同理
-scriptnow project create --name 新剧 --medium script
+# ── 3. 创作循环（双域差异）───────────────────────────────────
+# 小说：book 看编排计划 → 逐章生成/审读/采纳
+scriptnow book <pid>                                # 编排原语：各章已采纳/待生成/候选待审
+scriptnow chapter show <pid> chapter-1-1 --plain    # 读正文（Agent 自身审读）
+scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "你的意见"
+scriptnow chapter adopt <pid> chapter-1-1 <rev>
+# 剧本：场次循环
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
-scriptnow script scene <pid> scene-1-1 --wait
+scriptnow script scene <pid> scene-1-1 --wait --feedback "你的意见"
+scriptnow script adopt-scene <pid> scene-1-1 <rev>
+# 改编稿 Agent 本地写好后直接回传候选（不经平台文本生成）：
+scriptnow script scene-propose <pid> scene-1-1 --file @blocks.json
 
-# 7. 封面
-scriptnow cover models <pid>                          # 选生图模型
+# ── 4. 封面（通用）───────────────────────────────────────────
+scriptnow cover models <pid>                        # 选生图模型
 scriptnow cover generate <pid> --image-model-id <id>
 
-# 8. 导出交付
+# ── 5. 导出交付（双域差异在 unit 维度）───────────────────────
 scriptnow export options <pid>
-scriptnow export create <pid> --units chapter-1-1
+scriptnow export create <pid> --units chapter-1-1   # 小说按章节；剧本按场次 scene-1-1
 scriptnow export download <pid> <manifest> -o 书.docx
 ```
 
@@ -85,6 +103,7 @@ scriptnow export download <pid> <manifest> -o 书.docx
 
 ## Agent 使用提示
 
+- **编排前置：Skill 支撑检查（MANDATORY）**：开始逐章/逐场创作前，先 `skill mounts <pid>` 确认项目已挂载方法论 Skill。若为空，**先创建 Skill 再创作**：一书一 Skill 蒸馏（`interpret local`，样本不传平台、Agent 本地解读回传；剧本域把 skill JSON 的 domain 设为 `script`）或个人 Skill 提交（`skill create --domain novel|script`），然后 `skill mount`。小说也可用 `interpret go`（平台通读，作品会上传）。
 - **必须主动填充完整 direction**：创建项目或设定方向时，Agent 应主动梳理并回填全部关键字段（premise/tone/world_setting/genre/structure/卷数/章数/字数/发散度/约束），用 `project direction <pid> --apply '{"...":...}'` 或建项目时带全参数；**不要依赖 `--inspire` 让平台生成，也不要建裸项目**。仅当用户明确要求平台灵感时才用 `--inspire`。
 - 优先 `--json`；所有生成命令默认后台，`--wait` 阻塞等待。
 - 版本管理：创作搭档与后续章节基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。

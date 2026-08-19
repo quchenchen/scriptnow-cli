@@ -1099,7 +1099,8 @@ def chapter_quality(
 @click.pass_context
 def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     """查看全书托管创作规划（Agent 编排原语）：各章已采纳 / 待生成 / 候选待审状态，
-    供 Agent 决定逐章创作顺序与审读反馈。
+    供 Agent 决定逐章创作顺序与审读反馈。非 --json 模式同时侦测项目的 Skill 支撑：
+    缺方法论 Skill 时提示先创建（interpret local 一书一 Skill 或 skill create）再创作。
 
     The agent (you, or another CLI-equipped agent) drives the hosted loop:
     read this plan, then for each chapter use `chapter show` to read the text,
@@ -1150,6 +1151,21 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
         "plan": plan,
     }
     _emit(summary, json_output)
+    # 编排前置侦测：项目是否已有方法论 Skill 支撑（仅人读模式，--json 契约不变）
+    if not json_output:
+        mounted = _session(ctx).request("GET", f"/projects/{project_id}/skills")
+        names = [str(item.get("name") or "") for item in mounted] if isinstance(mounted, list) else []
+        if names:
+            click.echo(ui.dim(f"方法论 Skill：{', '.join(names)}"), err=True)
+        else:
+            click.echo(
+                ui.warn(
+                    "项目暂无方法论 Skill —— 建议先创建再创作："
+                    "interpret local 一书一 Skill（样本不传平台，Agent 本地蒸馏）"
+                    "或 skill create --domain novel；完成后 skill mount 到本项目。"
+                ),
+                err=True,
+            )
 
 
 # ----------------------------------------------------------------------- storymap
