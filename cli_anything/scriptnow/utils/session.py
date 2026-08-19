@@ -150,7 +150,8 @@ def load() -> Session:
     path = _config_path()
     if not path.exists():
         raise ScriptNowError(
-            "没有已保存的会话。请先运行: scriptnow login --base-url <url> --email <e> --password <p>"
+            "没有已保存的会话。请先运行: scriptnow login --host <平台地址> --email <账号> --password <密码>\n"
+            "例如: scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'"
         )
     payload = json.loads(path.read_text())
     session = Session(
