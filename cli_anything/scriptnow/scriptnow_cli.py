@@ -17,6 +17,7 @@ from typing import Any
 
 import click
 
+from cli_anything.scriptnow import ui
 from cli_anything.scriptnow.utils.session import (
     ScriptNowError,
     Session,
@@ -50,7 +51,7 @@ def _emit(value: Any, json_output: bool) -> None:
             return
         if isinstance(value, dict):
             for key, item in value.items():
-                click.echo(f"{key}: {_human(item)}")
+                click.echo(ui.kv(key, _human(item)))
             return
         click.echo(_human(value))
 
@@ -105,37 +106,60 @@ def _check_budget(payload: Any, budget: int | None, label: str, json_output: boo
             "或提高 --budget。"
         )
     if not json_output:
-        click.echo(f"  {label} 预估 {cost} tokens（预算 {budget}）", err=True)
+        click.echo(f"  {ui.dim(f'{label} 预估 {cost} tokens（预算 {budget}）')}", err=True)
 
 
-@click.group(context_settings=CONTEXT_SETTINGS)
+_MAIN_HELP = (
+    ui.banner(VERSION)
+    + "\n\n"
+    + """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
+
+典型流程（Agent 或创作者）：
+  1. scriptnow project create --name 新作 --medium novel   # 建项目
+  2. scriptnow interpret go 手稿.docx                       # 一书一 Skill：上传作品解读出创作方法论
+  3. scriptnow storymap generate <pid> --wait               # 规划全书卷章节
+  4. scriptnow book <pid>                                   # 查看全书托管创作规划
+  5. scriptnow chapter generate <pid> chapter-1-1 --wait    # 逐章生成（Agent 审读后带 feedback 修正）
+  6. scriptnow cover generate <pid> --image-model-id <id>   # 生成封面
+  7. scriptnow export create <pid> --units chapter-1-1      # 导出成书
+  8. scriptnow export download <pid> <manifest> -o 书.docx  # 下载交付
+
+剧本同理：medium=script，用 script scene / script storymap / export --domain script。
+更多：每个子命令 -h 查看；所有命令支持 --json 输出结构化结果。"""
+)
+
+
+@click.group(context_settings=CONTEXT_SETTINGS, help=_MAIN_HELP, invoke_without_command=True)
 @click.option("--base-url", envvar="SCRIPTNOW_BASE_URL", help="Platform base URL (e.g. https://sn.igeewa.com)")
 @click.option("--email", envvar="SCRIPTNOW_EMAIL", help="Login email")
 @click.option("--password", envvar="SCRIPTNOW_PASSWORD", help="Login password")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON")
-@click.version_option(VERSION, prog_name="scriptnow")
+@click.option("--no-color", "no_color", is_flag=True, help="Disable ANSI colors (also: NO_COLOR / SCRIPTNOW_NO_COLOR env)")
+@click.version_option(
+    VERSION,
+    prog_name="scriptnow",
+    message=f"{ui.paint('ScriptNow CLI', ui.GOLD)} %(version)s",
+)
 @click.pass_context
-def main(ctx: click.Context, base_url: str | None, email: str | None, password: str | None, json_output: bool) -> None:
-    """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
-
-    典型流程（Agent 或创作者）：
-      1. scriptnow project create --name 新作 --medium novel   # 建项目
-      2. scriptnow interpret go 手稿.docx                       # 一书一 Skill：上传作品解读出创作方法论
-      3. scriptnow storymap generate <pid> --wait               # 规划全书卷章节
-      4. scriptnow book <pid>                                   # 查看全书托管创作规划
-      5. scriptnow chapter generate <pid> chapter-1-1 --wait    # 逐章生成（Agent 审读后带 feedback 修正）
-      6. scriptnow cover generate <pid> --image-model-id <id>   # 生成封面
-      7. scriptnow export create <pid> --units chapter-1-1      # 导出成书
-      8. scriptnow export download <pid> <manifest> -o 书.docx  # 下载交付
-
-    剧本同理：medium=script，用 script scene / script storymap / export --domain script。
-    更多：每个子命令 -h 查看；所有命令支持 --json 输出结构化结果。
-    """
+def main(
+    ctx: click.Context,
+    base_url: str | None,
+    email: str | None,
+    password: str | None,
+    json_output: bool,
+    no_color: bool,
+) -> None:
+    """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。"""
+    ui.init(no_color)
     ctx.ensure_object(dict)
     ctx.obj["base_url"] = base_url
     ctx.obj["email"] = email
     ctx.obj["password"] = password
     ctx.obj["json"] = json_output
+    ctx.obj["no_color"] = no_color
+    if ctx.invoked_subcommand is None:
+        click.echo(ui.banner(VERSION))
+        click.echo(ui.dim("运行 scriptnow --help 查看全部命令；每个子命令 -h 查看用法。"))
 
 
 # --------------------------------------------------------------------------- auth
@@ -152,6 +176,8 @@ def login_cmd(host: str, email: str, password: str, json_output: bool) -> None:
         session = login(host, email, password)
     except ScriptNowError as error:
         raise click.ClickException(str(error)) from error
+    if not json_output:
+        click.echo(ui.ok(f"登录成功：{host}（{email}）"))
     _emit({"ok": True, "base_url": session.base_url, "user": email}, json_output)
 
 
@@ -821,6 +847,12 @@ def interpret_local(
                 result["mounted"] = {"project_id": project_id, "version_id": version_id}
             except ScriptNowError as error:
                 result["mount_error"] = str(error)
+    if not json_output:
+        click.echo(ui.ok(f"Skill 已创建：{created.get('name')}（{skill_id}）"))
+        if result.get("mounted"):
+            click.echo(ui.ok(f"已挂载到项目 {project_id}（version {result['mounted']['version_id']}）"))
+        if result.get("mount_error"):
+            click.echo(ui.warn(f"挂载失败：{result['mount_error']}"))
     _emit(result, json_output)
 
 
@@ -1033,6 +1065,8 @@ def chapter_propose(
         json_body=body,
         write=True,
     )
+    if not json_output:
+        click.echo(ui.ok(f"章节候选已回传 {chapter_id}（{result.get('status', 'candidate')}）"))
     _emit(result, json_output)
 
 
@@ -1325,8 +1359,8 @@ def novel_bootstrap(
     def note(step: str, ok: bool, detail: str = "") -> None:
         steps.append({"step": step, "ok": ok, "detail": detail})
         if not json_output:
-            mark = "✓" if ok else "✗"
-            click.echo(f"  {mark} {step}{(' · ' + detail) if detail else ''}", err=True)
+            mark = ui.ok("") if ok else ui.error("")
+            click.echo(f"  {mark}{step}{(' · ' + detail) if detail else ''}", err=True)
 
     def load_json(file_path: str | None) -> dict[str, Any] | None:
         if not file_path:
@@ -1715,7 +1749,7 @@ def novel_orchestrate(
 
     # ① 展示候选供审阅
     if chosen is not None and not json_output:
-        click.echo("=== 当前 StoryMap 候选（审阅）===", err=True)
+        click.echo(ui.section("=== 当前 StoryMap 候选（审阅）==="), err=True)
         for vol in summarize(chosen).get("structure", []):
             click.echo(f"  卷 · {vol['volume']}", err=True)
             for title in vol["chapters"]:
@@ -1765,7 +1799,7 @@ def novel_orchestrate(
             write=True,
         )
         if not json_output:
-            click.echo(f"✓ StoryMap 已采纳（{adopted.get('status')}）", err=True)
+            click.echo(ui.ok(f"StoryMap 已采纳（{adopted.get('status')}）"), err=True)
 
     # ④ 输出全书创作计划
     fresh = session.request("GET", f"/novel/projects/{project_id}/state")
@@ -2253,6 +2287,82 @@ def script_adopt_scene(
     )
 
 
+@script_group.command("scene-propose")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
+@click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
+@click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_scene_propose(
+    ctx: click.Context,
+    project_id: str,
+    scene_id: str,
+    blocks_file: str | None,
+    text: str | None,
+    budget: int | None,
+    json_output: bool,
+) -> None:
+    """Agent 本地创作场次 → 回传为候选（剧本改编不经过平台文本生成）。
+
+    适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
+    写好了场次正文，这里只负责按标准格式回传为候选。block type 取剧本五种：
+    slugline | action | character | dialogue | transition。
+    """
+    import json as _json
+
+    if not blocks_file and not text:
+        raise click.ClickException("需要 --file（blocks JSON）或 --text（纯文本）")
+    script_types = ("slugline", "action", "character", "dialogue", "transition")
+    if blocks_file:
+        raw = Path(blocks_file[1:] if blocks_file.startswith("@") else blocks_file).read_text(
+            encoding="utf-8"
+        )
+        try:
+            data = _json.loads(raw)
+        except _json.JSONDecodeError as error:
+            raise click.ClickException(f"blocks JSON 解析失败：{error}") from error
+        blocks = data.get("blocks") if isinstance(data, dict) else data
+        if not isinstance(blocks, list) or not blocks:
+            raise click.ClickException("blocks 需要是至少 1 个 block 的数组")
+        for block in blocks:
+            if block.get("type") not in script_types:
+                raise click.ClickException(
+                    f"block type 必须是 {'|'.join(script_types)}，收到：{block.get('type')}"
+                )
+            if "para_id" not in block or "text" not in block:
+                raise click.ClickException("每个 block 需要 para_id 和 text")
+    else:
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        if not paragraphs:
+            raise click.ClickException("正文为空")
+        blocks = []
+        for idx, para in enumerate(paragraphs, 1):
+            blocks.append(
+                {
+                    "para_id": f"p{idx}",
+                    "type": "slugline" if idx == 1 else "action",
+                    "text": para,
+                }
+            )
+    _check_budget(blocks, budget, "场次正文", json_output)
+    session = _session(ctx)
+    body = {
+        "idempotency_key": f"cli-scene-propose-{__import__('time').time_ns()}",
+        "blocks": blocks,
+    }
+    result = session.request(
+        "POST",
+        f"/script/projects/{project_id}/scenes/{scene_id}/propose",
+        json_body=body,
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"场次候选已回传 {scene_id}（{result.get('status', 'candidate')}）"))
+    _emit(result, json_output)
+
+
 # ----------------------------------------------------------------- translation
 
 
@@ -2683,7 +2793,7 @@ def export_download(
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(response.content)
-    click.echo(f"已保存到 {out}（{len(response.content)} 字节）")
+    click.echo(ui.ok(f"已保存到 {out}（{len(response.content)} 字节）"))
 
 
 # --------------------------------------------------------------------------- runs
@@ -2705,7 +2815,7 @@ def _wait_for_run(session: Session, project_id: str, run_id: str, json_output: b
             return
         if status != last:
             if not json_output:
-                click.echo(f"run {run_id}: {status}", err=True)
+                click.echo(ui.dim(f"run {run_id}: {status}"), err=True)
             last = status
         time.sleep(2)
     raise click.ClickException("run did not finish within 16 minutes")
