@@ -61,6 +61,53 @@ def _human(value: Any) -> str:
     return str(value)
 
 
+# ------------------------------------------------------------------ token budget
+
+
+# Rough token estimation for content imported via propose. Chinese is roughly
+# 1 token per character; English roughly 1 token per 4 characters. These are
+# conservative per-content estimates used to gate imports BEFORE they inflate
+# downstream generation context — they are not billing numbers.
+_CJK_RANGES = (
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3400, 0x4DBF),   # CJK Ext A
+    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
+)
+
+
+def _estimate_tokens(value: object) -> int:
+    """Estimate token cost of a JSON payload (dict/list/str/scalar)."""
+    if isinstance(value, str):
+        if not value:
+            return 0
+        cjk = sum(
+            1 for ch in value
+            if any(lo <= ord(ch) <= hi for lo, hi in _CJK_RANGES)
+        )
+        other = len(value) - cjk
+        return cjk + max(1, other // 4)
+    if isinstance(value, dict):
+        return sum(_estimate_tokens(k) + _estimate_tokens(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return sum(_estimate_tokens(item) for item in value)
+    return len(str(value))
+
+
+def _check_budget(payload: Any, budget: int | None, label: str, json_output: bool) -> None:
+    """Reject an import when its estimated token cost exceeds the budget."""
+    if budget is None:
+        return
+    cost = _estimate_tokens(payload)
+    if cost > budget:
+        raise click.ClickException(
+            f"{label} 预估 {cost} tokens，超过预算 {budget}。"
+            "请精简内容（如缩短 premise / point_of_view / beats 描述）后重试，"
+            "或提高 --budget。"
+        )
+    if not json_output:
+        click.echo(f"  {label} 预估 {cost} tokens（预算 {budget}）", err=True)
+
+
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.option("--base-url", envvar="SCRIPTNOW_BASE_URL", help="Platform base URL (e.g. https://sn.igeewa.com)")
 @click.option("--email", envvar="SCRIPTNOW_EMAIL", help="Login email")
@@ -1223,10 +1270,11 @@ def novel_bootstrap(
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
+@click.option("--budget", type=int, default=None, help="导入内容 token 预算上限；超限拒绝（如 20000）。中文≈1 token/字，英文≈1 token/4 字符")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_propose(
-    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, json_output: bool
+    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, budget: int | None, json_output: bool
 ) -> None:
     """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
 
@@ -1259,6 +1307,7 @@ def novel_propose(
         drafts = data.get("drafts") or []
         if not 1 <= len(drafts) <= 3:
             raise click.ClickException("story cores 需要 1 到 3 个 draft（可只给 1 个主推方向）")
+        _check_budget(drafts, budget, "故事方向", json_output)
         body = {"idempotency_key": idem, "drafts": drafts}
         result = session.request(
             "POST", f"/novel/projects/{project_id}/story-cores/propose", json_body=body, write=True
@@ -1276,6 +1325,7 @@ def novel_propose(
                 raise click.ClickException(
                     f"anchor kind 必须是 {sorted(allowed)}，收到：{anchor.get('kind')}"
                 )
+        _check_budget(anchors, budget, "蓝图锚点", json_output)
         body = {"idempotency_key": idem, "anchors": anchors}
         result = session.request(
             "POST", f"/novel/projects/{project_id}/blueprints/propose", json_body=body, write=True
@@ -1284,6 +1334,7 @@ def novel_propose(
         volumes = data.get("volumes") or []
         if not volumes:
             raise click.ClickException("storymap 需要至少 1 个 volume")
+        _check_budget(volumes, budget, "卷章结构", json_output)
         state = session.request("GET", f"/novel/projects/{project_id}/state")
         version = int((state.get("story_map") or {}).get("version") or 1)
         body = {
@@ -1299,6 +1350,7 @@ def novel_propose(
         bibles = data.get("bibles") or []
         if not bibles:
             raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        _check_budget(bibles, budget, "人物圣经", json_output)
         adopted = []
         for bible in bibles:
             if not bible.get("character_key") or not bible.get("display_name"):
