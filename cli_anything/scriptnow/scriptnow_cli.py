@@ -201,7 +201,80 @@ def project_delete(ctx: click.Context, project_id: str, confirm_name: str, json_
     _emit({"ok": True, "project_id": project_id} if result is None else result, json_output)
 
 
-@main.command("account")
+@project_group.command("direction")
+@click.argument("project_id")
+@click.option("--inspire", default=None, help="灵感模式：给出一句话/一段种子文本，AI 生成完整创作方向并写入项目")
+@click.option("--language", default=None, help="灵感模式语言（默认 zh-CN）")
+@click.option("--genres", default=None, help="灵感模式：逗号分隔的类型提示，如 mystery,werewolf")
+@click.option("--variance", type=click.Choice(["balanced", "high", "low"]), default="balanced", help="灵感模式：创意发散程度")
+@click.option("--set", "set_pairs", multiple=True, help="手动补齐字段：--set key=value（可多次），如 --set tone=暗黑 --set genre=\"mystery, werewolf\"")
+@click.option("--show", is_flag=True, help="仅查看当前创作方向")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def project_direction(
+    ctx: click.Context,
+    project_id: str,
+    inspire: str | None,
+    language: str | None,
+    genres: str | None,
+    variance: str,
+    set_pairs: tuple[str, ...],
+    show: bool,
+    json_output: bool,
+) -> None:
+    """查看 / 灵感生成 / 手动补齐项目的创作方向（direction）。
+
+    灵感模式（推荐）：--inspire 给一句种子文本，AI 生成 premise/tone/
+    world_setting/genre 并写入项目，后续创作沿用新方向。
+    手动模式：--set key=value 补齐任意字段（如 tone、world_setting、volume_one）。
+    """
+    session = _session(ctx)
+    if show and not inspire and not set_pairs:
+        projects = session.request("GET", "/projects")
+        project = next((item for item in projects if item.get("id") == project_id), None)
+        if project is None:
+            raise click.ClickException(f"project {project_id} not found")
+        _emit(dict(project.get("direction") or {}), json_output)
+        return
+    direction: dict[str, Any] = {}
+    if inspire:
+        body: dict[str, Any] = {
+            "medium": "novel",
+            "seed": inspire,
+            "language": language or "zh-CN",
+            "genres": [g.strip() for g in (genres or "").split(",") if g.strip()],
+            "creative_variance": variance,
+        }
+        insp = session.request("POST", "/creative-inspiration", json_body=body, write=True, timeout=180)
+        direction["premise"] = str(insp.get("premise") or "").strip()
+        direction["tone"] = str(insp.get("tone") or "").strip()
+        direction["world_setting"] = str(insp.get("world_setting") or "").strip()
+        suggested = [str(g).strip() for g in (insp.get("genre_suggestions") or []) if str(g).strip()]
+        if suggested:
+            direction["genre"] = ", ".join(suggested[:4])
+        if not json_output:
+            click.echo(
+                f"灵感已生成：{insp.get('title')}（模型 {insp.get('model_key')}）", err=True
+            )
+    for pair in set_pairs:
+        if "=" not in pair:
+            raise click.ClickException(f"--set 需要 key=value 格式，收到：{pair}")
+        key, value = pair.split("=", 1)
+        direction[key.strip()] = value.strip()
+    if not direction:
+        raise click.ClickException("请提供 --inspire 种子文本、--set 字段，或 --show 查看当前方向")
+    updated = session.request(
+        "PATCH",
+        f"/projects/{project_id}/direction",
+        json_body={"direction": direction},
+        write=True,
+    )
+    result = {
+        "project_id": project_id,
+        "updated_fields": sorted(direction.keys()),
+        "direction": dict(updated.get("direction") or {}),
+    }
+    _emit(result, json_output)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def account_summary(ctx: click.Context, json_output: bool) -> None:

@@ -58,7 +58,7 @@ scriptnow export download <pid> <manifest> -o 书.docx
 
 | 组 | 用途 |
 |----|------|
-| project | 项目管理：创建 / 列表 / 上传素材 / 删除 |
+| project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 查看与设定创作方向（含灵感模式） |
 | interpret | 一书一 Skill：go（一键解读）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语） |
 | chapter | 小说章节：list / show / generate / quality / adopt |
