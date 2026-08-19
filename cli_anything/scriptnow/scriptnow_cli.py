@@ -1345,6 +1345,7 @@ def chapter_propose(
     body = {
         "idempotency_key": f"cli-chapter-propose-{__import__('time').time_ns()}",
         "blocks": blocks,
+        "source": "cli",
     }
     result = session.request(
         "POST",
@@ -2654,6 +2655,7 @@ def script_scene_propose(
     body = {
         "idempotency_key": f"cli-scene-propose-{__import__('time').time_ns()}",
         "blocks": blocks,
+        "source": "cli",
     }
     result = session.request(
         "POST",
