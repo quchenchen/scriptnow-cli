@@ -110,7 +110,7 @@ def _check_budget(payload: Any, budget: int | None, label: str, json_output: boo
 
 
 _MAIN_HELP = (
-    ui.banner(VERSION)
+    ui.banner(VERSION, logo=False)
     + "\n\n"
     + """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 

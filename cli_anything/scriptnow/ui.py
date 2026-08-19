@@ -24,6 +24,18 @@ GREY = "\033[90m"     # 次要信息
 
 TAGLINE = "从灵感到成书 —— agent-native 创作 CLI"
 
+# 进入横幅字符画（品牌 logo，等宽字体下展示）
+LOGO = r"""   d888888o.       ,o888888o.    8 888888888o.    8 8888 8 888888888o 8888888 8888888888 b.             8     ,o888888o.  `8.`888b                 ,8'
+ .`8888:' `88.    8888     `88.  8 8888    `88.   8 8888 8 8888    `88.     8 8888       888o.          8  . 8888     `88. `8.`888b               ,8'
+ 8.`8888.   Y8 ,8 8888       `8. 8 8888     `88   8 8888 8 8888     `88     8 8888       Y88888o.       8 ,8 8888       `8b `8.`888b             ,8'
+ `8.`8888.     88 8888           8 8888     ,88   8 8888 8 8888     ,88     8 8888       .`Y888888o.    8 88 8888        `8b `8.`888b     .b    ,8'
+  `8.`8888.    88 8888           8 8888.   ,88'   8 8888 8 8888.   ,88'     8 8888       8o. `Y888888o. 8 88 8888         88  `8.`888b    88b  ,8'
+   `8.`8888.   88 8888           8 888888888P'    8 8888 8 888888888P'      8 8888       8`Y8o. `Y88888o8 88 8888         88   `8.`888b .`888b,8'
+    `8.`8888.  88 8888           8 8888`8b        8 8888 8 8888             8 8888       8   `Y8o. `Y8888 88 8888        ,8P    `8.`888b8.`8888'
+8b   `8.`8888. `8 8888       .8' 8 8888 `8b.      8 8888 8 8888             8 8888       8      `Y8o. `Y8 `8 8888       ,8P      `8.`888`8.`88'
+`8b.  ;8.`8888    8888     ,88'  8 8888   `8b.    8 8888 8 8888             8 8888       8         `Y8o.`  ` 8888     ,88'        `8.`8' `8,`'
+ `Y8888P ,88P'     `8888888P'    8 8888     `88.  8 8888 8 8888             8 8888       8            `Yo     `8888888P'           `8.`   `8'"""
+
 _no_color = False
 
 
@@ -50,14 +62,13 @@ def paint(text: str, code: str = "") -> str:
     return f"{code}{text}{_RESET}"
 
 
-def banner(version: str) -> str:
-    """Concise brand banner: name · version · tagline. 规范、不复杂。"""
-    return "\n".join(
-        [
-            paint("ScriptNow CLI", GOLD),
-            paint(f"v{version} · {TAGLINE}", GREY),
-        ]
-    )
+def banner(version: str, *, logo: bool = True) -> str:
+    """Concise brand banner. 规范、不复杂：``logo=True`` 时带进入横幅字符画
+    （裸运行欢迎页），``logo=False`` 只输出品牌行（--help 顶部，避免干扰）。"""
+    head = [paint("ScriptNow CLI", GOLD), paint(f"v{version} · {TAGLINE}", GREY)]
+    if logo:
+        return "\n".join([paint(LOGO, GOLD), *head])
+    return "\n".join(head)
 
 
 def ok(text: str) -> str:
