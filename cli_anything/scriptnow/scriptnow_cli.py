@@ -1043,7 +1043,7 @@ def novel_bootstrap(
     if gen.get("run_id"):
         _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
     state = session.request("GET", f"/novel/projects/{project_id}/state")
-    cores = [c for c in state.get("story_cores") or [] if c.get("status") == "candidate"]
+    cores = [c for c in state.get("story_cores") or [] if c.get("status") in ("candidate", "active")]
     if not cores:
         note("故事核心生成", False, "没有候选，请检查 direction 是否完整")
         _emit({"project_id": project_id, "steps": steps}, json_output)
@@ -1114,6 +1114,103 @@ def novel_bootstrap(
     total_chapters = sum(len(v.get("chapters", [])) for v in volumes)
     note("StoryMap 生成并采纳", True, f"{len(volumes)} 卷 {total_chapters} 章")
     _emit({"project_id": project_id, "steps": steps, "story_map_ready": True}, json_output)
+
+
+@novel_group.command("propose")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap"]))
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_propose(
+    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, json_output: bool
+) -> None:
+    """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
+
+    kind:
+      cores      — 3 个故事方向候选：{"drafts":[{"title","premise","point_of_view",
+                   "narrative_constraints":[],"angles":["欲望","阻力","情感承诺","道德困境","结局代价"]}]}
+      blueprint  — 蓝图锚点：{"anchors":[{"id":"kind:key","kind":"world|character|relationship|
+                   character_arc|plot|foreshadow|motif","name","payload":{}}]}
+      storymap   — 卷章结构：{"volumes":[{"id","ordinal","title","chapters":[
+                   {"id","ordinal","title","target_words","point_of_view","beats":[
+                   {"id","objective","anchor_ids":[]}]}]}]}
+    storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）。
+    """
+    import json as _json
+
+    raw = Path(file_path).read_text(encoding="utf-8")
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("JSON 根必须是对象")
+    session = _session(ctx)
+    idem = f"cli-propose-{kind}-{__import__('time').time_ns()}"
+
+    if kind == "cores":
+        drafts = data.get("drafts") or []
+        if len(drafts) != 3:
+            raise click.ClickException("story cores 需要恰好 3 个 draft")
+        body = {"idempotency_key": idem, "drafts": drafts}
+        result = session.request(
+            "POST", f"/novel/projects/{project_id}/story-cores/propose", json_body=body, write=True
+        )
+    elif kind == "blueprint":
+        anchors = data.get("anchors") or []
+        if not anchors:
+            raise click.ClickException("blueprint 需要至少 1 个 anchor")
+        allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
+        for anchor in anchors:
+            if anchor.get("kind") not in allowed:
+                raise click.ClickException(
+                    f"anchor kind 必须是 {sorted(allowed)}，收到：{anchor.get('kind')}"
+                )
+        body = {"idempotency_key": idem, "anchors": anchors}
+        result = session.request(
+            "POST", f"/novel/projects/{project_id}/blueprints/propose", json_body=body, write=True
+        )
+    else:  # storymap
+        volumes = data.get("volumes") or []
+        if not volumes:
+            raise click.ClickException("storymap 需要至少 1 个 volume")
+        state = session.request("GET", f"/novel/projects/{project_id}/state")
+        version = int((state.get("story_map") or {}).get("version") or 1)
+        body = {
+            "idempotency_key": idem,
+            "expected_version": version,
+            "volumes": volumes,
+        }
+        result = session.request(
+            "POST", f"/novel/projects/{project_id}/story-map/propose", json_body=body, write=True
+        )
+    candidate_id = str(result.get("id") or "")
+    payload: dict[str, Any] = {"candidate_id": candidate_id, "status": result.get("status")}
+    if adopt and candidate_id:
+        if kind == "cores":
+            adopted = session.request(
+                "POST",
+                f"/novel/projects/{project_id}/story-cores/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+        elif kind == "blueprint":
+            adopted = session.request(
+                "POST",
+                f"/novel/projects/{project_id}/blueprints/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+        else:
+            adopted = session.request(
+                "POST",
+                f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt",
+                write=True,
+            )
+            payload["adopted"] = adopted.get("status")
+    _emit(payload, json_output)
 
 
 # ------------------------------------------------------------------------ script

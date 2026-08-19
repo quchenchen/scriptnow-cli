@@ -68,7 +68,7 @@ scriptnow export download <pid> <manifest> -o 书.docx
 | book | 全书托管创作规划（Agent 编排原语） |
 | chapter | 小说章节：list / show / generate / quality / adopt |
 | storymap | 小说卷章结构：state / generate / adopt |
-| novel | 小说创作链：story-cores / blueprint（规划阶段） |
+| novel | 小说创作链：story-cores / blueprint / bootstrap（一键规划）/ propose（本地 JSON 导入） |
 | script | 剧本创作链：state / scene-list / scene-show / scene / storymap / blueprint / story-cores |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：models / specs / generate / list / delete |

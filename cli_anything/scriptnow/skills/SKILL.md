@@ -37,7 +37,7 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 | chapter | list, show, generate, adopt, quality |
 | storymap | state, generate, adopt |
 | book | plan (全书托管创作规划，Agent 编排原语) |
-| novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划: 故事核心→蓝图→StoryMap→采纳) |
+| novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap, 支持 --adopt) |
 | script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show |
 | translate | create, analyze-source, target-contract, strategies, mappings |
 | cover | models, specs, generate, list, delete |
