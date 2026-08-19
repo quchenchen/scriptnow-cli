@@ -709,6 +709,53 @@ def admin_model_add(
     _emit(result, json_output)
 
 
+@admin_group.command("image-model-add")
+@click.option("--key", required=True, help="生图模型 key，如 gpt-image-2 / grok-imagine-image-2.0 / nanobanana")
+@click.option("--name", required=True, help="显示名")
+@click.option("--provider", "provider_id", required=True, help="提供商 id（admin supply 查看）")
+@click.option("--protocol", type=click.Choice(["grsai_image2", "openai_images"]), default="openai_images")
+@click.option("--endpoint-path", default=None, help="生图端点路径（openai_images 默认 /images/generations）")
+@click.option("--tier", "min_tier_code", required=True, help="最低可用等级代码")
+@click.option("--price", type=float, default=0.0, help="单张价格")
+@click.option("--size", default="1024x1024", help="openai_images 尺寸（模型支持的枚举，如 1024x1024）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def admin_image_model_add(
+    ctx: click.Context,
+    key: str,
+    name: str,
+    provider_id: str,
+    protocol: str,
+    endpoint_path: str | None,
+    min_tier_code: str,
+    price: float,
+    size: str,
+    json_output: bool,
+) -> None:
+    """注册生图模型（openai_images = OpenAI 兼容 images/generations；grsai_image2 = GRSAI 代理）。"""
+    result = _api_request(
+        ctx,
+        "POST",
+        "/admin/api/image-models",
+        json_body={
+            "key": key,
+            "display_name": name,
+            "provider_id": provider_id,
+            "protocol": protocol,
+            "endpoint_path": endpoint_path
+            or ("/images/generations" if protocol == "openai_images" else "/v1/api/generate"),
+            "min_tier_code": min_tier_code,
+            "price_per_image": price,
+            "default_parameters": {"size": size, "n": 1},
+            "enabled": True,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"生图模型已注册：{result.get('key')}（{result.get('display_name')}，{result.get('protocol')}，enabled={result.get('enabled')}）"))
+    _emit(result, json_output)
+
+
 # ------------------------------------------------------------ work interpretation
 
 
