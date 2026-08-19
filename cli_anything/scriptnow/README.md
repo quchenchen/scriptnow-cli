@@ -1,4 +1,4 @@
-# cli-anything-scriptnow
+# scriptnow-cli
 
 ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 基于 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 模式，所有命令支持 `--json`。

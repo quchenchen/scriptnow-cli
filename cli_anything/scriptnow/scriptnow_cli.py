@@ -1,4 +1,4 @@
-"""cli-anything-scriptnow — agent-native CLI for the ScriptNow creative platform.
+"""scriptnow-cli — agent-native CLI for the ScriptNow creative platform.
 
 Covers the core creation chain: projects, work interpretation (read-through →
 source profile + reusable skill), novel chapters & StoryMap, and tenant skills.

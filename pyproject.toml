@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cli-anything-scriptnow"
+name = "scriptnow-cli"
 version = "0.1.0"
 description = "ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行（CLI-Anything 模式）"
 readme = "README.md"

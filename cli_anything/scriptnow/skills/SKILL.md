@@ -1,5 +1,5 @@
 ---
-name: cli-anything-scriptnow
+name: scriptnow-cli
 description: >-
   Command-line interface for the ScriptNow creative platform.
   Manages projects, work interpretation (one-work-one-skill read-through),
@@ -8,7 +8,7 @@ description: >-
   tenant skill workshop.
 ---
 
-# cli-anything-scriptnow
+# scriptnow-cli
 
 CLI harness for ScriptNow — built with the CLI-Anything pattern.
 

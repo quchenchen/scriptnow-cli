@@ -1,4 +1,4 @@
-# cli-anything-scriptnow
+# scriptnow-cli
 
 ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 
@@ -76,7 +76,7 @@ scriptnow export download <项目ID> <清单ID> -o 书.docx
 Agent（Claude Code / Pi / npx skills 兼容）可通过 SKILL.md 发现能力：
 
 ```bash
-npx skills add quchenchen/scriptnow-cli --skill cli-anything-scriptnow -g -y
+npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
 ```
 
 SKILL.md 位于 `cli_anything/scriptnow/skills/SKILL.md`。

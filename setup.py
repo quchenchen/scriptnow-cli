@@ -1,9 +1,9 @@
-"""Packaging for cli-anything-scriptnow."""
+"""Packaging for scriptnow-cli."""
 
 from setuptools import find_packages, setup
 
 setup(
-    name="cli-anything-scriptnow",
+    name="scriptnow-cli",
     version="0.1.0",
     description="Agent-native CLI for the ScriptNow creative platform — CLI-Anything pattern",
     packages=find_packages(),
