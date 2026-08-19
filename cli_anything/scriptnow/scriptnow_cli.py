@@ -676,6 +676,153 @@ def _skill_card_for_project(session: Session, project_id: str) -> dict[str, Any]
     }
 
 
+# ------------------------------------------------- one-work-one-skill: agent-side
+
+
+# 平台 skill 规范（供 Agent 本地解读时遵循）。样本作品内容不需要也不应该
+# 上传到平台：Agent 本地阅读作品，按此规范产出 instructions，再通过
+# `interpret local --submit` 回传并挂载到项目。平台只接收最终方法论，不接触原文。
+LOCAL_SKILL_SPEC = """\
+# ScriptNow 可复用创作 Skill 规范（Agent 本地解读产出）
+
+你正在把一部作品的可复用创作方法论蒸馏成一个 Skill。作品原文由你本地阅读，
+不要上传平台；只把下面的方法论以 JSON 回传。
+
+## 输出 JSON（提交给 `interpret local --submit`）
+
+{
+  "name": "kebab-case 短名（如 black-mirror-narrative）",
+  "description": "一句话说明这是哪部作品的方法论",
+  "domain": "novel",
+  "role": "writer",
+  "stage": "writing",
+  "genre_tags": ["mystery", "werewolf"],
+  "instructions": "Markdown 方法论正文，按本作品真正独特的创作维度组织（不是固定模板）"
+}
+
+## instructions 编写要求（按作品实际呈现，非模板）
+
+系统性考虑并纳入本作品真正练到的维度（缺失的维度省略或合并）：
+- 叙事策略：立场、结构、讲述者、时间线、隐藏与揭示
+- 节奏：句/段节奏、场景节拍、加速与休止
+- 对话模式：人物如何说话、潜台词、打断、沉默
+- 密度：每句信息量、描写与行动之比
+- 伏笔：铺垫/回收机制、埋设细节、回调
+- 钩子：章/场开头与结尾、悬念手法
+- 情绪：视角内在性、感受状态、共情机制
+- 视角：镜头、限制、叙述者不可知之事
+- 世界规则：设定规则如何引入与强制
+- 爽点结构：愿望满足节拍、升级、释放
+- 语言习惯：句式形态、隐喻密度、重复意象
+- 禁忌与边界：本作品绝不做的、语气护栏
+
+## 证据纪律
+
+- instructions 正文只能写有原文锚点支撑的规则，每条内联引用 1-2 个锚点示例。
+- 弱观察/推断不可作为可执行规则，放在文末「待验证观察」小节。
+- 整篇控制在 ~2500 词内。
+- 忠实于原文：不要为了填充维度而编造手法，也不要泛化为通用写作建议。
+"""
+
+
+@interpret_group.command("local")
+@click.argument("work_file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--project-id", "project_id", default=None, help="挂载目标项目 id（提交时用于挂载 skill）")
+@click.option("--submit", "submit_file", default=None, help="提交解读结果：@skill.json（Agent 按上方规范产出）")
+@click.option("--spec", is_flag=True, help="仅输出平台 skill 规范（供 Agent 本地解读参考）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def interpret_local(
+    ctx: click.Context,
+    work_file: str,
+    project_id: str | None,
+    submit_file: str | None,
+    spec: bool,
+    json_output: bool,
+) -> None:
+    """一书一 Skill（Agent 本地解读版）：样本不传平台，Agent 按规范本地产出方法论后回传。
+
+    流程：
+      1. 先运行本命令（不带 --submit）输出平台 skill 规范（--spec）——Agent 读作品原文，
+         按规范产出 skill JSON。
+      2. Agent 完成后，运行 `interpret local <作品> --submit @skill.json --project-id <pid>`：
+         校验规范 → skill create 回传 → 挂载到项目。
+
+    样本内容全程在本地，平台只接收最终方法论，不接触作品原文。
+    """
+    import json as _json
+
+    session = _session(ctx) if (submit_file or project_id) else None
+    if spec:
+        _emit({"work_file": work_file, "skill_spec": LOCAL_SKILL_SPEC}, json_output)
+        return
+    if not submit_file:
+        _emit(
+            {
+                "work_file": work_file,
+                "next": "先按上方规范本地解读作品并产出 skill JSON，"
+                        "然后运行: scriptnow interpret local <作品> --submit @skill.json --project-id <pid>",
+                "skill_spec": LOCAL_SKILL_SPEC,
+            },
+            json_output,
+        )
+        return
+    if not project_id:
+        raise click.ClickException("提交回传需要 --project-id（挂载目标项目）")
+    raw = Path(submit_file[1:] if submit_file.startswith("@") else submit_file).read_text(
+        encoding="utf-8"
+    )
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"skill JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("skill JSON 必须是对象")
+    name = str(data.get("name") or "").strip()
+    instructions = str(data.get("instructions") or "").strip()
+    description = str(data.get("description") or "").strip()
+    if not name or not instructions:
+        raise click.ClickException("skill JSON 需要 name 和 instructions（见 --spec 规范）")
+    if not __import__("re").fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+        raise click.ClickException("name 必须是 kebab-case（小写字母数字，连字符分隔）")
+    # 预算检查：instructions 本身是文本，给一个宽松上限（100_000 是平台硬限）
+    _check_budget(instructions, 100_000 if True else None, "skill 方法论", json_output)
+    role = str(data.get("role") or "writer")
+    stage = str(data.get("stage") or "writing")
+    domain = str(data.get("domain") or "novel")
+    body = {
+        "name": name,
+        "description": description or f"{Path(work_file).name} 的创作方法论",
+        "domain": domain,
+        "roles": [role],
+        "stages": [stage],
+        "instructions": instructions,
+    }
+    created = session.request("POST", "/skills/personal", json_body=body, write=True)
+    skill_id = str(created.get("id") or "")
+    result: dict[str, Any] = {
+        "skill_id": skill_id,
+        "name": created.get("name"),
+        "status": created.get("status"),
+    }
+    # 挂载到项目（需 version_id）
+    if skill_id and project_id:
+        versions = session.request("GET", f"/skills/personal/{skill_id}/versions")
+        if versions:
+            version_id = str(versions[0]["version_id"])
+            try:
+                session.request(
+                    "PUT",
+                    f"/projects/{project_id}/skills/{skill_id}",
+                    json_body={"version_id": version_id},
+                    write=True,
+                )
+                result["mounted"] = {"project_id": project_id, "version_id": version_id}
+            except ScriptNowError as error:
+                result["mount_error"] = str(error)
+    _emit(result, json_output)
+
+
 # ----------------------------------------------------------------------- chapters
 
 
