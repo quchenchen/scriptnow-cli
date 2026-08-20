@@ -2623,12 +2623,37 @@ def script_adopt_scene(
     )
 
 
+_SCENE_BLOCKS_FORMAT = """剧本 blocks JSON 格式（scene-propose --file 要求）：
+{
+  "blocks": [
+    {"para_id": "p1", "type": "slugline",   "text": "内景. 教室 - 清晨"},
+    {"para_id": "p2", "type": "action",     "text": "林澈从课桌上醒来。"},
+    {"para_id": "p3", "type": "character",  "text": "林澈"},
+    {"para_id": "p4", "type": "dialogue",   "text": "今天又多了一条。"},
+    {"para_id": "p5", "type": "transition", "text": "切至走廊"}
+  ]
+}
+type 仅限：slugline（场景标题）| action（动作）| character（说话人）|
+dialogue（对白）| transition（转场）。para_id 唯一即可。"""
+
+_SCENE_EXAMPLE = """内景. 教室 - 清晨
+林澈从课桌上醒来，黑板上的守则比昨天多了一条。
+
+林澈
+今天又多了一条。
+
+林澈走到门口，门缝下塞进一张纸条，字迹与黑板相同。"""
+
+
 @script_group.command("scene-propose")
 @click.argument("project_id")
 @click.argument("scene_id")
 @click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
 @click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
 @click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
+@click.option("--auto-adopt", is_flag=True, help="回传后自动采纳该候选")
+@click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
+@click.option("--example", is_flag=True, help="显示示例文本")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_scene_propose(
@@ -2638,8 +2663,17 @@ def script_scene_propose(
     blocks_file: str | None,
     text: str | None,
     budget: int | None,
+    auto_adopt: bool,
+    help_format: bool,
+    example: bool,
     json_output: bool,
 ) -> None:
+    if help_format:
+        click.echo(_SCENE_BLOCKS_FORMAT)
+        return
+    if example:
+        click.echo(_SCENE_EXAMPLE)
+        return
     """Agent 本地创作场次 → 回传为候选（剧本改编不经过平台文本生成）。
 
     适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
@@ -2689,15 +2723,184 @@ def script_scene_propose(
         "blocks": blocks,
         "source": "cli",
     }
-    result = session.request(
-        "POST",
-        f"/script/projects/{project_id}/scenes/{scene_id}/propose",
-        json_body=body,
-        write=True,
-    )
+    try:
+        result = session.request(
+            "POST",
+            f"/script/projects/{project_id}/scenes/{scene_id}/propose",
+            json_body=body,
+            write=True,
+        )
+    except ScriptNowError as error:
+        if "409" in str(error) or "缺少" in str(error):
+            raise click.ClickException(
+                str(error)
+                + "\n提示：场次回传需要剧本 blocks 结构，推荐用 JSON 文件：\n"
+                + "  scriptnow script scene-propose <pid> <scene_id> --file @blocks.json\n"
+                + "  格式说明：scriptnow script scene-propose --help-format\n"
+                + "  示例：scriptnow script scene-propose --example"
+            ) from error
+        raise
+    if auto_adopt and result.get("id"):
+        adopted = session.request(
+            "POST",
+            f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{result['id']}/adopt",
+            write=True,
+        )
+        result["adopted"] = adopted.get("status")
     if not json_output:
         click.echo(ui.ok(f"场次候选已回传 {scene_id}（{result.get('status', 'candidate')}）"))
+        click.echo(
+            ui.dim(
+                "下一步：采纳 scriptnow script adopt-scene <pid> <scene_id> <revision_id>；"
+                "审读 scriptnow script scene-show <pid> <scene_id>"
+            ),
+            err=True,
+        )
     _emit(result, json_output)
+
+
+def _poll_run_status(session: Session, project_id: str, run_id: str, *, domain: str = "novel") -> str:
+    """Poll a run to a terminal status without emitting (batch use)."""
+    import time as _time
+
+    path = f"/{domain}/projects/{project_id}/runs/{run_id}"
+    deadline = _time.time() + 16 * 60
+    while _time.time() < deadline:
+        state = session.request("GET", path)
+        status = str(state.get("status") or "")
+        if status in ("succeeded", "failed", "cancelled"):
+            return status
+        _time.sleep(2)
+    return "timeout"
+
+
+@script_group.command("scene-batch")
+@click.argument("project_id")
+@click.option("--scenes", required=True, help="逗号分隔的场次 id，如 scene-1-1,scene-1-2,scene-1-3")
+@click.option("--feedback", default=None, help="统一创作/修订反馈")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_scene_batch(
+    ctx: click.Context, project_id: str, scenes: str, feedback: str | None, json_output: bool
+) -> None:
+    """批量生成场次（串行）：实时进度 + 失败集中汇总。"""
+    import time as _time
+
+    ids = [item.strip() for item in scenes.split(",") if item.strip()]
+    if not ids:
+        raise click.ClickException("--scenes 需要至少 1 个场次 id")
+    session = _session(ctx)
+    summary: list[dict[str, object]] = []
+    for index, scene_id in enumerate(ids, 1):
+        started = _time.time()
+        try:
+            queued = session.request(
+                "POST",
+                f"/script/projects/{project_id}/scenes/{scene_id}/generate?background=true",
+                json_body={"idempotency_key": f"cli-scene-{_time.time_ns()}", "feedback": feedback},
+                write=True,
+            )
+            run_id = str(queued.get("run_id") or "")
+            status = _poll_run_status(session, project_id, run_id, domain="script")
+            elapsed = int(_time.time() - started)
+            summary.append({"scene_id": scene_id, "status": status, "seconds": elapsed})
+            if not json_output:
+                mark = ui.ok("✓") if status == "succeeded" else ui.error("✗")
+                click.echo(f"[{index}/{len(ids)}] {mark} {scene_id} {status} ({elapsed}s)", err=True)
+        except ScriptNowError as error:
+            summary.append({"scene_id": scene_id, "status": "error", "detail": str(error)})
+            if not json_output:
+                click.echo(ui.error(f"[{index}/{len(ids)}] {scene_id} error: {error}"), err=True)
+    failed = [item for item in summary if item.get("status") != "succeeded"]
+    if not json_output:
+        if failed:
+            click.echo(ui.error(f"失败 {len(failed)}/{len(ids)}：{', '.join(str(i['scene_id']) for i in failed)}"), err=True)
+        else:
+            click.echo(ui.ok(f"全部成功：{len(ids)} 个场次"))
+    _emit({"total": len(ids), "succeeded": len(ids) - len(failed), "failed": failed, "results": summary}, json_output)
+
+
+@script_group.command("scene-quality")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--revision", default=None, help="指定修订号/id（默认最新候选，无则已采纳）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_scene_quality(
+    ctx: click.Context, project_id: str, scene_id: str, revision: str | None, json_output: bool
+) -> None:
+    """场次质量快检（客户端统计，不消耗模型）：篇幅 / 对白轮数 / 镜头语言。"""
+    state = _session(ctx).request("GET", f"/script/projects/{project_id}/state")
+    docs = [doc for doc in (state.get("documents") or []) if doc.get("scene_id") == scene_id]
+    if not docs:
+        raise click.ClickException(f"no documents for scene {scene_id}")
+    chosen = None
+    if revision:
+        chosen = next(
+            (d for d in docs if d.get("id") == revision or str(d.get("revision_number")) == revision),
+            None,
+        )
+        if chosen is None:
+            raise click.ClickException(f"revision {revision} not found for scene {scene_id}")
+    else:
+        candidates = sorted(
+            [d for d in docs if d.get("status") in ("candidate", "active")],
+            key=lambda d: d.get("revision_number", 0),
+            reverse=True,
+        )
+        chosen = candidates[0] if candidates else max(docs, key=lambda d: d.get("revision_number", 0))
+    blocks = chosen.get("blocks") or []
+    total_chars = sum(len(str(b.get("text") or "")) for b in blocks)
+    sluglines = [b for b in blocks if b.get("type") == "slugline"]
+    dialogues = [b for b in blocks if b.get("type") == "dialogue"]
+    characters = [b for b in blocks if b.get("type") == "character"]
+    transitions = [b for b in blocks if b.get("type") == "transition"]
+    dialogue_rounds = min(len(characters), len(dialogues)) if (characters and dialogues) else len(dialogues)
+    checks: list[dict[str, object]] = []
+    checks.append({
+        "check": "篇幅",
+        "value": f"{total_chars} 字符",
+        "target": "400-700",
+        "ok": 400 <= total_chars <= 700,
+        "flag": "过短" if total_chars < 250 else ("偏短" if total_chars < 400 else ("偏长" if total_chars > 700 else "达标")),
+    })
+    checks.append({
+        "check": "对白",
+        "value": f"{dialogue_rounds} 轮",
+        "target": "≥2",
+        "ok": dialogue_rounds >= 2,
+        "flag": "不足" if dialogue_rounds < 2 else "达标",
+    })
+    checks.append({
+        "check": "镜头语言",
+        "value": f"{len(sluglines)} slugline / {len(transitions)} transition",
+        "target": "≥1 slugline",
+        "ok": bool(sluglines),
+        "flag": "缺场景标题" if not sluglines else "达标",
+    })
+    if not json_output:
+        click.echo(ui.section(f"=== {scene_id} · rev{chosen.get('revision_number')}（{chosen.get('source')}）==="), err=True)
+        for item in checks:
+            mark = ui.ok("") if item["ok"] else ui.warn("")
+            click.echo(f"  {mark} {item['check']}：{item['value']}（目标 {item['target']}）{item['flag']}", err=True)
+        passed = sum(1 for item in checks if item["ok"])
+        overall = "GOOD" if passed == len(checks) else ("NEEDS WORK" if passed >= 1 else "POOR")
+        click.echo(ui.dim(f"Overall: {overall}（{passed}/{len(checks)} 项达标）"), err=True)
+    _emit(
+        {
+            "scene_id": scene_id,
+            "revision_number": chosen.get("revision_number"),
+            "revision_id": chosen.get("id"),
+            "source": chosen.get("source"),
+            "total_chars": total_chars,
+            "blocks": len(blocks),
+            "dialogue_rounds": dialogue_rounds,
+            "checks": checks,
+        },
+        json_output,
+    )
+
+
 
 
 # ----------------------------------------------------------------- translation
