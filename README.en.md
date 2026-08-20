@@ -116,15 +116,15 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
-| chapter | Novel chapters: list / show / generate / quality / adopt / propose (local return) |
+| chapter | Novel chapters: list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
 | storymap | Novel volumes×chapters: state / generate / adopt |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
-| script | Script chain: state / scene-list / scene-show / scene / scene-propose / storymap / blueprint / story-cores / propose |
+| script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
-| cover | Covers: package (generate the work package — required before cover generation) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
+| cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / download (novel/script) |
 | skill | Skill workshop: list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
-| admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update |
+| admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 
 ## Skill capability & version evolution
@@ -186,3 +186,19 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 - All writes go through the platform's auth (cookie + CSRF + tenant isolation); no cross-tenant access.
 - Platform internals (built-in skills, admin endpoints, tool catalog) are not exposed via the CLI —
   the admin group is is_admin-gated.
+
+
+## Evaluation standards
+
+- `chapter quality --standard` defaults to **content-quality preference** (character agency / scene causality /
+  relationship progression / narrative voice / continuity / source boundary / chapter propulsion / prose texture).
+  Only when the user explicitly asks for **live-drama filing standards** (`--standard drama-filing`) or the
+  **thousand-plan bulk-web-novel standard** (`--standard thousand-plan`) are those added.
+- Evaluation pairs **agent systematic assessment** with **platform-suggested dimensions**: the CLI exposes the
+  dimension list and the scene text; the agent evaluates dimension by dimension with cited evidence.
+
+## Format-spec examples
+
+`chapter propose --help-format/--example` and `script scene-propose --help-format/--example` show **format-spec
+examples** (blocks JSON / prose layout). They demonstrate format compliance only — **not quality exemplars**;
+quality is judged by the agent against the evaluation dimensions above.

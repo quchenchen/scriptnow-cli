@@ -105,15 +105,15 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
-| chapter | 小说章节：list / show / generate / quality / adopt / propose（本地回传） |
+| chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | storymap | 小说卷章结构：state / generate / adopt |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
-| script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose / storymap / blueprint / story-cores / propose |
+| script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / download（novel/script） |
 | skill | Skill 工坊：list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
-| admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update |
+| admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 
 ## Skill 能力与版本进化
@@ -169,3 +169,15 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 - 会话只存 Cookie 不存密码；文件权限 0600。
 - 所有写操作走平台同一套鉴权（Cookie + CSRF + tenant 隔离），无法越权访问其他用户数据。
 - 平台核心能力（内置 Skill、管理端点、工具目录）不通过 CLI 暴露——admin 命令组仅 is_admin 可用。
+
+
+## 质量评估标准
+
+- `chapter quality --standard` 评估**默认使用内容质量偏好**（人物能动性/场景因果/关系推进/叙述声音/连贯性/源边界/章节推进/文本质感）；
+  仅当用户明确提出 **真人剧备案口径**（`--standard drama-filing`）或 **千部计划/批量网文标准**（`--standard thousand-plan`）时才附加对应标准。
+- 评估 = **Agent 系统评估 + 平台建议维度**：CLI 提供平台维度与场次原文，Agent 按维度逐项系统评估、引用证据。
+
+## 规格示例
+
+`chapter propose --help-format / --example`、`script scene-propose --help-format / --example` 展示**格式规格示例**
+（blocks JSON 结构/正文分段），仅保证格式合规，**不代表质量水准**——质量由 Agent 按上述评估维度判断。

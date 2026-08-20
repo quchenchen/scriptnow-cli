@@ -34,11 +34,11 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 |-------|----------|
 | project | list, create, upload, files, delete, direction (--show / --apply 客户端梳理回填 / --inspire 平台灵感 / --set 手动补齐) |
 | interpret | go, create, read, status, decide |
-| chapter | list, show, generate, adopt, quality, propose (agent-written chapter return) |
+| chapter | list, show, generate, adopt, quality (--standard content/drama-filing/thousand-plan), propose (agent-written chapter return) |
 | storymap | state, generate, adopt |
 | book | plan (全书托管创作规划，Agent 编排原语) |
 | novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap, 支持 --adopt) |
-| script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show |
+| script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show, scene-propose (--auto-adopt/--help-format/--example), scene-batch (serial + resume), scene-quality, scene-diff, quality-report |
 | translate | create, analyze-source, target-contract, strategies, mappings |
 | cover | package (generate the work package — required before cover generation), package-propose (agent-submitted packaging draft), package-show, models, specs, generate (defaults to a single 1024×1600 output), list, delete |
 | export | options, create, download (novel/script) |
@@ -135,3 +135,18 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   always resolve via `project list` / `skill list` / `storymap state` / `script state`.
 - `storymap state` / `script state` return full project state including adopted
   structures, blueprint anchors, and document version history.
+
+- **Batch generation discipline**: `script scene-batch` exists but MUST be used
+  sparingly — bulk generation risks plot/setting drift and broken foreshadowing.
+  The CLI warns before each batch; review every scene before adopting. The
+  best practice is per-scene/per-chapter refinement (generate → show --plain →
+  judge → feedback → adopt). Do NOT fan out subagents for parallel batch
+  writing — split contexts cause canon drift. Keep project writing serial and
+  context-shared.
+
+- **Evaluation standard**: `chapter quality` defaults to the content-quality preference (platform-suggested
+  dimensions: character agency / causality / relationship progression / narrative voice / continuity / source
+  boundary / propulsion / prose texture). Add `--standard drama-filing` (live-drama filing) or
+  `--standard thousand-plan` (bulk web-novel) only when the user explicitly requests them. Assessment is the
+  agent's systematic judgment per dimension, citing evidence — combine with the platform's suggested dimensions.
+- **Format-spec examples** (`--help-format`/`--example`) show format compliance, not quality exemplars.
