@@ -190,6 +190,31 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   boundary / propulsion / prose texture). Add `--standard drama-filing` (live-drama filing) or
   `--standard thousand-plan` (bulk web-novel) only when the user explicitly requests them. Assessment is the
   agent's systematic judgment per dimension, citing evidence — combine with the platform's suggested dimensions.
+- **REVIEW DISCIPLINE (MANDATORY, first priority — strict rejection of self-congratulation)**:
+  Reviewing is the agent's single most important duty; never skim, never cheerlead.
+  1. **Become the audience, not the author's fan**: read every sentence of every
+     scene/chapter as a demanding viewer who paid to be moved. Ask at each line:
+     "would I keep reading? is this earning my attention?" If it would bore you,
+     it will bore the reader — say so plainly.
+  2. **Judge with the professional skill of a screenwriter/editor who matches the
+     work's style**: evaluate craft — dramatic stakes, character agency, causality,
+     escalation, subtext, rhythm, camera language (for scripts), prose texture (for
+     novels) — with the same expertise a working screenwriter would apply to a
+     colleague's draft. Match the project's declared style/genre standards; do not
+     grade everything by one generic rubric.
+  3. **Be cold, serious and specific**: praise only what genuinely works (cite the
+     line/beat); attack what fails with concrete evidence (quote the weak line, name
+     the missing beat, state the dropped thread). Vague approval ("不错", "很有
+     张力") without citation is forbidden; unsupported praise is self-high.
+  4. **Never rubber-stamp**: if a draft would not hold an audience, say "this needs
+     regeneration" and give the exact reasons + what to fix, instead of adopting to
+     avoid conflict. An 8/10 that can be a 9 is a revision, not an adoption.
+  5. **Frame every verdict for the reader/viewer's experience**, not the author's
+     effort: "this scene spends 40s of screen time on exposition with no character
+     choice" beats "this scene is well written". Judge每一句、每一帧.
+  6. When the user asks for review feedback via `--feedback` or in chat, deliver
+     the same rigor: a prioritized fix list (blockers first), each item quoting the
+     text and prescribing the fix.
 - **Format-spec examples** (`--help-format`/`--example`) show format compliance, not quality exemplars.
 
 ## MANDATORY creation roles & workflow (from production reflection)
@@ -232,12 +257,16 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   1. prepare a detailed feedback brief (opening hook / conflict / dramatic turn /
      ending hook / camera language as appropriate);
   2. run generation (`script scene` / `chapter generate`);
-  3. review the candidate (`scene-show --plain` to read, `scene-quality` for a
-     quick length/dialogue/camera check), score it against the evaluation
-     dimensions;
-  4. if below threshold — **regenerate immediately with feedback**; never adopt
+  3. **read the candidate in full** (`scene-show --plain` / `chapter show
+     --plain` — never judge from a summary), then review it the way a demanding
+     audience member and a working screenwriter would: is each line earning its
+     place, each frame justified? Run `scene-quality` only as a length/dialogue/
+     camera sanity check, never as a substitute for reading the text;
+  4. score against the evaluation dimensions with the **REVIEW DISCIPLINE**
+     above: quote evidence, name the failing beats, reject self-congratulation;
+  5. if below threshold — **regenerate immediately with feedback**; never adopt
      unqualified work;
-  5. adopt only when it passes.
+  6. adopt only when it passes.
 
 - **Prerequisite completeness check (MANDATORY, before per-chapter writing)**:
   verify direction, adopted cores, blueprint and StoryMap are all in place

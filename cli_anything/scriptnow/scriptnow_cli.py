@@ -388,10 +388,10 @@ _GUIDE_STEPS = [
     {
         "step": 7,
         "title": "审读与修订",
-        "scene": "编辑的责任：不放过一处瑕疵。质量检查、迭代修订，直到故事立得住。",
-        "why": "chapter quality / scene quality 检查结构一致性；不满意用 --feedback 迭代修订，人工修订版本同样可采纳。",
-        "command": "scriptnow chapter quality <pid> <cid>（或 script scene quality <pid> <sid>）",
-        "verify": "质量报告无阻断项。",
+        "scene": "编辑的责任：不放过一处瑕疵。逐句逐帧以挑剔受众的目光审读——每一句是否值得停留，每一帧是否推动情绪。",
+        "why": "Agent 审读必须严苛：化身资深编剧与挑剔受众，逐句引用证据、点名失败的节拍，拒绝泛泛而谈的称赞；低于标准的正文立即带反馈重新生成。",
+        "command": "scriptnow chapter show <pid> <cid> --plain（通读全文后裁决；不满意即 chapter generate --feedback 迭代）",
+        "verify": "每一句都经得起挑剔读者的审视；质量报告无阻断项。",
         "prompt": "如果只能删掉一段，你会删哪一段？删掉之后，故事会不会更有力？",
         "masters": [
             {
@@ -1615,8 +1615,11 @@ def chapter_show(
     ctx: click.Context, project_id: str, chapter_id: str, revision: str | None, plain: bool, json_output: bool
 ) -> None:
     """Show a chapter's manuscript text and metadata for review.
-    This is the review primitive: an agent reads the text here and forms its
-    own judgment; fixes are driven via `chapter generate --feedback`."""
+    This is the review primitive: an agent reads the FULL text here and forms its
+    own judgment — as a demanding audience member and a working screenwriter,
+    never skimming and never self-congratulating. Quote evidence for every
+    verdict; fix weak lines via `chapter generate --feedback` before adopting.
+    """
     state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
     documents = state.get("documents", [])
     docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
@@ -2976,7 +2979,10 @@ def script_scene_list(ctx: click.Context, project_id: str, json_output: bool) ->
 def script_scene_show(
     ctx: click.Context, project_id: str, scene_id: str, revision: str | None, plain: bool, json_output: bool
 ) -> None:
-    """Show a scene's script text for agent review (review primitive)."""
+    """Show a scene's script text for agent review (review primitive).
+    Read every line as a demanding viewer and a working screenwriter: judge
+    each frame's purpose, each line's necessity. Never skim, never cheerlead;
+    quote evidence for every verdict and drive fixes via feedback before adopt."""
     state = _session(ctx).request("GET", f"/script/projects/{project_id}/state")
     documents = state.get("documents") or []
     docs = [doc for doc in documents if doc.get("scene_id") == scene_id]
