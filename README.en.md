@@ -202,3 +202,22 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 `chapter propose --help-format/--example` and `script scene-propose --help-format/--example` show **format-spec
 examples** (blocks JSON / prose layout). They demonstrate format compliance only — **not quality exemplars**;
 quality is judged by the agent against the evaluation dimensions above.
+
+
+## Agent creation roles & workflow discipline (must-read)
+
+- **Role split**: Agent = project manager + quality reviewer; the platform
+  (scene/chapter generation) = the writer. Agents must NEVER write manuscript
+  content themselves — no local sample scripts or piled-up config files.
+  Prepare direction/feedback, drive generation, review, demand regeneration,
+  and adopt only passing versions.
+- **Stage 1 (immediate)**: create the project at once, then backfill structure
+  via propose (cores/blueprint/storymap, first 5-10 episodes/volumes) — push to
+  the platform instead of accumulating local files.
+- **Stage 2 (per-unit loop)**: per scene/chapter — prepare a detailed feedback
+  brief → generate → review (`scene-show --plain` + `scene-quality`) → if below
+  threshold, regenerate immediately with feedback → adopt only when it passes.
+- **Quality threshold**: 9-10 excellent · 8-9 acceptable · **<8 regenerate
+  immediately** — never adopt unqualified work.
+- **Progress control**: after each episode/volume, report quality stats and ask
+  the user whether to continue.
