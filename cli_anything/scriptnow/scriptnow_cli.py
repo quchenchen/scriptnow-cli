@@ -28,7 +28,7 @@ from cli_anything.scriptnow.utils.session import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 def _session(ctx: click.Context) -> Session:
