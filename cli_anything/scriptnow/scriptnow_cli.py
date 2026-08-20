@@ -2227,6 +2227,15 @@ def script_scene_show(
     if plain:
         click.echo(text)
         return
+    revision_summary = [
+        {
+            "revision_id": doc.get("id"),
+            "revision_number": doc.get("revision_number"),
+            "status": doc.get("status"),
+            "source": doc.get("source"),
+        }
+        for doc in sorted(docs, key=lambda item: item.get("revision_number", 0))
+    ]
     _emit(
         {
             "scene_id": scene_id,
@@ -2236,6 +2245,13 @@ def script_scene_show(
             "status": chosen.get("status"),
             "text": text,
             "block_count": len(blocks),
+            "revisions": revision_summary,
+            "candidate_revisions": [
+                item for item in revision_summary if item["status"] in ("candidate", "active")
+            ],
+            "adopted_revision": next(
+                (item for item in revision_summary if item["status"] == "adopted"), None
+            ),
         },
         json_output,
     )
