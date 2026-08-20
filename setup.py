@@ -1,10 +1,19 @@
 """Packaging for scriptnow-cli."""
 
+import re
+from pathlib import Path
+
 from setuptools import find_packages, setup
+
+# Single source of truth: cli_anything/scriptnow/__init__.py __version__
+_init = Path(__file__).parent / "cli_anything" / "scriptnow" / "__init__.py"
+_match = re.search(r'__version__\s*=\s*"([^"]+)"', _init.read_text(encoding="utf-8"))
+if _match is None:
+    raise RuntimeError("cannot read __version__ from cli_anything/scriptnow/__init__.py")
 
 setup(
     name="scriptnow-cli",
-    version="0.3.0",
+    version=_match.group(1),
     description="Agent-native CLI for the ScriptNow creative platform — CLI-Anything pattern",
     packages=find_packages(),
     include_package_data=True,

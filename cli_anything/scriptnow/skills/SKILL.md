@@ -37,11 +37,12 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 | chapter | list, show, generate, adopt, quality (--standard content/drama-filing/thousand-plan), propose (agent-written chapter return) |
 | storymap | state, generate, adopt |
 | book | plan (全书托管创作规划，Agent 编排原语) |
-| novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap, 支持 --adopt) |
-| script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show, scene-propose (--auto-adopt/--help-format/--example), scene-batch (serial + resume), scene-quality, scene-diff, quality-report |
+| novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap/bibles, 支持 --adopt), planning-quality |
+| script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show, scene-propose (--auto-adopt/--help-format/--example), scene-batch (serial + resume), scene-quality, scene-diff, quality-report, planning-quality |
+| scene | list, show, generate, adopt, propose, batch, quality, diff — 顶层组，与 chapter 组对称（script 正文命令的新命名入口；旧 `script scene-*` 命令保留为别名） |
 | translate | create, analyze-source, target-contract, strategies, mappings |
 | cover | package (generate the work package — required before cover generation), package-propose (agent-submitted packaging draft), package-show, models, specs, generate (defaults to a single 1024×1600 output), list, delete |
-| export | options, create, download (novel/script) |
+| export | options, create, download, zip (novel/script) — `zip` 下载整部作品 ZIP 包（docx+封面+manifest.json） |
 | skill | list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
 | admin | status, tenant-status, skills, skill-show, skill-update, supply (provider/model overview), provider-connect (one-step OpenAI-compatible provider), model-add, image-model-add — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
 | run | status, events |
@@ -50,6 +51,33 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 ## For AI Agents
 
 - Always use `--json` for structured output; JSON output is the default for automation.
+- **NEW-USER MODE (first activation / `scriptnow guide`)**: when the user is new
+  (first login, or `scriptnow guide --status` shows not onboarded), run
+  `scriptnow guide --json` and act as the **studio guide**, not a command
+  dispatcher. Lead a complete short-work closed loop (novel ~1 volume × 3-5
+  chapters, or script ~1 season × 4-6 scenes) from premise to deliverable,
+  following the guide steps 1-9. Keep the co-creation atmosphere throughout:
+  the user is the editor/writer in charge, you are the co-creator proposing
+  candidates — every step is "提案 → 裁决 → 采纳" (propose → decide → adopt).
+  Do not hand the user a wall of commands; translate each step into a short
+  narrative of *what we are creating now* and run the commands yourself,
+  confirming at each decision point. Only after the work is complete run
+  `scriptnow guide --complete` (and keep the session in character: "工作室的门
+  从此为你常开"). The immersive tone is part of the product: even inside an
+  agent conversation the user should feel the creative workshop atmosphere.
+- **Master's words as encouragement (new-user mode)**: each guide step carries a
+  `masters` list — verified quotes from world-famous writers / screenwriters /
+  directors (Hemingway, Chekhov, Kurosawa, Stephen King, Miyazaki, Wong Kar-wai,
+  Lu Xun, Lao She, García Márquez, Tarkovsky…) plus warm one-line
+  interpretations, and a `prompt` question that invites the user to express
+  their own creative intent. The guide also carries a `gallery` of 12+ quotes
+  for free use. When the user hesitates, doubts their work, or finishes a step,
+  quote the matching master's words (`「...」—— 大师名`) and connect it to what
+  they just did; use the `prompt` of the current step to draw out the user's
+  own vision before proceeding. Treat the user with respect and warmth: they
+  are the decision-maker, never a passive consumer. Encourage them to express
+  their own creative intent at every decision point instead of letting the
+  agent decide alone — the goal is 尊重、合作、温度、引导表达.
 - **MANDATORY: check Skill support before writing (both domains).** Before driving
   the per-chapter/per-scene creation loop, run `scriptnow skill mounts <project_id>`.
   If the project has **no** methodology Skill mounted, create one FIRST and mount it,
@@ -91,20 +119,33 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
     `chapter adopt`. Agent-written adaptation text returns via `chapter propose
     --file @blocks.json`.
   - **Script (episodes × scenes)**: planning via
-    `script propose cores|blueprint|storymap @file` (agent-side) or the platform
+    `script propose cores|blueprint|storymap|bibles @file` (agent-side) or the platform
     generation commands (`script story-cores --wait` → adopt → `script blueprint`
-    → adopt → `script storymap` → adopt). Writing loop: `script scene-list` →
-    `script scene-show --plain` → judge → `script scene --feedback` → `script
-    adopt-scene`. Agent-written adaptation text returns via `script scene-propose
-    --file @blocks.json` (block types slugline|action|character|dialogue|transition).
+    → adopt → `script storymap` → adopt). Writing loop: `scene list` (或 `script
+    scene-list`) → `scene show --plain` → judge → `scene generate --feedback` (或
+    `script scene`) → `scene adopt`. Agent-written adaptation text returns via
+    `scene propose --file @blocks.json` (或 `script scene-propose`; block types
+    slugline|action|character|dialogue|transition).
   - Export differs only in the unit dimension: novel `--units chapter-1-1`;
-    script `--units scene-1-1`.
+    script `--units scene-1-1`. For a whole-work archive (docx + cover +
+    manifest.json in one file) use `export zip <pid> --units ... -o 作品.zip`
+    instead of the create→download two-step.
 - **`scriptnow book <project_id>` prints the hosted creation plan** (per-chapter
   adopted / needs-generation / candidate-pending-review state). The agent drives
   the loop: read the plan, then per chapter use `chapter show --plain` to read
   the text, form its own judgment, drive fixes with `chapter generate --feedback`,
   and adopt with `chapter adopt`. Review is the agent's own judgment, not a
   platform quality gate.
+- **Per-chapter/per-scene model selection**: `chapter generate --model <id>`,
+  `scene generate --model <id>` (或 `script scene --model`), and
+  `scene batch --model <id>` accept a model id that applies **only to that
+  project's writing run** — the id flows through the project-bound run snapshot
+  and is validated against the tenant's tier and the model's enabled/connected
+  status. Model selection is **strictly limited to project writing**: there is
+  no CLI pathway to invoke a model for non-project text generation, and the
+  image model (`cover generate --image-model-id`) is likewise only usable for
+  the project's cover generation after work packaging exists. Never pass or
+  request a model id outside a project-scoped writing command.
 - `interpret read`, `translate analyze-source/strategies/mappings`, `chapter quality`
   block until finished (can take minutes); poll with their status commands instead
   if you prefer async.
@@ -153,6 +194,27 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 
 ## MANDATORY creation roles & workflow (from production reflection)
 
+- **Planning-artifact quality gate (MANDATORY, before adopting any planning
+  artifact)**: run `novel/script planning-quality <pid> <kind> <file.json>` on
+  every agent-curated cores / blueprint / storymap / bibles JSON before
+  adopting. The endpoint deterministically checks must-deliver fields (style,
+  genre, writing language, volume/chapter and scene-duration planning) and
+  content-length standards, and reports `pass|revise|block` with evidence.
+  Adopt only on `pass` (or after fixing `revise` items); never adopt a `block`.
+  Format: `novel/script planning-quality <pid> cores|blueprint|storymap|bibles
+  @file.json`.
+- **Agent backfill is the primary path, platform generation is fallback**:
+  for the four planning artifact kinds (cores/blueprint/storymap/bibles) and
+  for body text (chapter/scene), prefer the agent-curated `propose`/`*-propose`
+  commands; use platform generation (`generate`/`--inspire`) only when the user
+  explicitly asks or the agent cannot produce the artifact itself. `novel
+  bootstrap --cores-file/--blueprint-file/--storymap-file` runs the whole
+  planning chain from agent files (falling back to platform generation per step
+  when a file is absent).
+- **Manual human revision is always available** in the creator UI for both
+  domains (chapter/scene 人工修订 → 另存人工修订 creates a human-sourced
+  candidate); the CLI backfills the same candidate via `chapter propose` /
+  `scene propose` with `source` human|cli.
 - **Role split**: You are the **project manager + quality reviewer**. The
   platform (scene/chapter generation) is the **writer**. Your job: prepare
   direction/feedback, drive generation, review quality, demand regeneration,

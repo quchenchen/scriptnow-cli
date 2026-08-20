@@ -11,12 +11,14 @@ Configuration: session persisted at ~/.config/scriptnow-cli/session.json after
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import click
 
+from cli_anything.scriptnow import __version__ as VERSION
 from cli_anything.scriptnow import ui
 from cli_anything.scriptnow.utils.session import (
     ScriptNowError,
@@ -28,7 +30,6 @@ from cli_anything.scriptnow.utils.session import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-VERSION = "0.3.0"
 
 
 def _session(ctx: click.Context) -> Session:
@@ -165,6 +166,420 @@ def main(
 # --------------------------------------------------------------------------- auth
 
 
+def _onboarding_path() -> Path:
+    override = os.environ.get("SCRIPTNOW_CLI_CONFIG")
+    if override:
+        return Path(override).with_name("onboarded.json")
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+        / "scriptnow-cli"
+        / "onboarded.json"
+    )
+
+
+def _onboarding_done() -> bool:
+    try:
+        return _onboarding_path().exists()
+    except OSError:
+        return True  # fail closed: never block command flow on onboarding
+
+
+def _mark_onboarding_done() -> None:
+    import time as _time
+
+    path = _onboarding_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
+    path.write_text(
+        json.dumps({"onboarded": True, "at": int(_time.time()), "version": VERSION}, ensure_ascii=False)
+    )
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+@main.command()
+@click.option("--steps", is_flag=True, help="只展示完整作品向导步骤（短篇/短剧闭环）")
+@click.option("--complete", is_flag=True, help="标记新手模式已完成（写入 onboarded 标记）")
+@click.option("--status", is_flag=True, help="查看新手模式完成状态")
+@click.option("--json", "json_output", is_flag=True)
+def guide(steps: bool, complete: bool, status: bool, json_output: bool) -> None:
+    """新手模式：编辑/编剧视角介绍核心能力、共创愿景，并给出完成一部完整作品的向导。"""
+    import time as _time
+
+    if complete:
+        _mark_onboarding_done()
+        _emit({"onboarded": True, "marked_at": int(_time.time())}, json_output)
+        if not json_output:
+            click.echo(ui.ok("新手模式已标记完成；随时可用 scriptnow guide 重看。"))
+        return
+
+    if status:
+        _emit({"onboarded": _onboarding_done()}, json_output)
+        if not json_output:
+            click.echo(
+                ui.ok("新手模式已完成") if _onboarding_done() else ui.warn("新手模式尚未完成")
+            )
+        return
+
+    if steps:
+        guide_payload = _guide_steps()
+    else:
+        guide_payload = _guide_full()
+    _emit(guide_payload, json_output)
+    if not json_output:
+        _echo_guide(guide_payload)
+
+
+_GUIDE_STEPS = [
+    {
+        "step": 1,
+        "title": "登录平台",
+        "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
+        "why": "建立安全会话（cookie+CSRF），之后所有创作命令自动携带身份。",
+        "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
+        "verify": "输出 登录成功：https://sn.igeewa.com（<邮箱>）",
+        "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
+        "masters": [
+            {
+                "name": "黑泽明",
+                "quote": "创作是美妙的。",
+                "source": "纪录片《黑泽明：创作是美妙的》",
+                "how": "今天你推开的不是软件，而是一间工作室——大师们把一生献给的事，现在轮到你来体会它的美妙。",
+            },
+            {
+                "name": "鲁迅",
+                "quote": "哪里有天才？我是把别人喝咖啡的工夫都用在工作上的。",
+                "source": "鲁迅自述（学生回忆录所载）",
+                "how": "创作从来不是天赋的专利，而是日复一日坐在桌前。今天你坐下来了，这就是全部的开始。",
+            },
+        ],
+    },
+    {
+        "step": 2,
+        "title": "创建作品项目",
+        "scene": "在空白稿纸上写下第一行：作品名、体裁、一句话前提——故事从这里开始呼吸。",
+        "why": "一部作品 = 一个项目；先定体裁（小说/剧本）与故事前提，作为后续一切的锚点。",
+        "command": (
+            "scriptnow project create --name <作品名> --medium novel --premise <一句话前提> "
+            "--genre <类型> --tone <文风> --chapter-target-words 1200"
+        ),
+        "verify": "返回 project_id；保存它（下文用 <pid> 代替）。",
+        "prompt": "如果只能用一个画面来概括你的故事，那会是什么？",
+        "masters": [
+            {
+                "name": "海明威",
+                "quote": "一切初稿都是狗屎。",
+                "source": "访谈中对《巴黎评论》所说",
+                "how": "别怕写得不好——海明威都这么说过。你要做的只是开始，剩下的交给共创与打磨。",
+            },
+            {
+                "name": "老舍",
+                "quote": "把普通的字用得飘飘欲仙，见出作者的苦心孤诣。",
+                "source": "《老舍谈写作》",
+                "how": "前提不必惊艳，真诚就好。老舍说，功夫在把寻常字用得见匠心——你的故事也一样。",
+            },
+        ],
+    },
+    {
+        "step": 3,
+        "title": "补齐创作方向",
+        "scene": "像主编定下基调：风格、类型、语言、篇幅。方向立住，整部作品才不会走调。",
+        "why": "风格、类型、写作语言、篇幅结构必须明确——Agent 依此保持全书一致。",
+        "command": "scriptnow project direction --apply @direction.json（Agent 生成方向文件后回填）",
+        "verify": "direction 字段齐全；也可用 --inspire 让平台按前提生成草稿。",
+        "prompt": "你希望读者合上最后一页时，心里留下什么？",
+        "masters": [
+            {
+                "name": "黑泽明",
+                "quote": "你必须学习并经历各种事。",
+                "source": "《蛤蟆的油》",
+                "how": "方向不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。",
+            },
+            {
+                "name": "塔可夫斯基",
+                "quote": "导演工作的本质，可以定义为雕刻时光。",
+                "source": "《雕刻时光》",
+                "how": "每一次设定，都是你在雕刻将要呈现的时光——方向定得越清晰，刻出的光影越动人。",
+            },
+        ],
+    },
+    {
+        "step": 4,
+        "title": "规划故事三件套",
+        "scene": "摊开编剧的案头：故事核心、蓝图、卷章结构。先想清楚再动笔，是编辑的基本功。",
+        "why": "故事核心（cores）→ 蓝图（blueprint）→ 卷章结构（storymap）。先想清楚再动笔，是编辑的基本功。",
+        "command": (
+            "scriptnow novel propose cores @cores.json --adopt && "
+            "scriptnow novel propose blueprint @blueprint.json --adopt && "
+            "scriptnow novel propose storymap @storymap.json（或 novel orchestrate --accept 采纳）"
+        ),
+        "verify": "story_map 已采纳，book 计划可打印。",
+        "prompt": "你的主角最想要什么，又最怕失去什么？",
+        "masters": [
+            {
+                "name": "契诃夫",
+                "quote": "简洁是天才的姐妹。",
+                "source": "契诃夫书信",
+                "how": "规划的意义就在于此：把千头万绪收拢成清晰的结构，落笔时才能干净、准确、有力。",
+            },
+            {
+                "name": "马尔克斯",
+                "quote": "生活不是我们活过的日子，而是我们记住的日子。",
+                "source": "《活着为了讲述》",
+                "how": "故事三件套，就是在替读者挑选「值得记住的日子」——你来决定哪些瞬间进入这本书。",
+            },
+        ],
+    },
+    {
+        "step": 5,
+        "title": "审阅并采纳结构",
+        "scene": "把候选结构摊在桌上，像资深编辑逐页过目：接受、调整、或打回重写——采纳前一切可改。",
+        "why": "orchestrate 把候选结构摊开给你裁决：接受、调整、或让 Agent 重写——采纳前一切可改。",
+        "command": "scriptnow novel orchestrate <pid> --accept",
+        "verify": "输出全书创作计划（各章状态 needs_generation）。",
+        "prompt": "这个结构里，哪一章让你最期待动笔？",
+        "masters": [
+            {
+                "name": "王家卫",
+                "quote": "电影是时间的艺术。",
+                "source": "访谈",
+                "how": "结构就是你对时间的安排——这一卷卷、一章章，是你亲手为故事量出的节奏。",
+            },
+            {
+                "name": "宫崎骏",
+                "quote": "创作就是生活本身。",
+                "source": "访谈（转述其创作理念）",
+                "how": "采纳结构的那一刻，这部作品开始真正属于你——接下来的每一章，都是你生活的一部分。",
+            },
+        ],
+    },
+    {
+        "step": 6,
+        "title": "逐章共创正文",
+        "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
+        "why": "Agent 逐章创作回填（chapter propose）或平台生成（chapter generate），你逐章审读采纳——这是人机共创的核心循环。",
+        "command": (
+            "scriptnow book <pid>（看计划）→ chapter show <pid> <cid> --plain（读文本）→ "
+            "chapter generate <pid> <cid> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
+            "chapter adopt <pid> <cid> <revision_id>"
+        ),
+        "verify": "每一章都有 adopted 版本。",
+        "prompt": "这一章，你想让读者和主角一起经历什么？",
+        "masters": [
+            {
+                "name": "斯蒂芬·金",
+                "quote": "关起门来写初稿，打开门来修改。",
+                "source": "《写作这回事》",
+                "how": "你正站在门内：先让故事自由生长，改稿的事交给下一轮——这是每一位写作者的日常。",
+            },
+            {
+                "name": "余华",
+                "quote": "写作的过程，就是不断发现自己内心真实想法的过程。",
+                "source": "余华谈写作（访谈）",
+                "how": "每一章都是你与自己的一次对话——Agent 递来的手稿，帮你把心里那些模糊的念头说清楚。",
+            },
+        ],
+    },
+    {
+        "step": 7,
+        "title": "审读与修订",
+        "scene": "编辑的责任：不放过一处瑕疵。质量检查、迭代修订，直到故事立得住。",
+        "why": "chapter quality / scene quality 检查结构一致性；不满意用 --feedback 迭代修订，人工修订版本同样可采纳。",
+        "command": "scriptnow chapter quality <pid> <cid>（或 script scene quality <pid> <sid>）",
+        "verify": "质量报告无阻断项。",
+        "prompt": "如果只能删掉一段，你会删哪一段？删掉之后，故事会不会更有力？",
+        "masters": [
+            {
+                "name": "海明威",
+                "quote": "好的写作，就像一座冰山，只露出八分之一。",
+                "source": "《死在午后》",
+                "how": "修订不是删减，是把水面下的七分之八想清楚——你每改一处，作品就沉得更稳。",
+            },
+            {
+                "name": "鲁迅",
+                "quote": "时间就是性命，无端地空耗别人的时间，其实是无异于谋财害命。",
+                "source": "鲁迅《门外文谈》",
+                "how": "修订也是对读者时间的尊重——你留下的每一句，都要对得起他翻过的每一页。",
+            },
+        ],
+    },
+    {
+        "step": 8,
+        "title": "包装与导出交付",
+        "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
+        "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
+        "command": (
+            "scriptnow cover package <pid> && scriptnow cover generate <pid> --image-model-id <生图模型> && "
+            "scriptnow export options <pid> && scriptnow export create <pid>"
+        ),
+        "verify": "拿到导出文件（或封面 URL）。",
+        "prompt": "这部作品完成时，你想把它交给谁？",
+        "masters": [
+            {
+                "name": "宫崎骏",
+                "quote": "创作就是生活本身。",
+                "source": "访谈（转述其创作理念）",
+                "how": "当手稿变成可以交付的作品，你才真正明白这句话——作品是活过的日子。",
+            },
+            {
+                "name": "马尔克斯",
+                "quote": "活着，是为了讲述。",
+                "source": "《活着为了讲述》",
+                "how": "交付不是告别，是讲述的开始——从今天起，这部作品替你向世界说话。",
+            },
+        ],
+    },
+    {
+        "step": 9,
+        "title": "标记完成",
+        "scene": "合上最后一页。第一部作品完成——工作室的门从此为你常开，随时回来继续创作。",
+        "why": "完成第一部作品后运行本命令，以后不再打扰；随时可重看本向导。",
+        "command": "scriptnow guide --complete",
+        "verify": "输出 新手模式已标记完成。",
+        "prompt": "下一部作品，你想写什么？",
+        "masters": [
+            {
+                "name": "黑泽明",
+                "quote": "无论如何都要写到最后——只要放弃一次，就全完了。",
+                "source": "黑泽明谈创作（访谈）",
+                "how": "你写到了最后。今天这一步，值得被记住——它不是结束，是你创作生涯的第一个句点。",
+            },
+            {
+                "name": "契诃夫",
+                "quote": "写的越多，就写得越好。",
+                "source": "契诃夫书信（转述其创作观）",
+                "how": "第一部作品是起点，不是终点。你已证明自己能把一个故事写完——接下来，去写更多。",
+            },
+        ],
+    },
+]
+
+
+def _guide_steps() -> dict[str, object]:
+    return {
+        "guide": "complete-works-onboarding",
+        "title": "从零到一部完整作品（短篇/短剧闭环）",
+        "mode": "agent-led",
+        "steps": _GUIDE_STEPS,
+    }
+
+
+def _guide_full() -> dict[str, object]:
+    return {
+        "guide": "scriptnow-newcomer",
+        "title": "ScriptNow 新手模式 —— 你既是主编，也是编剧",
+        "opening": (
+            "夜已深，台灯亮着。你面前是一张空白稿纸——不是让你独自对着它枯坐，"
+            "而是请来一位不知疲倦的创作搭档，陪你把脑中的故事一个字一个字地落到纸上。"
+            "ScriptNow 就是这间工作室：你决定故事的方向，Agent 与你并肩完成每一章。"
+        ),
+        "vision": (
+            "ScriptNow 不是又一个生成器，而是一个以你为决策者的共创工作室："
+            "Agent 是你的联合创作者——它提议（候选），你裁决（采纳），每个版本都可回溯。"
+            "你不是在让 AI 替你写，而是在和一位不知疲倦的搭档共同完成作品。"
+            "你获得的是创作的主导权，Agent 提供的是永不枯竭的灵感与执行力。"
+        ),
+        "editor_craft": [
+            "编辑能力：先规划后动笔——故事核心、蓝图、卷章结构逐层把关，采纳前一切可改。",
+            "编剧能力：逐场/逐章创作、风格锚点、伏笔与连续性维护，Agent 严格按方向执行。",
+            "修订能力：生成候选与人工修订同一套版本管理，随时回退到任一历史版本。",
+            "交付能力：质量门禁（planning-quality / chapter quality / scene quality）+ 封面 + 导出，一站成书。",
+        ],
+        "how_it_works": [
+            "回填优先：Agent 本地创作经 propose 回传为候选，平台生成仅作后备——创作主力是你与 Agent 的协作。",
+            "候选 → 采纳：采纳才进入正典；未采纳的候选不影响当前正文，可对比、可弃用。",
+            "模型可选：chapter/scene generate --model 可为本项目写作指定模型，仅限项目内使用。",
+            "双域统一：小说（卷×章）与剧本（季×场）命令对称，一套心智走两域。",
+        ],
+        "closing": (
+            "从一句话前提，到一部可以交付的作品——这不是魔法，而是你与 Agent 一次次"
+            "「提议 → 裁决 → 采纳」的共同创作。愿这间工作室见证你的每一个故事。"
+        ),
+        "masters": (
+            "这一路，海明威、契诃夫、黑泽明、斯蒂芬·金、宫崎骏、王家卫、鲁迅、老舍、"
+            "马尔克斯、塔可夫斯基……无数创作者的精神与你同行：他们也曾面对空白稿纸，"
+            "也曾反复修订，也曾怀疑自己。你此刻的每一步，都是他们走过的路；"
+            "而你要写的故事，只有你能写。"
+        ),
+        "gallery": [
+            {"name": "鲁迅", "quote": "哪里有天才？我是把别人喝咖啡的工夫都用在工作上的。", "source": "鲁迅自述"},
+            {"name": "老舍", "quote": "把普通的字用得飘飘欲仙，见出作者的苦心孤诣。", "source": "《老舍谈写作》"},
+            {"name": "海明威", "quote": "一切初稿都是狗屎。", "source": "对《巴黎评论》所说"},
+            {"name": "契诃夫", "quote": "简洁是天才的姐妹。", "source": "契诃夫书信"},
+            {"name": "马尔克斯", "quote": "生活不是我们活过的日子，而是我们记住的日子。", "source": "《活着为了讲述》"},
+            {"name": "塔可夫斯基", "quote": "导演工作的本质，可以定义为雕刻时光。", "source": "《雕刻时光》"},
+            {"name": "斯蒂芬·金", "quote": "关起门来写初稿，打开门来修改。", "source": "《写作这回事》"},
+            {"name": "黑泽明", "quote": "创作是美妙的。", "source": "纪录片《黑泽明：创作是美妙的》"},
+            {"name": "宫崎骏", "quote": "创作就是生活本身。", "source": "访谈（转述）"},
+            {"name": "王家卫", "quote": "电影是时间的艺术。", "source": "访谈（转述）"},
+            {"name": "余华", "quote": "写作的过程，就是不断发现自己内心真实想法的过程。", "source": "余华谈写作（访谈）"},
+            {"name": "加缪", "quote": "创作，就是给人每天的生活中多一种命运。", "source": "加缪札记（转述）"},
+        ],
+        "next": _guide_steps(),
+    }
+
+
+def _echo_guide(payload: dict[str, object]) -> None:
+    click.echo(ui.section(f"=== {payload['title']} ==="), err=True)
+    if "opening" in payload:
+        click.echo(ui.paint(payload["opening"], ui.GOLD), err=True)
+        click.echo("", err=True)
+    if "vision" in payload:
+        click.echo(ui.dim("◆ 共创愿景"), err=True)
+        click.echo(ui.paint(payload["vision"], ui.GOLD), err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim("◆ 编辑/编剧能力（ScriptNow 能为你做什么）"), err=True)
+        for item in payload["editor_craft"]:
+            click.echo(f"  · {item}", err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim("◆ 共创方式（人机如何一起工作）"), err=True)
+        for item in payload["how_it_works"]:
+            click.echo(f"  · {item}", err=True)
+        click.echo("", err=True)
+        steps = payload["next"]["steps"]
+    else:
+        steps = payload["steps"]
+    click.echo(ui.dim("◆ 完整作品向导（短篇/短剧闭环）"), err=True)
+    for item in steps:
+        click.echo(ui.ok(f"Step {item['step']} · {item['title']}"), err=True)
+        if item.get("scene"):
+            click.echo(ui.dim(f"    {item['scene']}"), err=True)
+        click.echo(f"    为什么：{item['why']}", err=True)
+        click.echo(f"    命令：  {item['command']}", err=True)
+        click.echo(f"    验证：  {item['verify']}", err=True)
+        if item.get("prompt"):
+            click.echo(ui.paint(f"    ➤ 想一想：{item['prompt']}", ui.CYAN), err=True)
+        masters = item.get("masters") or ([item["master"]] if item.get("master") else [])
+        for master in masters:
+            source = master.get("source") or ""
+            attribution = f"—— {master['name']}" + (f"，{source}" if source else "")
+            click.echo(ui.paint(f"    「{master['quote']}」{attribution}", ui.GOLD), err=True)
+            click.echo(ui.dim(f"    {master['how']}"), err=True)
+    if payload.get("closing"):
+        click.echo("", err=True)
+        click.echo(ui.paint(payload["closing"], ui.GOLD), err=True)
+    if payload.get("masters"):
+        click.echo("", err=True)
+        click.echo(ui.dim("◆ 大师同行"), err=True)
+        click.echo(ui.paint(payload["masters"], ui.GOLD), err=True)
+    gallery = payload.get("gallery")
+    if gallery:
+        click.echo("", err=True)
+        click.echo(ui.dim("◆ 大师长廊（灵感随时取用）"), err=True)
+        for entry in gallery:
+            src = f"，{entry['source']}" if entry.get("source") else ""
+            click.echo(
+                ui.dim(f"  · 「{entry['quote']}」—— {entry['name']}{src}"), err=True
+            )
+    click.echo("", err=True)
+    click.echo(ui.dim("提示：请 Agent 读取本向导并逐级引导你完成；完成全部步骤后运行 scriptnow guide --complete。"), err=True)
+
+
 @main.command()
 @click.option("--host", required=True, help="Platform base URL, e.g. https://sn.igeewa.com")
 @click.option("--email", required=True)
@@ -178,6 +593,11 @@ def login_cmd(host: str, email: str, password: str, json_output: bool) -> None:
         raise click.ClickException(str(error)) from error
     if not json_output:
         click.echo(ui.ok(f"登录成功：{host}（{email}）"))
+        if not _onboarding_done():
+            click.echo(
+                ui.warn("首次使用？运行 scriptnow guide 进入新手模式——Agent 将带你完成一部完整作品。"),
+                err=True,
+            )
     _emit({"ok": True, "base_url": session.base_url, "user": email}, json_output)
 
 
@@ -1264,15 +1684,24 @@ def chapter_show(
 @click.argument("project_id")
 @click.argument("chapter_id")
 @click.option("--feedback", default=None)
+@click.option("--model", "model_id", default=None, help="指定本项目中该章节写作使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
 @click.option("--wait", is_flag=True, help="Poll until the background run finishes")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_generate(
-    ctx: click.Context, project_id: str, chapter_id: str, feedback: str | None, wait: bool, json_output: bool
+    ctx: click.Context,
+    project_id: str,
+    chapter_id: str,
+    feedback: str | None,
+    model_id: str | None,
+    wait: bool,
+    json_output: bool,
 ) -> None:
     """Generate a chapter candidate (background by default)."""
     session = _session(ctx)
-    body = {"idempotency_key": f"cli-chapter-{__import__('time').time_ns()}", "feedback": feedback}
+    body: dict[str, Any] = {"idempotency_key": f"cli-chapter-{__import__('time').time_ns()}", "feedback": feedback}
+    if model_id:
+        body["model_id"] = model_id
     result = session.request(
         "POST",
         f"/novel/projects/{project_id}/chapters/{chapter_id}/generate?background=true",
@@ -1584,6 +2013,112 @@ def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_
 @click.pass_context
 def novel_group(ctx: click.Context) -> None:
     """小说创作链：故事核心与蓝图（规划阶段）。"""
+
+
+@novel_group.command("outline")
+@click.argument("project_id", required=False)
+@click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
+@click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_outline(
+    ctx: click.Context, project_id: str | None, text: str | None, file: str | None, json_output: bool
+) -> None:
+    """回填梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 用户审阅 → outline 采纳后 storymap 才可规划。"""
+    pid = _resolve_project_id(ctx, project_id)
+    if not text and not file:
+        raise click.ClickException("需要 --text 或 --file（梗概 ≤500 字）")
+    if file:
+        raw = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
+        text = raw
+    if len((text or "").strip()) > 500:
+        raise click.ClickException("梗概大纲需在 500 字以内")
+    result = _api_request(
+        ctx,
+        "POST",
+        f"/novel/projects/{pid}/synopsis-outline/propose",
+        json_body={"content": (text or "").strip(), "idempotency_key": f"cli-outline-{__import__('time').time_ns()}"},
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{result.get('status')}）——请用户审阅后采纳："))
+        click.echo(ui.dim("  采纳：scriptnow novel outline-adopt <pid>；storymap 规划前必须采纳。"), err=True)
+    _emit(result, json_output)
+
+
+@novel_group.command("outline-status")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_outline_status(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """查看梗概大纲状态与内容。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
+    if result is None:
+        click.echo(ui.warn('尚无梗概大纲——novel outline <pid> --text "≤500 字梗概"'), err=True)
+        return
+    if not json_output:
+        mark = ui.ok("已采纳") if result.get("status") == "adopted" else ui.warn("候选待审")
+        click.echo(f"{ui.kv('状态', mark)}（v{result.get('version')}）", err=True)
+        click.echo(result.get("content"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("outline-adopt")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_outline_adopt(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """采纳梗概大纲（StoryMap 规划的前置条件）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "POST", f"/novel/projects/{pid}/synopsis-outline/adopt", write=True)
+    if not json_output:
+        click.echo(ui.ok(f"梗概大纲已采纳（v{result.get('version')}）——可开始 storymap 规划"))
+    _emit(result, json_output)
+
+
+@novel_group.command("ready-check")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """逐章写作前置完整性检查（强制 gate）：direction / cores / blueprint / 梗概大纲 / storymap / skill。"""
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    state = session.request("GET", f"/novel/projects/{pid}/state")
+    direction = state.get("blueprint") is not None and bool(state.get("creation_settings"))
+    checks = []
+    direction_ok = bool((state.get("creation_settings") or {}).get("chapter_target_words"))
+    checks.append(("创作方向（direction）", direction_ok, "project direction --apply @direction.json"))
+    cores = [c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]
+    checks.append(("故事核心（adopted core）", bool(cores), "novel propose cores @file --adopt"))
+    checks.append(("蓝图（blueprint）", state.get("blueprint") is not None, "novel propose blueprint @file --adopt"))
+    outline = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
+    checks.append(("梗概大纲（adopted outline）", bool(outline and outline.get("status") == "adopted"), 'novel outline <pid> --text "…" → outline-adopt'))
+    sm = state.get("story_map") or {}
+    checks.append(("StoryMap", bool(sm.get("volumes")), "novel propose storymap @file 或 storymap generate --wait"))
+    try:
+        mounted = session.request("GET", f"/projects/{pid}/skills")
+        skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
+    except Exception:
+        skills = []
+    checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
+    if json_output:
+        _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
+            {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
+        ], "skills": skills}, json_output)
+        return
+    all_ok = True
+    for name, ok, fix in checks:
+        mark = ui.ok("✓") if ok else ui.error("✗")
+        if not ok:
+            all_ok = False
+        click.echo(f"  {mark} {name}" + ("" if ok else f"  → {fix}"), err=True)
+    if skills:
+        click.echo(ui.dim(f"  Skill：{', '.join(skills)}"), err=True)
+    click.echo(ui.ok(f"就绪：{sum(1 for c in checks if c[1])}/{len(checks)} 项" if all_ok else ui.error(f"阻塞：{sum(1 for c in checks if not c[1])} 项缺失——先补齐再逐章写作")), err=True)
+
 
 
 @novel_group.command("story-cores")
@@ -2209,6 +2744,190 @@ def script_group(ctx: click.Context) -> None:
     """剧本创作链：状态 / 故事核心 / 蓝图 / 剧集结构 / 场次。"""
 
 
+@main.group("scene")
+@click.pass_context
+def scene_group(ctx: click.Context) -> None:
+    """剧本场次（与 chapter 组对称）：列表 / 阅读 / 生成 / 采纳 / 回传 / 批量 / 质量 / 差异。"""
+
+
+@scene_group.command("list")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_list(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """List scenes (alias of script scene-list)."""
+    script_scene_list.callback(project_id, json_output)
+
+
+@scene_group.command("show")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--revision", default=None, help="Revision id or number; defaults to adopted, else latest candidate")
+@click.option("--plain", is_flag=True, help="Emit only the script text for direct reading")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_show(
+    ctx: click.Context, project_id: str, scene_id: str, revision: str | None, plain: bool, json_output: bool
+) -> None:
+    """Show a scene (alias of script scene-show)."""
+    script_scene_show.callback(project_id, scene_id, revision, plain, json_output)
+
+
+@scene_group.command("generate")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--feedback", default=None)
+@click.option("--model", "model_id", default=None, help="指定本项目中该场次写作使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
+@click.option("--wait", is_flag=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_generate(
+    ctx: click.Context,
+    project_id: str,
+    scene_id: str,
+    feedback: str | None,
+    model_id: str | None,
+    wait: bool,
+    json_output: bool,
+) -> None:
+    """Generate a scene candidate (alias of script scene)."""
+    script_scene.callback(project_id, scene_id, feedback, model_id, wait, json_output)
+
+
+@scene_group.command("adopt")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.argument("revision_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, json_output: bool) -> None:
+    """Adopt a scene revision (alias of script adopt-scene)."""
+    script_adopt_scene.callback(project_id, scene_id, revision_id, json_output)
+
+
+@scene_group.command("propose")
+@click.argument("project_id", required=False)
+@click.argument("scene_id", required=False)
+@click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
+@click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
+@click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
+@click.option("--auto-adopt", is_flag=True, help="回传后自动采纳该候选")
+@click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
+@click.option("--example", is_flag=True, help="显示示例文本")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_propose(
+    ctx: click.Context,
+    project_id: str,
+    scene_id: str,
+    blocks_file: str | None,
+    text: str | None,
+    budget: int | None,
+    auto_adopt: bool,
+    help_format: bool,
+    example: bool,
+    json_output: bool,
+) -> None:
+    """Agent 本地创作场次 → 回传为候选（alias of script scene-propose）。"""
+    script_scene_propose.callback(
+        project_id, scene_id, blocks_file, text, budget, auto_adopt, help_format, example, json_output
+    )
+
+
+@scene_group.command("batch")
+@click.argument("project_id")
+@click.option("--scenes", default=None, help="逗号分隔的场次 id（与 --resume-from 二选一）")
+@click.option("--feedback", default=None, help="统一创作/修订反馈")
+@click.option("--model", "model_id", default=None, help="批量场次写作统一使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
+@click.option("--save-progress", "progress_file", default=None, help="完成后保存失败清单（续跑用）")
+@click.option("--resume-from", "resume_file", default=None, help="从上次失败清单续跑（JSON 文件，含 failed 列表）")
+@click.option("--yes", is_flag=True, help="确认已知风险后跳过警告")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_batch(
+    ctx: click.Context,
+    project_id: str,
+    scenes: str | None,
+    feedback: str | None,
+    model_id: str | None,
+    progress_file: str | None,
+    resume_file: str | None,
+    yes: bool,
+    json_output: bool,
+) -> None:
+    """Serialize scene generation (alias of script scene-batch)."""
+    script_scene_batch.callback(project_id, scenes, feedback, model_id, progress_file, resume_file, yes, json_output)
+
+
+@scene_group.command("quality")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--revision", default=None, help="Revision id or number; defaults to adopted, else latest candidate")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_quality(
+    ctx: click.Context, project_id: str, scene_id: str, revision: str | None, json_output: bool
+) -> None:
+    """Evaluate a scene revision (alias of script scene-quality)."""
+    script_scene_quality.callback(project_id, scene_id, revision, json_output)
+
+
+@scene_group.command("diff")
+@click.argument("scene_id")
+@click.option("--project", "project_id", default=None, help="项目 id（默认取 project use 设定的项目）")
+@click.option("--from", "from_rev", required=True, help="起始修订号/id")
+@click.option("--to", "to_rev", required=True, help="目标修订号/id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def scene_diff(
+    ctx: click.Context,
+    scene_id: str,
+    project_id: str | None,
+    from_rev: str,
+    to_rev: str,
+    json_output: bool,
+) -> None:
+    """Diff two scene revisions (alias of script scene-diff)."""
+    script_scene_diff.callback(scene_id, project_id, from_rev, to_rev, json_output)
+
+
+@script_group.command("ready-check")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_ready_check(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """剧本逐场写作前置完整性检查（强制 gate）：direction / cores / blueprint / storymap / skill。"""
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    state = session.request("GET", f"/script/projects/{pid}/state")
+    checks = [
+        ("创作方向（direction）", bool(state.get("story_cores") or state.get("blueprint")), "project direction --apply @direction.json"),
+        ("故事核心（adopted core）", bool([c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]), "script propose cores @file --adopt"),
+        ("蓝图（blueprint）", state.get("blueprint") is not None, "script propose blueprint @file --adopt"),
+        ("StoryMap", bool((state.get("story_map") or {}).get("episodes")), "script propose storymap @file 或 script storymap --wait"),
+    ]
+    try:
+        mounted = session.request("GET", f"/projects/{pid}/skills")
+        skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
+    except Exception:
+        skills = []
+    checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
+    if json_output:
+        _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
+            {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
+        ], "skills": skills}, json_output)
+        return
+    all_ok = True
+    for name, ok, fix in checks:
+        mark = ui.ok("✓") if ok else ui.error("✗")
+        if not ok:
+            all_ok = False
+        click.echo(f"  {mark} {name}" + ("" if ok else f"  → {fix}"), err=True)
+    click.echo(ui.ok(f"就绪：{sum(1 for c in checks if c[1])}/{len(checks)} 项" if all_ok else ui.error(f"阻塞：{sum(1 for c in checks if not c[1])} 项缺失")), err=True)
+
+
+
+
 @script_group.command("state")
 @click.argument("project_id")
 @click.option("--json", "json_output", is_flag=True)
@@ -2628,15 +3347,24 @@ def script_adopt_storymap(ctx: click.Context, project_id: str, candidate_id: str
 @click.argument("project_id")
 @click.argument("scene_id")
 @click.option("--feedback", default=None)
+@click.option("--model", "model_id", default=None, help="指定本项目中该场次写作使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
 @click.option("--wait", is_flag=True)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_scene(
-    ctx: click.Context, project_id: str, scene_id: str, feedback: str | None, wait: bool, json_output: bool
+    ctx: click.Context,
+    project_id: str,
+    scene_id: str,
+    feedback: str | None,
+    model_id: str | None,
+    wait: bool,
+    json_output: bool,
 ) -> None:
     """Generate a scene candidate (script)."""
     session = _session(ctx)
-    body = {"idempotency_key": f"cli-scene-{__import__('time').time_ns()}", "feedback": feedback}
+    body: dict[str, Any] = {"idempotency_key": f"cli-scene-{__import__('time').time_ns()}", "feedback": feedback}
+    if model_id:
+        body["model_id"] = model_id
     result = session.request(
         "POST",
         f"/script/projects/{project_id}/scenes/{scene_id}/generate?background=true",
@@ -2824,6 +3552,7 @@ def _poll_run_status(session: Session, project_id: str, run_id: str, *, domain: 
 @click.argument("project_id")
 @click.option("--scenes", default=None, help="逗号分隔的场次 id（与 --resume-from 二选一）")
 @click.option("--feedback", default=None, help="统一创作/修订反馈")
+@click.option("--model", "model_id", default=None, help="批量场次写作统一使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
 @click.option("--save-progress", "progress_file", default=None, help="完成后保存失败清单（续跑用）")
 @click.option("--resume-from", "resume_file", default=None, help="从上次失败清单续跑（JSON 文件，含 failed 列表）")
 @click.option("--yes", is_flag=True, help="确认已知风险后跳过警告")
@@ -2834,6 +3563,7 @@ def script_scene_batch(
     project_id: str,
     scenes: str | None,
     feedback: str | None,
+    model_id: str | None,
     progress_file: str | None,
     resume_file: str | None,
     yes: bool,
@@ -2873,7 +3603,11 @@ def script_scene_batch(
             queued = session.request(
                 "POST",
                 f"/script/projects/{project_id}/scenes/{scene_id}/generate?background=true",
-                json_body={"idempotency_key": f"cli-scene-{_time.time_ns()}", "feedback": feedback},
+                json_body={
+                    "idempotency_key": f"cli-scene-{_time.time_ns()}",
+                    "feedback": feedback,
+                    **({"model_id": model_id} if model_id else {}),
+                },
                 write=True,
             )
             run_id = str(queued.get("run_id") or "")
@@ -2989,9 +3723,9 @@ def script_scene_quality(
 def _default_project_file() -> Path:
     import os as _os
 
-    if _os.environ.get("SCRIPTNOW_CLI_CONFIG"):
-        return Path(_os.environ["SCRIPTNOW_CLI_CONFIG"]).with_name("project.json")
-    return Path(_os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "scriptnow-cli" / "project.json"
+    if os.environ.get("SCRIPTNOW_CLI_CONFIG"):
+        return Path(os.environ["SCRIPTNOW_CLI_CONFIG"]).with_name("project.json")
+    return Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "scriptnow-cli" / "project.json"
 
 
 def _resolve_project_id(ctx: click.Context, project_id: str | None) -> str:
@@ -3967,6 +4701,70 @@ def export_download(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(response.content)
     click.echo(ui.ok(f"已保存到 {out}（{len(response.content)} 字节）"))
+
+
+@export_group.command("zip")
+@click.argument("project_id")
+@click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
+@click.option("--units", required=True, help="逗号分隔的章节/场次 id（用 export options 或 chapter/scene list 查看）")
+@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=出版稿 working=带批注工作稿")
+@click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
+@click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
+@click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--output", "-o", default=None, help="保存到本地 zip 文件路径（默认取响应文件名）")
+@click.pass_context
+def export_zip(
+    ctx: click.Context,
+    project_id: str,
+    domain: str,
+    units: str,
+    form: str,
+    translation_mode: str,
+    target_language: str | None,
+    front_matter: str,
+    output: str | None,
+) -> None:
+    """下载整部作品 ZIP 包（docx + 封面 + manifest.json）到本地。"""
+    import re as _re
+
+    session = _session(ctx)
+    prefix = "/novel" if domain == "novel" else "/script"
+    unit_key = "chapter_ids" if domain == "novel" else "scene_ids"
+    body: dict[str, Any] = {
+        unit_key: tuple(item.strip() for item in units.split(",") if item.strip()),
+        "form": form,
+        "translation_mode": translation_mode,
+        "front_matter": front_matter,
+        "idempotency_key": f"cli-export-zip-{__import__('time').time_ns()}",
+    }
+    if target_language:
+        body["target_language"] = target_language
+    response = session._http.post(
+        f"{session.api_root}{prefix}/projects/{project_id}/exports/zip",
+        json=body,
+        headers={"X-CSRF-Token": session.csrf} if session.csrf else {},
+        cookies=session.cookies or None,
+        timeout=600,
+    )
+    if response.status_code >= 400:
+        from cli_anything.scriptnow.utils.session import _extract_detail
+
+        raise click.ClickException(f"HTTP {response.status_code}: {_extract_detail(response)}")
+    if not response.content.startswith(b"PK"):
+        raise click.ClickException("响应不是有效的 zip 文件")
+    out = output
+    if out is None:
+        disposition = response.headers.get("Content-Disposition", "")
+        star = _re.search(r"filename\*=UTF-8''([^;]+)", disposition, _re.IGNORECASE)
+        out = star.group(1) if star else "export.zip"
+        try:
+            out = __import__("urllib.parse", fromlist=["unquote"]).unquote(out)
+        except Exception:
+            pass
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(response.content)
+    click.echo(ui.ok(f"已保存 ZIP 到 {path}（{len(response.content)} 字节）"))
 
 
 # --------------------------------------------------------------------------- runs
