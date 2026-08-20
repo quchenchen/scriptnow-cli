@@ -34,7 +34,7 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 |-------|----------|
 | project | list, create, upload, files, delete, direction (--show / --apply 客户端梳理回填 / --inspire 平台灵感 / --set 手动补齐) |
 | interpret | go, create, read, status, decide |
-| chapter | list, show, generate, adopt, quality |
+| chapter | list, show, generate, adopt, quality, propose (agent-written chapter return) |
 | storymap | state, generate, adopt |
 | book | plan (全书托管创作规划，Agent 编排原语) |
 | novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap, 支持 --adopt) |
