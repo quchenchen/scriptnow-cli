@@ -150,3 +150,49 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   `--standard thousand-plan` (bulk web-novel) only when the user explicitly requests them. Assessment is the
   agent's systematic judgment per dimension, citing evidence — combine with the platform's suggested dimensions.
 - **Format-spec examples** (`--help-format`/`--example`) show format compliance, not quality exemplars.
+
+## MANDATORY creation roles & workflow (from production reflection)
+
+- **Role split**: You are the **project manager + quality reviewer**. The
+  platform (scene/chapter generation) is the **writer**. Your job: prepare
+  direction/feedback, drive generation, review quality, demand regeneration,
+  and adopt passing versions. You MAY provide **sample chapters/demos** and
+  iterate on them per the user's requests — but any final result MUST be
+  persisted into the project's per-chapter writing as a **candidate revision**
+  (`chapter/scene propose`), never left as stray local text.
+- **Stage 1 — immediate setup**: after receiving a brief, immediately
+  `project create`, then backfill structure via propose
+  (`novel/script propose cores|blueprint|storymap` for the first 5-10
+  episodes/volumes). Do not accumulate local files — push to the platform at
+  once.
+- **Stage 2 — per-unit loop (generate → review → regenerate → adopt)**:
+  for each scene/chapter:
+  1. prepare a detailed feedback brief (opening hook / conflict / dramatic turn /
+     ending hook / camera language as appropriate);
+  2. run generation (`script scene` / `chapter generate`);
+  3. review the candidate (`scene-show --plain` to read, `scene-quality` for a
+     quick length/dialogue/camera check), score it against the evaluation
+     dimensions;
+  4. if below threshold — **regenerate immediately with feedback**; never adopt
+     unqualified work;
+  5. adopt only when it passes.
+
+- **Prerequisite completeness check (MANDATORY, before per-chapter writing)**:
+  verify direction, adopted cores, blueprint and StoryMap are all in place
+  (`novel/script state`, `book`); if any is missing, complete it first —
+  writing before prerequisites are settled corrupts project robustness.
+- **Creative ideation**: when the user has no concrete idea, guide them to
+  brainstorm instead of forcing a direction. The ideation backfill on the CLI
+  is simply an **idea already audited by the user** (`project direction
+  --apply` with the agreed idea, or a single-core `propose`). Never invent a
+  direction the user has not seen.
+- **Synopsis outline (NEW, before StoryMap)**: once the creative direction and
+  blueprint are clear, produce a **≤500-word synopsis outline** (earlier than
+  StoryMap) and submit it for the user's review; only after approval proceed to
+  StoryMap persistence. Platform storage for this outline is not yet built —
+  the CLI emits it for review and the agent keeps the approved text as the
+  StoryMap contract.
+- **Quality threshold**: 9-10 excellent · 8-9 acceptable · **<8 regenerate**.
+- **Progress control**: after each episode/volume, report quality statistics and
+  ask the user whether to continue. Review is your own judgment (not a platform
+  gate); the platform supplies suggested dimensions.
