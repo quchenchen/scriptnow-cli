@@ -1229,6 +1229,15 @@ def chapter_show(
     if plain:
         click.echo((f"{heading}\n\n" if heading else "") + text)
         return
+    revision_summary = [
+        {
+            "revision_id": doc.get("id"),
+            "revision_number": doc.get("revision_number"),
+            "status": doc.get("status"),
+            "source": doc.get("source"),
+        }
+        for doc in sorted(docs, key=lambda item: item.get("revision_number", 0))
+    ]
     _emit(
         {
             "chapter_id": chapter_id,
@@ -1239,6 +1248,13 @@ def chapter_show(
             "title": heading,
             "text": text,
             "block_count": len(blocks),
+            "revisions": revision_summary,
+            "candidate_revisions": [
+                item for item in revision_summary if item["status"] in ("candidate", "active")
+            ],
+            "adopted_revision": next(
+                (item for item in revision_summary if item["status"] == "adopted"), None
+            ),
         },
         json_output,
     )
