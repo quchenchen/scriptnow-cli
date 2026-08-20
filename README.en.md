@@ -121,7 +121,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
 | script | Script chain: state / scene-list / scene-show / scene / scene-propose / storymap / blueprint / story-cores / propose |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
-| cover | Covers: models / specs / generate / list / delete |
+| cover | Covers: package (generate the work package — required before cover generation) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / download (novel/script) |
 | skill | Skill workshop: list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update |

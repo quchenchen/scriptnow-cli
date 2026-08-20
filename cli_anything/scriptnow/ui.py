@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import random
 import sys
 
 _RESET = "\033[0m"
@@ -38,6 +39,29 @@ LOGO = r"""   d888888o.       ,o888888o.    8 888888888o.    8 8888 8 888888888o
 8b   `8.`8888. `8 8888       .8' 8 8888 `8b.      8 8888 8 8888             8 8888       8      `Y8o. `Y8 `8 8888       ,8P      `8.`888`8.`88'
 `8b.  ;8.`8888    8888     ,88'  8 8888   `8b.    8 8888 8 8888             8 8888       8         `Y8o.`  ` 8888     ,88'        `8.`8' `8,`'
  `Y8888P ,88P'     `8888888P'    8 8888     `88.  8 8888 8 8888             8 8888       8            `Yo     `8888888P'           `8.`   `8'"""
+
+# 随机字符画：保留原轮廓与明暗层次，每次运行都不同。
+# 高密度池 = "scriptnow" 字母（双倍权重，随机拼出品牌字样）+ 原字母/数字/符号池（不丢弃）；
+# 低密度位置用稀疏字符。设 SCRIPTNOW_FIXED_LOGO=1 可固定为原始字符画。
+_HI_POOL = "scriptnowscriptnowBDHWO80@%&$#"
+_LO_POOL = "oOcs.~"
+_LOGO_LOW_CHARS = frozenset("'`.,-~ ")
+
+
+def _logo_lines() -> str:
+    if os.environ.get("SCRIPTNOW_FIXED_LOGO") == "1":
+        return LOGO
+    rows = []
+    for line in LOGO.splitlines():
+        rows.append(
+            "".join(
+                (random.choice(_LO_POOL) if ch in _LOGO_LOW_CHARS else random.choice(_HI_POOL))
+                if ch.strip()
+                else " "
+                for ch in line
+            )
+        )
+    return "\n".join(rows)
 
 _no_color = False
 
@@ -71,7 +95,7 @@ def banner(version: str, *, logo: bool = True) -> str:
     Matrix 主题：荧光绿字（黑底绿字）。"""
     head = [paint("ScriptNow CLI", MATRIX), paint(f"v{version} · {TAGLINE}", MATRIX_DIM)]
     if logo:
-        return "\n".join([paint(LOGO, MATRIX), *head])
+        return "\n".join([paint(_logo_lines(), MATRIX), *head])
     return "\n".join(head)
 
 
