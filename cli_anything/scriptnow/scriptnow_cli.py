@@ -2778,17 +2778,29 @@ def _poll_run_status(session: Session, project_id: str, run_id: str, *, domain: 
 @click.argument("project_id")
 @click.option("--scenes", required=True, help="逗号分隔的场次 id，如 scene-1-1,scene-1-2,scene-1-3")
 @click.option("--feedback", default=None, help="统一创作/修订反馈")
+@click.option("--yes", is_flag=True, help="确认已知风险后跳过警告")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_scene_batch(
-    ctx: click.Context, project_id: str, scenes: str, feedback: str | None, json_output: bool
+    ctx: click.Context, project_id: str, scenes: str, feedback: str | None, yes: bool, json_output: bool
 ) -> None:
-    """批量生成场次（串行）：实时进度 + 失败集中汇总。"""
+    """批量生成场次（串行）：实时进度 + 失败集中汇总。
+
+    ⚠ 谨慎使用：批量生成可能造成情节/设定不一致或伏笔失误。
+    最佳实践是逐场创作 + 审读 + 采纳（scene generate → scene-show → adopt-scene）。
+    """
     import time as _time
 
     ids = [item.strip() for item in scenes.split(",") if item.strip()]
     if not ids:
         raise click.ClickException("--scenes 需要至少 1 个场次 id")
+    if not json_output:
+        click.echo(ui.warn("批量生成注意事项（请确认已了解风险，--yes 跳过本提示）："), err=True)
+        click.echo(ui.dim("  1. 批量生成可能产生情节/设定不一致、伏笔失误，务必逐场审读后再采纳；"), err=True)
+        click.echo(ui.dim("  2. 最佳实践是逐场创作完善：scene generate → scene-show 审读 → adopt-scene；"), err=True)
+        click.echo(ui.dim("  3. Agent 请勿用 subagent 并发批量——上下文割裂会造成设定漂移。"), err=True)
+        if not yes:
+            click.echo(ui.dim("（使用 --yes 确认后开始）"), err=True)
     session = _session(ctx)
     summary: list[dict[str, object]] = []
     for index, scene_id in enumerate(ids, 1):
@@ -2901,6 +2913,204 @@ def script_scene_quality(
     )
 
 
+
+
+def _default_project_file() -> Path:
+    import os as _os
+
+    if _os.environ.get("SCRIPTNOW_CLI_CONFIG"):
+        return Path(_os.environ["SCRIPTNOW_CLI_CONFIG"]).with_name("project.json")
+    return Path(_os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "scriptnow-cli" / "project.json"
+
+
+def _resolve_project_id(ctx: click.Context, project_id: str | None) -> str:
+    """Resolve an optional project id from the CLI default (project use)."""
+    if project_id:
+        return project_id
+    path = _default_project_file()
+    if path.exists():
+        import json as _json
+
+        try:
+            value = str(_json.loads(path.read_text(encoding="utf-8")).get("project_id") or "")
+            if value:
+                return value
+        except (ValueError, OSError):
+            pass
+    raise click.ClickException("请提供 project_id，或先用 scriptnow project use <pid> 设定默认项目")
+
+
+@project_group.command("use")
+@click.argument("project_id")
+@click.pass_context
+def project_use(ctx: click.Context, project_id: str) -> None:
+    """将项目设为默认，后续新命令（scene-diff / quality-report 等）可省略 project_id。"""
+    path = _default_project_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json as _json
+
+    path.write_text(_json.dumps({"project_id": project_id}, ensure_ascii=False), encoding="utf-8")
+    click.echo(ui.ok(f"默认项目已设为 {project_id}"))
+
+
+@script_group.command("quality-report")
+@click.argument("project_id", required=False)
+@click.option("--format", "fmt", type=click.Choice(["console", "markdown"]), default="console")
+@click.option("--out", default=None, help="写入报告文件（markdown 时）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_quality_report(
+    ctx: click.Context, project_id: str | None, fmt: str, out: str | None, json_output: bool
+) -> None:
+    """全项目场次质量分布：达标 / 过短 / 对白不足 / 缺标题（客户端统计，零模型消耗）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    state = _session(ctx).request("GET", f"/script/projects/{pid}/state")
+    documents = state.get("documents") or []
+    latest: dict[str, dict[str, object]] = {}
+    for doc in documents:
+        sid = str(doc.get("scene_id") or "")
+        if not sid:
+            continue
+        current = latest.get(sid)
+        if current is None or doc.get("revision_number", 0) >= current.get("revision_number", 0):
+            latest[sid] = doc
+    rows: list[dict[str, object]] = []
+    for sid, doc in sorted(latest.items()):
+        blocks = doc.get("blocks") or []
+        chars = sum(len(str(b.get("text") or "")) for b in blocks)
+        dialogues = [b for b in blocks if b.get("type") == "dialogue"]
+        characters = [b for b in blocks if b.get("type") == "character"]
+        sluglines = [b for b in blocks if b.get("type") == "slugline"]
+        rounds = min(len(characters), len(dialogues)) if (characters and dialogues) else len(dialogues)
+        flags = []
+        if chars < 250:
+            flags.append("严重过短")
+        elif chars < 400:
+            flags.append("偏短")
+        if rounds < 2:
+            flags.append("对白不足")
+        if not sluglines:
+            flags.append("缺标题")
+        rows.append({
+            "scene_id": sid,
+            "revision": doc.get("revision_number"),
+            "status": doc.get("status"),
+            "chars": chars,
+            "rounds": rounds,
+            "flags": flags,
+        })
+    total = len(rows)
+    ok = sum(1 for r in rows if not r["flags"])
+    short = [r for r in rows if any(f in ("严重过短", "偏短") for f in r["flags"])]
+    dialogue_low = [r for r in rows if "对白不足" in r["flags"]]
+    no_title = [r for r in rows if "缺标题" in r["flags"]]
+    summary = {
+        "total": total,
+        "good": ok,
+        "short": [r["scene_id"] for r in short],
+        "dialogue_low": [r["scene_id"] for r in dialogue_low],
+        "no_title": [r["scene_id"] for r in no_title],
+    }
+    if json_output:
+        _emit({"summary": summary, "scenes": rows}, json_output)
+        return
+    if fmt == "markdown":
+        lines = [
+            "## 场次质量报告",
+            "",
+            f"- 总场次：{total}",
+            f"- 达标：{ok}（{round(100 * ok / max(total, 1))}%）",
+            f"- 过短：{len(short)}（<400 字符）",
+            f"- 对白不足：{len(dialogue_low)}（<2 轮）",
+            f"- 缺标题：{len(no_title)}",
+            "",
+            "| 场次 | rev | 字符 | 对白轮 | 问题 |",
+            "|---|---|---|---|---|",
+        ]
+        for r in sorted(rows, key=lambda x: x["chars"]):
+            lines.append(f"| {r['scene_id']} | {r['revision']} | {r['chars']} | {r['rounds']} | {'、'.join(r['flags']) or '—'} |")
+        report = "\n".join(lines)
+        if out:
+            Path(out).write_text(report, encoding="utf-8")
+            click.echo(ui.ok(f"报告已写入 {out}"))
+        else:
+            click.echo(report)
+        return
+    click.echo(ui.section(f"=== 场次质量报告（{total} 场）==="), err=True)
+    click.echo(
+        f"  {ui.ok('')} 达标 {ok}  过短 {len(short)}  对白不足 {len(dialogue_low)}  缺标题 {len(no_title)}",
+        err=True,
+    )
+    for r in sorted(rows, key=lambda x: x["chars"]):
+        mark = ui.ok("") if not r["flags"] else ui.warn("")
+        click.echo(
+            f"  {mark} {r['scene_id']} rev{r['revision']} {r['chars']}字符 {r['rounds']}轮"
+            + (f"  ⚠ {'、'.join(r['flags'])}" if r["flags"] else ""),
+            err=True,
+        )
+
+
+@script_group.command("scene-diff")
+@click.argument("scene_id")
+@click.option("--project", "project_id", default=None, help="项目 id（默认取 project use 设定的项目）")
+@click.option("--from", "from_rev", required=True, help="起始修订号/id")
+@click.option("--to", "to_rev", required=True, help="目标修订号/id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_scene_diff(
+    ctx: click.Context,
+    scene_id: str,
+    project_id: str | None,
+    from_rev: str,
+    to_rev: str,
+    json_output: bool,
+) -> None:
+    """对比场次两个修订：字符/块/对白/镜头变化概览（客户端，零模型）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    state = _session(ctx).request("GET", f"/script/projects/{pid}/state")
+    docs = [d for d in (state.get("documents") or []) if d.get("scene_id") == scene_id]
+    if not docs:
+        raise click.ClickException(f"no documents for scene {scene_id}")
+    def pick(ref: str) -> dict[str, object]:
+        found = next(
+            (d for d in docs if d.get("id") == ref or str(d.get("revision_number")) == ref), None
+        )
+        if found is None:
+            raise click.ClickException(f"revision {ref} not found for scene {scene_id}")
+        return found
+    before = pick(from_rev)
+    after = pick(to_rev)
+    def stats(doc: dict[str, object]) -> dict[str, object]:
+        blocks = doc.get("blocks") or []
+        return {
+            "chars": sum(len(str(b.get("text") or "")) for b in blocks),
+            "blocks": len(blocks),
+            "dialogues": sum(1 for b in blocks if b.get("type") == "dialogue"),
+            "characters": sum(1 for b in blocks if b.get("type") == "character"),
+            "sluglines": sum(1 for b in blocks if b.get("type") == "slugline"),
+            "transitions": sum(1 for b in blocks if b.get("type") == "transition"),
+        }
+    a, b = stats(before), stats(after)
+    delta = {
+        "chars": b["chars"] - a["chars"],
+        "chars_pct": round(100 * (b["chars"] - a["chars"]) / max(a["chars"], 1)),
+        "blocks": b["blocks"] - a["blocks"],
+        "dialogue_rounds": min(b["characters"], b["dialogues"]) - min(a["characters"], a["dialogues"]),
+        "sluglines": b["sluglines"] - a["sluglines"],
+        "transitions": b["transitions"] - a["transitions"],
+    }
+    if json_output:
+        _emit(
+            {"scene_id": scene_id, "from": {"revision": before.get("revision_number"), **a},
+             "to": {"revision": after.get("revision_number"), **b}, "delta": delta},
+            json_output,
+        )
+        return
+    click.echo(ui.section(f"=== {scene_id}：rev{before.get('revision_number')} → rev{after.get('revision_number')} ==="), err=True)
+    click.echo(f"  字符：{a['chars']} → {b['chars']}（{'+' if delta['chars'] >= 0 else ''}{delta['chars']}，{'+' if delta['chars_pct'] >= 0 else ''}{delta['chars_pct']}%）", err=True)
+    click.echo(f"  块：{a['blocks']} → {b['blocks']}（{'+' if delta['blocks'] >= 0 else ''}{delta['blocks']}）", err=True)
+    click.echo(f"  对白轮：{min(a['characters'], a['dialogues'])} → {min(b['characters'], b['dialogues'])}（{'+' if delta['dialogue_rounds'] >= 0 else ''}{delta['dialogue_rounds']}）", err=True)
+    click.echo(f"  slugline：{a['sluglines']} → {b['sluglines']} | transition：{a['transitions']} → {b['transitions']}", err=True)
 
 
 # ----------------------------------------------------------------- translation
