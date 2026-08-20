@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="scriptnow-cli",
-    version="0.2.0",
+    version="0.3.0",
     description="Agent-native CLI for the ScriptNow creative platform — CLI-Anything pattern",
     packages=find_packages(),
     include_package_data=True,

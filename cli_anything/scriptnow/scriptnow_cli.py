@@ -28,7 +28,7 @@ from cli_anything.scriptnow.utils.session import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 def _session(ctx: click.Context) -> Session:
@@ -1303,12 +1303,32 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
     )
 
 
+_CHAPTER_BLOCKS_FORMAT = """小说章节 blocks JSON 格式（chapter propose --file 要求）：
+{
+  "blocks": [
+    {"block_id": "h1", "type": "heading",  "text": "第一章 复职日"},
+    {"block_id": "p1", "type": "prose",    "text": "宋晚踏进辰川投资大楼。"},
+    {"block_id": "d1", "type": "dialogue", "text": "\"赵总把尽调包甩到你桌上。\""},
+    {"block_id": "q1", "type": "quote",    "text": "账本最后一页，页码跳了一格。"}
+  ]
+}
+type 仅限：heading | prose | dialogue | quote | divider。block_id 唯一即可。
+（这是格式规格示例，不代表质量水准——质量由 Agent 按内容质量维度评估。）"""
+
+_CHAPTER_EXAMPLE = """第一章 复职日
+
+宋晚踏进辰川投资大楼，前台的眼神在她工牌上多停了一秒。
+（规格示例：演示 heading/prose 结构，非质量典范）"""
+
+
 @chapter_group.command("propose")
-@click.argument("project_id")
-@click.argument("chapter_id")
+@click.argument("project_id", required=False)
+@click.argument("chapter_id", required=False)
 @click.option("--file", "blocks_file", default=None, help="章节正文 JSON：{\"blocks\":[{\"block_id\":\"h1\",\"type\":\"heading|prose|dialogue|quote|divider\",\"text\":\"...\"}]}")
 @click.option("--text", default=None, help="纯文本正文（自动分段为 prose blocks，首段为标题）")
 @click.option("--budget", type=int, default=None, help="正文 token 预算上限（中文≈1 token/字，英文≈1 token/4 字符）")
+@click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
+@click.option("--example", is_flag=True, help="显示规格示例文本")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_propose(
@@ -1318,8 +1338,16 @@ def chapter_propose(
     blocks_file: str | None,
     text: str | None,
     budget: int | None,
+    help_format: bool,
+    example: bool,
     json_output: bool,
 ) -> None:
+    if help_format:
+        click.echo(_CHAPTER_BLOCKS_FORMAT)
+        return
+    if example:
+        click.echo(_CHAPTER_EXAMPLE)
+        return
     """Agent 本地创作章节 → 回传为候选（改编创作不经过平台文本生成）。
 
     适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
@@ -1378,13 +1406,31 @@ def chapter_propose(
 @click.argument("project_id")
 @click.argument("chapter_id")
 @click.argument("revision_id")
+@click.option(
+    "--standard",
+    type=click.Choice(["content", "drama-filing", "thousand-plan"]),
+    default="content",
+    help="评估标准：content=内容质量偏好（默认）；drama-filing=真人剧备案口径；thousand-plan=千部计划/批量网文标准",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_quality(
-    ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, json_output: bool
+    ctx: click.Context,
+    project_id: str,
+    chapter_id: str,
+    revision_id: str,
+    standard: str,
+    json_output: bool,
 ) -> None:
-    """Run the serial-quality evaluation for a chapter revision (blocks)."""
-    body = {"revision_id": revision_id, "idempotency_key": f"cli-quality-{__import__('time').time_ns()}"}
+    """Run the serial-quality evaluation for a chapter revision (blocks).
+
+    评估默认使用内容质量偏好；用户明确提出真人剧备案或千部计划标准时指定 --standard。
+    """
+    body = {
+        "revision_id": revision_id,
+        "idempotency_key": f"cli-quality-{__import__('time').time_ns()}",
+        "standard": standard.replace("-", "_"),
+    }
     _emit(
         _session(ctx).request(
             "POST",
@@ -2646,8 +2692,8 @@ _SCENE_EXAMPLE = """内景. 教室 - 清晨
 
 
 @script_group.command("scene-propose")
-@click.argument("project_id")
-@click.argument("scene_id")
+@click.argument("project_id", required=False)
+@click.argument("scene_id", required=False)
 @click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
 @click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
 @click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
@@ -2776,24 +2822,42 @@ def _poll_run_status(session: Session, project_id: str, run_id: str, *, domain: 
 
 @script_group.command("scene-batch")
 @click.argument("project_id")
-@click.option("--scenes", required=True, help="逗号分隔的场次 id，如 scene-1-1,scene-1-2,scene-1-3")
+@click.option("--scenes", default=None, help="逗号分隔的场次 id（与 --resume-from 二选一）")
 @click.option("--feedback", default=None, help="统一创作/修订反馈")
+@click.option("--save-progress", "progress_file", default=None, help="完成后保存失败清单（续跑用）")
+@click.option("--resume-from", "resume_file", default=None, help="从上次失败清单续跑（JSON 文件，含 failed 列表）")
 @click.option("--yes", is_flag=True, help="确认已知风险后跳过警告")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_scene_batch(
-    ctx: click.Context, project_id: str, scenes: str, feedback: str | None, yes: bool, json_output: bool
+    ctx: click.Context,
+    project_id: str,
+    scenes: str | None,
+    feedback: str | None,
+    progress_file: str | None,
+    resume_file: str | None,
+    yes: bool,
+    json_output: bool,
 ) -> None:
-    """批量生成场次（串行）：实时进度 + 失败集中汇总。
+    """批量生成场次（串行）：实时进度 + 失败集中汇总 + 断点续跑。
 
     ⚠ 谨慎使用：批量生成可能造成情节/设定不一致或伏笔失误。
     最佳实践是逐场创作 + 审读 + 采纳（scene generate → scene-show → adopt-scene）。
+    中断恢复：首次 --save-progress 保存失败清单，之后 --resume-from 续跑。
     """
+    import json as _json
     import time as _time
 
-    ids = [item.strip() for item in scenes.split(",") if item.strip()]
+    if resume_file:
+        try:
+            prior = _json.loads(Path(resume_file).read_text(encoding="utf-8"))
+            ids = [str(item) for item in (prior.get("failed") or [])]
+        except (ValueError, OSError) as error:
+            raise click.ClickException(f"读取进度文件失败：{error}")
+    else:
+        ids = [item.strip() for item in (scenes or "").split(",") if item.strip()]
     if not ids:
-        raise click.ClickException("--scenes 需要至少 1 个场次 id")
+        raise click.ClickException("需要 --scenes 或 --resume-from（失败清单非空）")
     if not json_output:
         click.echo(ui.warn("批量生成注意事项（请确认已了解风险，--yes 跳过本提示）："), err=True)
         click.echo(ui.dim("  1. 批量生成可能产生情节/设定不一致、伏笔失误，务必逐场审读后再采纳；"), err=True)
@@ -2824,6 +2888,13 @@ def script_scene_batch(
             if not json_output:
                 click.echo(ui.error(f"[{index}/{len(ids)}] {scene_id} error: {error}"), err=True)
     failed = [item for item in summary if item.get("status") != "succeeded"]
+    if progress_file and failed:
+        Path(progress_file).write_text(
+            _json.dumps({"failed": [str(item["scene_id"]) for item in failed]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        if not json_output:
+            click.echo(ui.dim(f"失败清单已保存：{progress_file}（续跑：--resume-from {progress_file}）"), err=True)
     if not json_output:
         if failed:
             click.echo(ui.error(f"失败 {len(failed)}/{len(ids)}：{', '.join(str(i['scene_id']) for i in failed)}"), err=True)
