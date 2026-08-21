@@ -49,12 +49,12 @@ class Session:
         write: bool = False,
         timeout: int = 120,
     ) -> Any:
-        headers: dict[str, str] = {}
-        if write:
-            if not self.csrf:
-                raise ScriptNowError("session is missing CSRF token; run 'scriptnow login'")
-            headers["X-CSRF-Token"] = self.csrf
-        try:
+        def _perform() -> requests.Response:
+            headers: dict[str, str] = {}
+            if write:
+                if not self.csrf:
+                    raise ScriptNowError("session is missing CSRF token; run 'scriptnow login'")
+                headers["X-CSRF-Token"] = self.csrf
             response = self._http.request(
                 method,
                 f"{self.api_root}{path}",
@@ -65,13 +65,26 @@ class Session:
                 cookies=self.cookies or None,
                 timeout=timeout,
             )
+            # Absorb cookies set by the response (login / refresh).
+            for cookie in response.cookies:
+                self.cookies[cookie.name] = cookie.value
+                if cookie.name == "sf_csrf":
+                    self.csrf = cookie.value
+            return response
+
+        try:
+            response = _perform()
         except requests.RequestException as error:
             raise ScriptNowError(f"network error: {error}") from error
-        # Absorb cookies set by the response (login / refresh).
-        for cookie in response.cookies:
-            self.cookies[cookie.name] = cookie.value
-            if cookie.name == "sf_csrf":
-                self.csrf = cookie.value
+        # Access tokens are short-lived (platform default: 60 minutes) while
+        # refresh tokens last for days. A long-running agent session would
+        # otherwise hit 401 mid-work and stall. On 401, rotate the persisted
+        # refresh token once and retry the original request before giving up.
+        if response.status_code == 401 and self._refresh():
+            try:
+                response = _perform()
+            except requests.RequestException as error:
+                raise ScriptNowError(f"network error: {error}") from error
         if response.status_code == 401:
             raise ScriptNowError("登录状态已失效，请重新运行 scriptnow login")
         if response.status_code >= 400:
@@ -83,6 +96,37 @@ class Session:
             return response.json()
         except ValueError:
             return response.text
+
+    def _refresh(self) -> bool:
+        """Rotate access/refresh/CSRF cookies via POST /api/auth/refresh.
+
+        Returns True when a fresh session is available. The persisted session
+        file is updated so the next CLI invocation also benefits from the
+        rotation. Never raises; a failed rotation simply reports False so the
+        caller can surface the usual "session expired" error.
+        """
+        if not self.cookies.get("sf_refresh") or not self.csrf:
+            return False
+        try:
+            response = self._http.post(
+                f"{self.api_root}/auth/refresh",
+                headers={"X-CSRF-Token": self.csrf},
+                cookies=self.cookies or None,
+                timeout=60,
+            )
+        except requests.RequestException:
+            return False
+        if response.status_code != 200:
+            return False
+        rotated = False
+        for cookie in response.cookies:
+            self.cookies[cookie.name] = cookie.value
+            if cookie.name == "sf_csrf":
+                self.csrf = cookie.value
+                rotated = True
+        if rotated:
+            self.save(_config_path())
+        return rotated
 
     def save(self, path: Path) -> None:
         payload = {

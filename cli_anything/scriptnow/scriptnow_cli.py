@@ -118,12 +118,13 @@ _MAIN_HELP = (
 典型流程（Agent 或创作者）：
   1. scriptnow project create --name 新作 --medium novel   # 建项目
   2. scriptnow interpret go 手稿.docx                       # 一书一 Skill：上传作品解读出创作方法论
-  3. scriptnow storymap generate <pid> --wait               # 规划全书卷章节
+  3. scriptnow storymap generate <pid>                      # 规划全书卷章节（后台，拿 run_id 后轮询 run status）
   4. scriptnow book <pid>                                   # 查看全书托管创作规划
-  5. scriptnow chapter generate <pid> chapter-1-1 --wait    # 逐章生成（Agent 审读后带 feedback 修正）
+  5. scriptnow chapter generate <pid> chapter-1-1           # 逐章生成（后台；run status <run_id> 轮询到完成；Agent 审读后带 feedback 修正）
   6. scriptnow cover generate <pid> --image-model-id <id>   # 生成封面
   7. scriptnow export create <pid> --units chapter-1-1      # 导出成书
   8. scriptnow export download <pid> <manifest> -o 书.docx  # 下载交付
+  # Agent 注意：生成命令不带 --wait（宿主工具轮候窗口有限），用 run status 分次轮询
 
 剧本同理：medium=script，用 script scene / script storymap / export --domain script。
 更多：每个子命令 -h 查看；所有命令支持 --json 输出结构化结果。"""
@@ -233,6 +234,49 @@ def guide(steps: bool, complete: bool, status: bool, json_output: bool) -> None:
     _emit(guide_payload, json_output)
     if not json_output:
         _echo_guide(guide_payload)
+
+
+_AGENT_CONTRACT = {
+    "guide": "scriptnow-agent-contract",
+    "title": "ScriptNow Agent 操作契约 —— 连接平台前必读",
+    "audience": "在 ScriptNow 平台上创作小说/剧本的 AI Agent。以本契约为唯一操作准则；本契约与平台后端返回为准，优先于任何对平台的猜测。",
+    "rules": [
+        "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
+        "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
+        "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
+        "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
+        "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
+        "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
+        "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
+        "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
+        "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
+        "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
+    ],
+    "quickstart": [
+        "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
+        "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
+        "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
+        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 审读 → scriptnow chapter adopt <pid> <cid> <revision_id>",
+        "scriptnow export create <pid> --units chapter-1-1",
+    ],
+    "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
+}
+
+
+@main.command("agent-guide")
+@click.option("--json", "json_output", is_flag=True)
+def agent_guide(json_output: bool) -> None:
+    """Agent 操作契约：连接 ScriptNow 平台前必读（禁止本地自建项目、一律走 CLI）。"""
+    _emit(_AGENT_CONTRACT, json_output)
+    if not json_output:
+        click.echo(ui.section(f"=== {_AGENT_CONTRACT['title']} ==="), err=True)
+        click.echo(ui.paint(_AGENT_CONTRACT["audience"], ui.GOLD), err=True)
+        for idx, rule in enumerate(_AGENT_CONTRACT["rules"], 1):
+            click.echo(ui.ok(f"{idx}. {rule}"), err=True)
+        click.echo(ui.section("常用命令速查"), err=True)
+        for command in _AGENT_CONTRACT["quickstart"]:
+            click.echo(ui.kv("", command), err=True)
+        click.echo(ui.dim(_AGENT_CONTRACT["format_hint"]), err=True)
 
 
 _GUIDE_STEPS = [
@@ -1995,14 +2039,25 @@ def storymap_generate(
 @storymap_group.command("adopt")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--confirm", is_flag=True, help="高危操作：明确授权采纳此结构修订（覆盖当前 StoryMap 并影响已采纳正文；旧结构将自动归档）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
-    """Adopt a StoryMap structure candidate."""
+def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str, confirm: bool, json_output: bool) -> None:
+    """Adopt a StoryMap structure candidate (HIGH-RISK, requires --confirm).
+
+    StoryMap 修订是高危操作：采纳会覆盖当前结构、改变保留章节的标题/字数，
+    并影响已采纳正文的匹配关系。必须由主编/作者明确授权（--confirm）后才会执行；
+    被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。
+    """
+    if not confirm:
+        raise click.ClickException(
+            "StoryMap 修订是高危操作：需要 --confirm 明确授权。"
+            "请先核对影响（新增/移除/保留章节、已采纳正文），确认由主编/作者本人授权后再执行。"
+        )
     _emit(
         _session(ctx).request(
             "POST",
-            f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt",
+            f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt?confirm=true",
             write=True,
         ),
         json_output,
@@ -2415,7 +2470,7 @@ def novel_bootstrap(
         return
     session.request(
         "POST",
-        f"/novel/projects/{project_id}/story-map/{sm['id']}/adopt",
+        f"/novel/projects/{project_id}/story-map/{sm['id']}/adopt?confirm=true",
         write=True,
     )
     volumes = state.get("story_map", {}).get("volumes", [])
@@ -2550,7 +2605,7 @@ def novel_propose(
         else:
             adopted = session.request(
                 "POST",
-                f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt",
+                f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt?confirm=true",
                 write=True,
             )
             payload["adopted"] = adopted.get("status")
@@ -2699,7 +2754,7 @@ def novel_orchestrate(
             raise click.ClickException("没有可采纳的 storymap 候选")
         adopted = session.request(
             "POST",
-            f"/novel/projects/{project_id}/story-map/{final_candidate['id']}/adopt",
+            f"/novel/projects/{project_id}/story-map/{final_candidate['id']}/adopt?confirm=true",
             write=True,
         )
         if not json_output:
@@ -4777,10 +4832,20 @@ def export_zip(
 
 
 def _wait_for_run(session: Session, project_id: str, run_id: str, json_output: bool, *, domain: str = "novel") -> None:
+    import os as _os
     import time
 
+    # Long synchronous waits are hostile to agent hosts: the host caps how
+    # long a single tool call may run ("tool waiting window") and kills the
+    # call on timeout. Default 16 minutes suits interactive terminals; agent
+    # hosts should set SCRIPTNOW_WAIT_MAX_SECONDS to their own window and
+    # continue polling with `scriptnow run status` afterwards.
+    try:
+        max_seconds = int(_os.environ.get("SCRIPTNOW_WAIT_MAX_SECONDS", "960"))
+    except ValueError:
+        max_seconds = 960
     path = f"/{domain}/projects/{project_id}/runs/{run_id}"
-    deadline = time.time() + 16 * 60
+    deadline = time.time() + max_seconds
     last = None
     while time.time() < deadline:
         state = session.request("GET", path)
@@ -4795,4 +4860,7 @@ def _wait_for_run(session: Session, project_id: str, run_id: str, json_output: b
                 click.echo(ui.dim(f"run {run_id}: {status}"), err=True)
             last = status
         time.sleep(2)
-    raise click.ClickException("run did not finish within 16 minutes")
+    raise click.ClickException(
+        f"run {run_id} did not finish within {max_seconds}s; "
+        "继续用 scriptnow run status 轮询（agent 场景建议 SCRIPTNOW_WAIT_MAX_SECONDS=45）"
+    )
