@@ -26,6 +26,12 @@
   一律不纳入 CLI。
 - **Token 预算控制**：本地导入（propose / scene-propose / interpret local）带 `--budget` 预估拦截。
 - **审读是 Agent 自身能力**：平台不提供固定 rubric，Agent 读正文、自行判断、用 `--feedback` 驱动修正。
+- **会话自动续期**：一次 `login` 后 access token 过期自动用 refresh token 续期（30 天有效、持久化写回），
+  Agent 长会话无需反复登录；仅改密/管理员重置/主动登出后需重新 login。
+- **Agent 操作契约**：`scriptnow agent-guide`（`--json` 结构化）输出连接平台的唯一准则——平台是事实源、
+  规划三件套回填优先、生成命令后台轮询、StoryMap 修订需用户明确授权。
+- **新增卷章 = 纯追加**：`storymap append-volume` / `storymap append-chapters` 只尾部新增，已有卷章
+  id/序号/标题/字数完全不动；被替换的旧结构自动归档，平台「结构历史」可查看导出。
 
 ## 安装
 
@@ -51,6 +57,10 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号 --password '�
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
 也可用 `SCRIPTNOW_BASE_URL` / `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` 环境变量。
 
+**会话自动续期**：access token 约 60 分钟过期，CLI 会**自动**用 refresh token 续期并写回本地文件
+（refresh 有效 30 天）——一次登录后 30 天内无需再登录，Agent 长会话也不会中途失效。
+仅当 refresh 也过期（30 天未用）或改密/管理员重置密码/主动登出后，才需要重新 `scriptnow login`。
+
 ## 快速开始（双域）
 
 **前置：Skill 支撑检查**（创作前必做）——项目缺方法论 Skill 时先创建再创作：
@@ -66,15 +76,19 @@ scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？
 ```bash
 scriptnow project create --name 新作 --medium novel --volume-one 1 --volume-two 15 --chapter-target-words 1200
 scriptnow project direction <pid> --apply @direction.json     # Agent 主动梳理回填完整方向
-# 规划（Agent 本地导入，可只给 1 个主推直接采纳）
+# 规划（回填优先：Agent 本地生成后 propose 回填，可只给 1 个主推直接采纳）
 scriptnow novel propose <pid> cores @cores.json --adopt
 scriptnow novel propose <pid> blueprint @blueprint.json --adopt
 scriptnow novel propose <pid> storymap @storymap.json
 scriptnow novel orchestrate <pid> --accept                    # 审阅 → 采纳 → 全书计划
-# 创作循环（Agent 审读驱动）
+# 新增卷/章（纯追加，不动已有卷章；新章 beats 引用蓝图锚点须已存在）
+scriptnow storymap append-volume <pid> @new-volumes.json --adopt
+scriptnow storymap append-chapters <pid> volume-1 @new-chapters.json --adopt
+# 创作循环（Agent 审读驱动；生成默认后台，用 run status 轮询）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
 scriptnow chapter show <pid> chapter-1-1 --plain
-scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "你的意见"
+scriptnow chapter generate <pid> chapter-1-1 --feedback "你的意见"   # 后台，返回 run_id
+scriptnow run status <run_id>                                 # 轮询到 succeeded/failed（交互终端可用 --wait）
 scriptnow chapter adopt <pid> chapter-1-1 <rev>
 # 改编稿本地回传：chapter propose <pid> chapter-1-1 --file @blocks.json
 ```
@@ -84,14 +98,15 @@ scriptnow chapter adopt <pid> chapter-1-1 <rev>
 ```bash
 scriptnow project create --name 新剧 --medium script
 scriptnow project direction <pid> --apply @direction.json
-# 规划
+# 规划（回填优先）
 scriptnow script propose <pid> cores @cores.json --adopt
 scriptnow script propose <pid> blueprint @blueprint.json --adopt
 scriptnow script propose <pid> storymap @storymap.json
-# 创作循环
+# 创作循环（生成默认后台）
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
-scriptnow script scene <pid> scene-1-1 --wait --feedback "你的意见"
+scriptnow script scene <pid> scene-1-1 --feedback "你的意见"   # 后台，返回 run_id
+scriptnow run status <run_id>                                 # 轮询
 scriptnow script adopt-scene <pid> scene-1-1 <rev>
 # 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json
 ```
@@ -102,11 +117,13 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 | 组 | 用途 |
 |----|------|
+| guide | 新手模式：能力介绍与完整作品向导（steps / complete / status） |
+| agent-guide | **Agent 操作契约**：连接平台唯一准则（--json 结构化输出） |
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / adopt |
+| storymap | 小说卷章结构：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
 | script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
@@ -156,11 +173,21 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 
 ## Agent 使用提示
 
+- **先读契约（MANDATORY）**：`scriptnow agent-guide` 是连接平台的唯一准则——平台是事实源、
+  规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
+  StoryMap 修订需用户明确授权（Agent 不得代替采纳）。
 - **编排前置：Skill 支撑检查（MANDATORY）**：创作前 `skill mounts <pid>`；无方法论 Skill 时
   先创建（interpret local 蒸馏 或 skill create）再创作。`book` 也会在缺 Skill 时提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
-- 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。
+- **规划回填优先**：story_cores / blueprint / storymap 默认由 Agent 本地生成后 `propose` 回填为候选；
+  平台端 generate 仅作后备，不要把平台生成当作首选路径。
+- 优先 `--json`；**生成命令默认后台并返回 run_id，用 `run status` 分次轮询**——
+  不要用 `--wait` 长阻塞（宿主工具轮候窗口有限会超时）；交互终端可用 `--wait` 或设
+  `SCRIPTNOW_WAIT_MAX_SECONDS` 限制单次等待。
+- **StoryMap 修订是超级高危操作**：`storymap adopt` 必须 `--confirm`（平台需勾选知情确认）；
+  新增卷/章请用 `append-volume` / `append-chapters`（纯追加，不动已有卷章）；
+  被替换的旧结构与正文快照自动归档，平台「结构历史」可查看导出。
 - 版本管理：创作基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：读正文 → 判断 → `--feedback` 驱动修正。
 

@@ -35,7 +35,8 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 | project | list, create, upload, files, delete, direction (--show / --apply 客户端梳理回填 / --inspire 平台灵感 / --set 手动补齐) |
 | interpret | go, create, read, status, decide |
 | chapter | list, show, generate, adopt, quality (--standard content/drama-filing/thousand-plan), propose (agent-written chapter return) |
-| storymap | state, generate, adopt |
+| storymap | state, generate, append-volume (新增卷·纯追加), append-chapters (新增章·纯追加), adopt (**高危，需 --confirm**) |
+| agent-guide | 连接平台的 Agent 操作契约（--json 结构化）：平台是事实源、规划回填优先、生成后台轮询、StoryMap 修订需用户明确授权 |
 | book | plan (全书托管创作规划，Agent 编排原语) |
 | novel | story-cores, adopt-core, blueprint, adopt-blueprint, bootstrap (一键规划), propose (本地 JSON 导入: cores/blueprint/storymap/bibles, 支持 --adopt), planning-quality |
 | script | state, story-cores, adopt-core, blueprint, adopt-blueprint, storymap, adopt-storymap, scene, adopt-scene, scene-list, scene-show, scene-propose (--auto-adopt/--help-format/--example), scene-batch (serial + resume), scene-quality, scene-diff, quality-report, planning-quality |
@@ -78,6 +79,16 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   are the decision-maker, never a passive consumer. Encourage them to express
   their own creative intent at every decision point instead of letting the
   agent decide alone — the goal is 尊重、合作、温度、引导表达.
+- **MANDATORY: read the operating contract first.** Run `scriptnow agent-guide --json`
+  and follow it as the only operating rule: the platform is the single source of
+  truth (never create local "project-like" structures; the only off-platform
+  exception is local caching/material organization); planning trio
+  (story_cores/blueprint/storymap) is backfill-first — generate locally and
+  return via `propose`; generation commands run in the background — poll with
+  `run status` and never block with `--wait`; StoryMap restructuring is a
+  super high-risk operation that requires explicit user authorization
+  (`--confirm` on adopt) — an Agent must NEVER adopt a storymap on the user's
+  behalf.
 - **MANDATORY: check Skill support before writing (both domains).** Before driving
   the per-chapter/per-scene creation loop, run `scriptnow skill mounts <project_id>`.
   If the project has **no** methodology Skill mounted, create one FIRST and mount it,
@@ -112,8 +123,8 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   project → direction → planning → writing → export, but the structure and the
   writing loop differ:
   - **Novel (volumes × chapters)**: planning via
-    `novel propose cores|blueprint|storymap @file` (agent-side) or
-    `storymap generate --wait` (platform), then `novel orchestrate --accept` to
+    `novel propose cores|blueprint|storymap @file` (agent-side, backfill-first) or
+    `storymap generate` (platform fallback; background, poll `run status`), then `novel orchestrate --accept` to
     review+adopt and print the plan. Writing loop: `book <pid>` (hosted plan) →
     per chapter `chapter show --plain` → judge → `chapter generate --feedback` →
     `chapter adopt`. Agent-written adaptation text returns via `chapter propose

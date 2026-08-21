@@ -31,6 +31,13 @@ covering **two creation domains (dual-domain): novels and scripts**. Every comma
   quota and financial commands are deliberately **not** part of the CLI.
 - **Token budget control**: local imports (propose / scene-propose / interpret local) gate with
   `--budget` estimation.
+- **Auto-renewing session**: one `login` lasts 30 days — access tokens refresh automatically,
+  so agent sessions never die mid-work.
+- **Agent operating contract**: `scriptnow agent-guide` (--json) — platform is the single source of
+  truth, the planning trio is backfill-first, generation runs in the background (poll `run status`),
+  and StoryMap restructuring requires explicit user authorization.
+- **Append-only structure growth**: `storymap append-volume` / `append-chapters` add volumes/chapters
+  without touching existing ones; replaced structures are archived and reviewable.
 - **Review is the agent's own judgment**: no fixed platform rubric — read the text, judge, and
   drive fixes with `--feedback`.
 
@@ -117,7 +124,8 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
 | chapter | Novel chapters: list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
-| storymap | Novel volumes×chapters: state / generate / adopt |
+| storymap | Novel volumes×chapters: state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**) |
+| agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
 | script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
@@ -169,13 +177,18 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 
 ## Tips for AI agents
 
+- **MANDATORY: read the operating contract first** (`scriptnow agent-guide --json`): platform is
+  the source of truth, planning trio is backfill-first via `propose`, generation commands run in
+  the background (poll `run status`, never block with `--wait`), and StoryMap restructuring is a
+  super high-risk operation that requires explicit user authorization (`--confirm`) — an agent must
+  NEVER adopt a storymap on the user's behalf.
 - **MANDATORY: check Skill support before writing** — `skill mounts <pid>`; if empty, create
   one first (interpret local distillation or skill create) and mount it. `book` also flags
   missing Skill support.
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.
-- Prefer `--json`; generation commands run in background by default, `--wait` blocks.
+- Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`).
 - Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent
   candidates are not part of the baseline.
 - Review is the agent's own judgment: read the text → judge → drive fixes with `--feedback`.

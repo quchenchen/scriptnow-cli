@@ -21,6 +21,9 @@
 - **管理员支线**：`admin` 命令组仅 `is_admin` 可用（非管理员 403）；token 消费、额度与财务命令
   一律不纳入 CLI。
 - **Token 预算控制**：本地导入（propose / scene-propose / interpret local）带 `--budget` 预估拦截。
+- **会话自动续期**：一次 login 后 access 过期自动 refresh 续期（30 天），Agent 长会话无需反复登录。
+- **Agent 操作契约**：`scriptnow agent-guide`（--json）输出连接平台唯一准则——平台是事实源、规划回填优先、生成后台轮询、StoryMap 修订需用户明确授权。
+- **新增卷章 = 纯追加**：`storymap append-volume` / `append-chapters` 只尾部新增，已有卷章完全不动；旧结构自动归档可回溯。
 - **审读是 Agent 自身能力**：平台不提供固定 rubric，Agent 读正文、自行判断、用 `--feedback` 驱动修正。
 
 ## 安装
@@ -70,7 +73,7 @@ scriptnow novel orchestrate <pid> --accept                    # 审阅 → 采�
 # 创作循环（Agent 审读驱动）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
 scriptnow chapter show <pid> chapter-1-1 --plain
-scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "你的意见"
+scriptnow chapter generate <pid> chapter-1-1 --feedback "你的意见"  # 后台，run status 轮询
 scriptnow chapter adopt <pid> chapter-1-1 <rev>
 # 改编稿本地回传：chapter propose <pid> chapter-1-1 --file @blocks.json
 ```
@@ -87,7 +90,7 @@ scriptnow script propose <pid> storymap @storymap.json
 # 创作循环
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
-scriptnow script scene <pid> scene-1-1 --wait --feedback "你的意见"
+scriptnow script scene <pid> scene-1-1 --feedback "你的意见"  # 后台，run status 轮询
 scriptnow script adopt-scene <pid> scene-1-1 <rev>
 # 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json
 ```
@@ -102,7 +105,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / adopt |
+| storymap | 小说卷章结构：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
 | script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |

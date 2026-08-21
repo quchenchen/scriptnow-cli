@@ -257,6 +257,7 @@ _AGENT_CONTRACT = {
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
         "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 审读 → scriptnow chapter adopt <pid> <cid> <revision_id>",
+        "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
