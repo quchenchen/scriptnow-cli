@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scriptnow-cli"
-version = "0.3.13"
+dynamic = ["version"]
 description = "ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行（CLI-Anything 模式）"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,3 +30,6 @@ packages = ["cli_anything", "cli_anything.scriptnow", "cli_anything.scriptnow.ut
 
 [tool.setuptools.package-data]
 "cli_anything.scriptnow" = ["skills/SKILL.md", "README.md"]
+
+[tool.setuptools.dynamic]
+version = { attr = "cli_anything.scriptnow.__version__" }
