@@ -2064,6 +2064,114 @@ def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str, confi
     )
 
 
+def _read_append_json(file_path: str, key: str) -> list[dict[str, object]]:
+    """读取追加 JSON（volumes 数组或 chapters 数组），并给出格式提示。"""
+    import json as _json
+
+    raw = Path(file_path[1:] if file_path.startswith("@") else file_path).read_text(
+        encoding="utf-8"
+    )
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    items = data.get(key) if isinstance(data, dict) else data
+    if not isinstance(items, list) or not items:
+        raise click.ClickException(
+            f"需要至少 1 个条目的 {key} 数组。"
+            f"{key} == 'volumes' 时格式：[{{\"id\":\"volume-2\",\"ordinal\":1,\"title\":\"第二卷\",\"chapters\":[{{\"id\":\"chapter-2-1\",\"ordinal\":1,\"title\":\"新章\",\"target_words\":3000,\"beats\":[]}}]}}]；"
+            f"{key} == 'chapters' 时格式：[{{\"id\":\"chapter-2-1\",\"ordinal\":1,\"title\":\"新章\",\"target_words\":3000,\"beats\":[]}}]"
+        )
+    return items
+
+
+@storymap_group.command("append-volume")
+@click.argument("project_id")
+@click.argument("file_path")
+@click.option("--adopt", is_flag=True, help="追加形成候选后直接采纳（追加不动已有章节，风险低；仍是结构变更，平台会记录）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_append_volume(
+    ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool
+) -> None:
+    """新增卷章（追加模式）：在现有 StoryMap 尾部新增卷，已有卷章完全不动。
+
+    这是「新增」而非「修订」：保留章节的 id/序号/标题/字数都不变，只追加新卷
+    （新卷内的章节序号自动从 1 编排）。生成的候选仍走采纳（append 不影响已采纳正文）。
+
+    联动提示：新卷/新章的 beats 若引用蓝图锚点，锚点必须已存在于已采纳蓝图；
+    如需新角色/新主题锚点，先更新蓝图（蓝图更新会校验不破坏已采纳结构的引用）。
+    故事图谱与人物圣经随章节采纳自动跟进，无需手动更新。
+    """
+    volumes = _read_append_json(file_path, "volumes")
+    session = _session(ctx)
+    body = {
+        "idempotency_key": f"cli-append-vol-{__import__('time').time_ns()}",
+        "volumes": volumes,
+    }
+    result = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-map/append-propose",
+        json_body=body,
+        write=True,
+    )
+    if adopt and result.get("id"):
+        adopted = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/{result['id']}/adopt?confirm=true",
+            write=True,
+        )
+        _emit({"candidate_id": result["id"], "adopted": adopted.get("status")}, json_output)
+        return
+    _emit(result, json_output)
+
+
+@storymap_group.command("append-chapters")
+@click.argument("project_id")
+@click.argument("volume_id")
+@click.argument("file_path")
+@click.option("--adopt", is_flag=True, help="追加形成候选后直接采纳（追加不动已有章节，风险低）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_append_chapters(
+    ctx: click.Context,
+    project_id: str,
+    volume_id: str,
+    file_path: str,
+    adopt: bool,
+    json_output: bool,
+) -> None:
+    """新增章节（追加模式）：向指定卷尾部新增章节，已有卷章完全不动。
+
+    新章序号自动接续到该卷现有章节之后；保留章节的 id/序号/标题/字数都不变。
+
+    联动提示：新章 beats 若引用蓝图锚点，锚点必须已存在（新锚点需先更新蓝图）；
+    蓝图更新会校验不破坏已采纳结构引用；故事图谱/人物圣经随采纳自动跟进。
+    """
+    chapters = _read_append_json(file_path, "chapters")
+    session = _session(ctx)
+    body = {
+        "idempotency_key": f"cli-append-ch-{__import__('time').time_ns()}",
+        "chapters": chapters,
+        "volume_id": volume_id,
+    }
+    result = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-map/append-propose",
+        json_body=body,
+        write=True,
+    )
+    if adopt and result.get("id"):
+        adopted = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/{result['id']}/adopt?confirm=true",
+            write=True,
+        )
+        _emit({"candidate_id": result["id"], "adopted": adopted.get("status")}, json_output)
+        return
+    _emit(result, json_output)
+
+
 # ------------------------------------------------------------------ novel core chain
 
 
