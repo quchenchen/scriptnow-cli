@@ -361,3 +361,28 @@ def test_doctor_reports_session_location_and_login_state():
     assert "a@b.c" in r2.output
     assert "u1" in r2.output
     assert ".config" in r2.output or "session.json" in r2.output
+
+
+def test_diag_sanitizes_secrets_and_detail():
+    """诊断日志隐私：敏感选项连值脱敏、JWT/令牌净化、超长截断。"""
+    from cli_anything.scriptnow.utils.diag import (
+        _sanitize_args,
+        _sanitize_detail,
+    )
+
+    # 分离形式：--password secret → 选项与值都脱敏
+    args = _sanitize_args(("chapter", "adopt", "--password", "hunter2", "--token", "tok123", "c1"))
+    assert "--password=<redacted>" in args
+    assert "hunter2" not in args
+    assert "--token=<redacted>" in args
+    assert "tok123" not in args
+    # 等号形式
+    args2 = _sanitize_args(("--password=abc123", "x"))
+    assert "--password=<redacted>" in args2 and "abc123" not in args2
+    # 超长截断
+    args3 = _sanitize_args(("x" * 300,))
+    assert len(args3[0]) < 100 and "truncated" in args3[0]
+    # detail 净化 JWT 与 token
+    d = _sanitize_detail("detail with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.abcd1234EFGH and token=supersecret12345")
+    assert "jwt-redacted" in d
+    assert "supersecret12345" not in d

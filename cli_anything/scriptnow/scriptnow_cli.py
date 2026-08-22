@@ -403,7 +403,7 @@ def feedback_cmd(ctx: click.Context, note: str, send: bool, json_output: bool) -
     if send:
         try:
             result = _session(ctx).request(
-                "POST", "/api/cli-feedback", json_body=package, write=True
+                "POST", "/cli-feedback", json_body=package, write=True
             )
             if not json_output:
                 click.echo(ui.ok("诊断包已发送到平台，感谢反馈！"), err=True)
@@ -442,9 +442,14 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
     if clear_errors:
         from cli_anything.scriptnow.utils.diag import clear_errors as _clear
 
-        _clear()
+        cleared = _clear()
         if not json_output:
-            click.echo(ui.ok("CLI 错误日志已清空。"), err=True)
+            if cleared:
+                click.echo(ui.ok("CLI 错误日志已清空。"), err=True)
+            else:
+                click.echo(ui.error("清空失败（文件可能被占用或无权限）。"), err=True)
+        else:
+            _emit({"cleared": cleared}, json_output)
         return
     config = _config_path()
     report: dict[str, object] = {
@@ -465,6 +470,9 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
     except Exception as error:  # noqa: BLE001 — 诊断命令要展示任何失败
         report["logged_in"] = False
         report["login_error"] = str(error)[:240]
+    from cli_anything.scriptnow.utils.diag import recent_errors
+
+    report["recent_errors"] = recent_errors(20)
     if not json_output:
         click.echo(ui.section("=== scriptnow doctor ==="), err=True)
         click.echo(ui.kv("CLI 版本", report["version"]), err=True)

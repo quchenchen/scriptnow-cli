@@ -33,16 +33,34 @@ def _errors_path() -> Path:
 # ── 脱敏：从命令参数里剔除敏感值（密码/令牌/CSRF/正文） ──
 
 
+_SENSITIVE_OPTIONS = ("--password", "--token", "x-decision-token", "--evidence", "--csrf", "--email")
+
+
 def _sanitize_args(args: tuple[str, ...]) -> list[str]:
-    """保留命令名与位置参数，剔除长内容与明显敏感值。"""
+    """保留命令名与位置参数，剔除长内容与明显敏感值。
+
+    敏感选项（--password/--token/--evidence 等）连同其值一起脱敏：
+    `--password secret` → `--password=<redacted>`；等号形式同样处理。
+    超长值截断。绝不记录密码/令牌/Cookie/正文。
+    """
     out: list[str] = []
+    skip_next = False
     for arg in args:
         low = str(arg).lower()
-        # 敏感前缀直接脱敏
-        if any(low.startswith(prefix) for prefix in (
-            "--password", "--token", "x-decision-token", "--evidence",
-        )):
-            out.append(arg.split("=")[0] + "=<redacted>")
+        if skip_next:
+            skip_next = False
+            out.append("<redacted>")
+            continue
+        # 等号形式：--password=secret
+        if "=" in low:
+            opt, _, val = low.partition("=")
+            if any(opt == o for o in _SENSITIVE_OPTIONS):
+                out.append(f"{opt}=<redacted>")
+                continue
+        # 分离形式：--password secret
+        if any(low == o or low.startswith(o + "=") for o in _SENSITIVE_OPTIONS):
+            out.append(low.split("=")[0] + "=<redacted>")
+            skip_next = True
             continue
         # 超长值（正文/JSON）截断
         if len(str(arg)) > 120:
@@ -52,35 +70,47 @@ def _sanitize_args(args: tuple[str, ...]) -> list[str]:
     return out
 
 
+def _sanitize_detail(detail: str) -> str:
+    """净化错误详情：剔除可能被服务端回显的敏感片段（token/cookie 形态）。"""
+    import re as _re
+
+    text = str(detail)
+    # JWT（eyJ...两段点号）与常见令牌形态
+    text = _re.sub(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", "<jwt-redacted>", text)
+    text = _re.sub(r"(?i)(token|csrf|cookie)[=: ]+[A-Za-z0-9_-]{12,}", r"=<redacted>", text)
+    return text[:300]
+
+
 def _error_code(detail: str) -> str:
     """从错误详情提取 machine-readable 错误码，便于 CLI 给专属指引。
 
     规则：优先识别已知模式 → CLI_<AREA>_<KIND>；未知 → CLI_UNKNOWN。
     """
     d = str(detail)
-    if "已不可采纳" in d or "candidate is unavailable" in d:
+    dl = d.lower()
+    if "已不可采纳" in d or "candidate is unavailable" in dl:
         return "CLI_ADOPT_REVISION_UNAVAILABLE"
     if "该版本（rev" in d and "无需重复采纳" in d:
         return "CLI_ADOPT_ALREADY_FINALIZED"
-    if "superseded" in d or "已过期" in d:
+    if "superseded" in dl or "已过期" in d:
         return "CLI_ADOPT_SUPERSEDED"
     if "定稿必须由人亲自决策" in d:
         return "CLI_ADOPT_REQUIRES_HUMAN"
-    if "登录状态已失效" in d or "401" in d:
+    if "登录状态已失效" in d or "401" in dl:
         return "CLI_AUTH_EXPIRED"
-    if "decision token" in d or "授权令牌" in d:
+    if "decision token" in dl or "授权令牌" in d:
         return "CLI_TOKEN_INVALID"
     if "No such option" in d:
         return "CLI_USAGE_UNKNOWN_OPTION"
     if "No such command" in d:
         return "CLI_USAGE_UNKNOWN_COMMAND"
-    if d.startswith("HTTP 409"):
+    if dl.startswith("http 409"):
         return "CLI_HTTP_409"
-    if d.startswith("HTTP 4"):
+    if dl.startswith("http 4"):
         return "CLI_HTTP_4XX"
-    if d.startswith("HTTP 5"):
+    if dl.startswith("http 5"):
         return "CLI_HTTP_5XX"
-    if "network error" in d or "Max retries" in d or "Connection" in d:
+    if "network error" in dl or "max retries" in dl or "connection" in dl:
         return "CLI_NETWORK"
     return "CLI_UNKNOWN"
 
@@ -96,7 +126,7 @@ def record_error(*, command: str, args: tuple[str, ...], detail: str) -> str:
             "command": command,
             "args": _sanitize_args(args),
             "error_code": _error_code(detail),
-            "detail": str(detail)[:300],
+            "detail": _sanitize_detail(detail),
         }
         # 追加 + 轮转（保留最近 N 条）
         lines = []
@@ -119,22 +149,21 @@ def recent_errors(limit: int = 20) -> list[dict[str, object]]:
     path = _errors_path()
     if not path.exists():
         return []
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        out = []
-        for line in lines[-limit:]:
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-        return out
-    except Exception:
-        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    out = []
+    for line in lines[-limit:]:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            # 单条损坏跳过（不整体失败），保留其余
+            continue
+    return out
 
 
-def clear_errors() -> None:
-    """清空错误日志。"""
+def clear_errors() -> bool:
+    """清空错误日志。返回是否成功（失败不静默）。"""
     try:
         _errors_path().unlink(missing_ok=True)
+        return True
     except Exception:
-        pass
+        return False

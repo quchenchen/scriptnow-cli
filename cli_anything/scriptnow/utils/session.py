@@ -103,22 +103,17 @@ class Session:
             try:
                 response = _perform()
             except requests.RequestException as error:
-                raise ScriptNowError(f"network error: {error}") from error
+                err = ScriptNowError(f"network error: {error}")
+                _record(err, command)
+                raise err from error
         if response.status_code == 401:
-            raise ScriptNowError("登录状态已失效，请重新运行 scriptnow login")
+            err = ScriptNowError("登录状态已失效，请重新运行 scriptnow login")
+            _record(err, command)
+            raise err
         if response.status_code >= 400:
             detail = _extract_detail(response)
             error = ScriptNowError(f"HTTP {response.status_code}: {detail}")
-            try:
-                from cli_anything.scriptnow.utils.diag import record_error
-
-                record_error(
-                    command=command or "",
-                    args=tuple(),
-                    detail=str(error),
-                )
-            except Exception:
-                pass  # 记录失败不影响主流程
+            _record(error, command)
             raise error
         if response.status_code == 204:
             return None
@@ -177,6 +172,16 @@ class Session:
             path.chmod(0o600)
         except OSError:
             pass  # best-effort on platforms without POSIX chmod
+
+
+def _record(error: Exception, command: str | None) -> None:
+    """记录 CLI 错误到诊断日志（失败不影响主流程）。"""
+    try:
+        from cli_anything.scriptnow.utils.diag import record_error
+
+        record_error(command=command or "", args=tuple(), detail=str(error))
+    except Exception:
+        pass
 
 
 def _extract_detail(response: requests.Response) -> str:
