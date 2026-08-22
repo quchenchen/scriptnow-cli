@@ -77,7 +77,7 @@ def _sanitize_detail(detail: str) -> str:
     text = str(detail)
     # JWT（eyJ...两段点号）与常见令牌形态
     text = _re.sub(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", "<jwt-redacted>", text)
-    text = _re.sub(r"(?i)(token|csrf|cookie)[=: ]+[A-Za-z0-9_-]{12,}", r"=<redacted>", text)
+    text = _re.sub(r"(?i)(token|csrf|cookie)[=: ]+[A-Za-z0-9_-]{12,}", r"\1=<redacted>", text)
     return text[:300]
 
 

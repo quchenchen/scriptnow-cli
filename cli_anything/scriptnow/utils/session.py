@@ -94,7 +94,9 @@ class Session:
         try:
             response = _perform()
         except requests.RequestException as error:
-            raise ScriptNowError(f"network error: {error}") from error
+            err = ScriptNowError(f"network error: {error}")
+            _record(err, command)
+            raise err from error
         # Access tokens are short-lived (platform default: 60 minutes) while
         # refresh tokens last for days. A long-running agent session would
         # otherwise hit 401 mid-work and stall. On 401, rotate the persisted
