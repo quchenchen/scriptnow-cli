@@ -27,6 +27,12 @@ from cli_anything.scriptnow.utils.session import (
     login,
     write_json,
 )
+from cli_anything.scriptnow.utils.upgrade import (
+    check_for_update,
+    latest_version,
+    maybe_warn_in_background,
+    upgrade as _upgrade_cli,
+)
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -159,9 +165,71 @@ def main(
     ctx.obj["password"] = password
     ctx.obj["json"] = json_output
     ctx.obj["no_color"] = no_color
+    # 强制版本检查：后台低频（24h 缓存）查询 GitHub 发布镜像，有新版时提示
+    # 升级（不阻塞任何命令，失败静默）。
+    if not json_output:
+        maybe_warn_in_background()
     if ctx.invoked_subcommand is None:
         click.echo(ui.banner(VERSION))
         click.echo(ui.dim("运行 scriptnow --help 查看全部命令；每个子命令 -h 查看用法。"))
+
+@main.command("version")
+@click.option("--check", "force_check", is_flag=True, help="强制联网检查最新版本（跳过 24h 缓存）")
+@click.option("--json", "json_output", is_flag=True)
+def version_cmd(force_check: bool, json_output: bool) -> None:
+    """查看当前版本；--check 强制检查 GitHub 发布镜像是否有新版。"""
+    current = VERSION
+    if force_check:
+        latest = latest_version()
+        payload = {"current": current, "latest": latest}
+        _emit(payload, json_output)
+        if not json_output:
+            if latest is None:
+                click.echo(ui.dim("无法连接版本源（或已是最新）。"))
+            elif latest == current:
+                click.echo(ui.ok(f"当前已是最新版本 v{current}"))
+            else:
+                click.echo(
+                    ui.warn(
+                        f"发现新版本 v{latest}（当前 v{current}）。"
+                        "运行 scriptnow self-upgrade 自动升级。"
+                    )
+                )
+        return
+    payload = {"current": current}
+    _emit(payload, json_output)
+    if not json_output:
+        click.echo(f"ScriptNow CLI v{current}")
+
+@main.command("self-upgrade")
+@click.option("--yes", "assume_yes", is_flag=True, help="跳过确认直接升级")
+@click.option("--json", "json_output", is_flag=True)
+def self_upgrade_cmd(assume_yes: bool, json_output: bool) -> None:
+    """自动升级 CLI 到最新版本（先检查，再确认，后执行）。"""
+    latest = latest_version()
+    if latest is None:
+        _emit({"ok": False, "reason": "unreachable"}, json_output)
+        if not json_output:
+            click.echo(ui.warn("无法连接版本源，稍后再试。"))
+        return
+    if latest == VERSION:
+        _emit({"ok": True, "current": VERSION, "upgraded": False}, json_output)
+        if not json_output:
+            click.echo(ui.ok(f"当前已是最新版本 v{VERSION}"))
+        return
+    if not json_output and not assume_yes:
+        if not click.confirm(
+            f"将把 CLI 从 v{VERSION} 升级到 v{latest}。是否继续？", default=True
+        ):
+            click.echo("已取消。")
+            return
+    success = _upgrade_cli(quiet=json_output)
+    _emit({"ok": success, "current": VERSION, "latest": latest, "upgraded": success}, json_output)
+    if not json_output:
+        if success:
+            click.echo(ui.ok(f"升级完成，请重新运行 scriptnow --version 确认。"))
+        else:
+            click.echo(ui.warn("升级未完成；本地开发模式请手动 pip install -e。"))
 
 
 # --------------------------------------------------------------------------- auth
@@ -2069,9 +2137,13 @@ def _read_append_json(file_path: str, key: str) -> list[dict[str, object]]:
     """读取追加 JSON（volumes 数组或 chapters 数组），并给出格式提示。"""
     import json as _json
 
-    raw = Path(file_path[1:] if file_path.startswith("@") else file_path).read_text(
-        encoding="utf-8"
-    )
+    resolved = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    if not resolved.exists():
+        raise click.ClickException(f"文件不存在：{resolved}")
+    try:
+        raw = resolved.read_text(encoding="utf-8")
+    except OSError as error:
+        raise click.ClickException(f"无法读取文件：{error}") from error
     try:
         data = _json.loads(raw)
     except _json.JSONDecodeError as error:

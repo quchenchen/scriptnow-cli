@@ -47,6 +47,10 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
 | skill | list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
 | admin | status, tenant-status, skills, skill-show, skill-update, supply (provider/model overview), provider-connect (one-step OpenAI-compatible provider), model-add, image-model-add — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
 | run | status, events |
+| version | 查看当前版本（--check 强制联网检查 GitHub 发布镜像是否有新版） |
+| self-upgrade | 自动升级 CLI（先检查最新版本，用户确认后执行升级） |
+| version | 查看当前版本（--check 强制联网检查 GitHub 发布镜像是否有新版） |
+| self-upgrade | 自动升级 CLI（先检查最新版本，用户确认后执行升级） |
 | login | — |
 
 ## For AI Agents

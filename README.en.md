@@ -134,6 +134,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | skill | Skill workshop: list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
+| version / self-upgrade | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) |
 
 ## Skill capability & version evolution
 

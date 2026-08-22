@@ -1,0 +1,183 @@
+"""Command-level tests for `storymap append-volume` / `append-chapters`.
+
+Covers the CLI contract without touching the network: the session layer is
+mocked, and we assert request payloads, error mapping, JSON input shapes and
+the `--adopt` second request.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import Mock
+
+import pytest
+from click.testing import CliRunner
+
+from cli_anything.scriptnow.scriptnow_cli import main
+
+
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+
+@pytest.fixture
+def fake_session(monkeypatch, tmp_path):
+    """A fake Session whose .request records calls and returns canned data."""
+    session = Mock()
+    session.request = Mock(
+        side_effect=lambda method, path, **kwargs: (
+            {"id": "candidate-1", "status": "active"}
+            if "append-propose" in path
+            else {"id": "candidate-1", "status": "adopted"}
+        )
+    )
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda ctx: session)
+    return session
+
+
+def _write(tmp_path, name: str, content: str) -> str:
+    path = tmp_path / name
+    path.write_text(content, encoding="utf-8")
+    return f"@{path}"
+
+
+def test_append_volume_object_input_payload(fake_session, runner, tmp_path):
+    """对象输入 {"volumes": [...]} → 请求体 volumes 数组原样传递。"""
+    file_arg = _write(
+        tmp_path,
+        "vols.json",
+        '{"volumes": [{"id": "volume-2", "ordinal": 1, "title": "第二卷", "chapters": [{"id": "chapter-2-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": []}]}]}',
+    )
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    assert result.exit_code == 0
+    args, kwargs = fake_session.request.call_args
+    assert args[1] == "/novel/projects/pid-1/story-map/append-propose"
+    body = kwargs["json_body"]
+    assert body["volumes"][0]["id"] == "volume-2"
+    assert body["volumes"][0]["chapters"][0]["id"] == "chapter-2-1"
+    assert kwargs["write"] is True
+
+
+def test_append_volume_array_input(fake_session, runner, tmp_path):
+    """数组输入（顶层即 volumes 数组）同样接受。"""
+    file_arg = _write(
+        tmp_path,
+        "vols.json",
+        '[{"id": "volume-3", "ordinal": 1, "title": "第三卷", "chapters": []}]',
+    )
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    assert result.exit_code == 0
+    body = fake_session.request.call_args.kwargs["json_body"]
+    assert body["volumes"][0]["id"] == "volume-3"
+
+
+def test_append_chapters_requires_volume_id(fake_session, runner, tmp_path):
+    file_arg = _write(
+        tmp_path,
+        "chs.json",
+        '[{"id": "chapter-9-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": []}]',
+    )
+    result = runner.invoke(main, ["storymap", "append-chapters", "pid-1", "volume-1", file_arg])
+    assert result.exit_code == 0
+    args, kwargs = fake_session.request.call_args
+    assert args[1] == "/novel/projects/pid-1/story-map/append-propose"
+    body = kwargs["json_body"]
+    assert body["volume_id"] == "volume-1"
+    assert body["chapters"][0]["id"] == "chapter-9-1"
+
+
+def test_missing_file_is_rejected(fake_session, runner, tmp_path):
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", "@nope.json"])
+    assert result.exit_code != 0
+    assert "No such file" in result.output or "不存在" in result.output
+    fake_session.request.assert_not_called()
+
+
+def test_invalid_json_is_rejected(fake_session, runner, tmp_path):
+    file_arg = _write(tmp_path, "bad.json", "{not json")
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    assert result.exit_code != 0
+    assert "JSON" in result.output
+    fake_session.request.assert_not_called()
+
+
+def test_empty_array_is_rejected(fake_session, runner, tmp_path):
+    file_arg = _write(tmp_path, "empty.json", "[]")
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    assert result.exit_code != 0
+    assert "至少 1 个条目" in result.output
+    fake_session.request.assert_not_called()
+
+
+def test_adopt_flag_issues_second_confirm_request(fake_session, runner, tmp_path):
+    file_arg = _write(
+        tmp_path,
+        "vols.json",
+        '[{"id": "volume-4", "ordinal": 1, "title": "第四卷", "chapters": []}]',
+    )
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, "--adopt"])
+    assert result.exit_code == 0
+    paths = [call.args[1] for call in fake_session.request.call_args_list]
+    assert paths == [
+        "/novel/projects/pid-1/story-map/append-propose",
+        "/novel/projects/pid-1/story-map/candidate-1/adopt?confirm=true",
+    ]
+
+
+def test_backend_conflict_is_mapped_to_error(fake_session, runner, tmp_path, monkeypatch):
+    from click import ClickException
+
+    def conflict(method, path, **kwargs):
+        raise ClickException("duplicate ids within appended content: chapter-2-1")
+
+    fake_session.request.side_effect = conflict
+    file_arg = _write(
+        tmp_path,
+        "vols.json",
+        '[{"id": "volume-5", "ordinal": 1, "title": "第五卷", "chapters": []}]',
+    )
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    assert result.exit_code != 0
+    assert "duplicate ids" in result.output
+
+
+def test_version_command_shows_current(runner):
+    result = runner.invoke(main, ["version"])
+    assert result.exit_code == 0
+    assert "0.3." in result.output
+
+
+def test_version_check_force_reports_latest(runner, monkeypatch):
+    import cli_anything.scriptnow.utils.upgrade as upgrade_mod
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(upgrade_mod, "latest_version", lambda: "9.9.9")
+    # CLI 模块里 version_cmd 引用的是模块级导入的 latest_version —— 需同步 patch
+    monkeypatch.setattr(cli, "latest_version", lambda: "9.9.9")
+    result = runner.invoke(main, ["version", "--check"])
+    assert result.exit_code == 0
+    assert "9.9.9" in result.output
+
+
+def test_self_upgrade_already_latest(runner, monkeypatch):
+    import cli_anything.scriptnow.utils.upgrade as upgrade_mod
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(upgrade_mod, "latest_version", lambda: "0.3.14")
+    monkeypatch.setattr(cli, "latest_version", lambda: "0.3.14")
+    result = runner.invoke(main, ["self-upgrade", "--yes"])
+    assert result.exit_code == 0
+    assert "已是最新" in result.output
+
+
+def test_self_upgrade_unreachable(runner, monkeypatch):
+    import cli_anything.scriptnow.utils.upgrade as upgrade_mod
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(upgrade_mod, "latest_version", lambda: None)
+    monkeypatch.setattr(cli, "latest_version", lambda: None)
+    result = runner.invoke(main, ["self-upgrade", "--yes"])
+    assert result.exit_code == 0
+    assert "无法连接" in result.output
