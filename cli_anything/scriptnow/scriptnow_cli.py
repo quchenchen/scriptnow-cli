@@ -81,9 +81,13 @@ def _pretty_kind(medium: str) -> str:
 
 
 def _status_word(status: str | None, *, medium: str) -> str:
-    """把平台状态词翻译成编辑能懂的话。"""
-    if status in ("adopted", "adopted_human", "active"):
-        return "已定稿" if medium == "novel" else "已定稿"
+    """把平台状态词翻译成编辑能懂的话。
+
+    人机协作铁律的可见化：adopted_human（人工核验定稿）与 adopted（agent 采纳）
+    分开展示——编辑需要一眼看出「这版是经过人核验的」还是「AI 自己定的」。
+    """
+    if status in ("adopted_human", "adopted", "active"):
+        return "已定稿"
     if status in ("candidate", "draft", "pending"):
         return "候选稿"
     if status == "succeeded":
@@ -322,6 +326,57 @@ def _mark_onboarding_done() -> None:
         path.chmod(0o600)
     except OSError:
         pass
+
+
+@main.command("authorize")
+@click.argument("project_id")
+@click.option("--chapter", default=None, help="限定章节（如 chapter-2-1）；不限定则可用于该项目任意章节定稿")
+@click.option("--scene", default=None, help="限定场次（如 scene-1）")
+@click.option("--purpose", default="定稿授权", help="授权用途说明")
+@click.option("--evidence", default="", help="授权证据原文（用户对话里的原话引用）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def authorize_cmd(
+    ctx: click.Context,
+    project_id: str,
+    chapter: str | None,
+    scene: str | None,
+    purpose: str,
+    evidence: str,
+    json_output: bool,
+) -> None:
+    """签发一次性「人工决策授权令牌」（对话内文字授权通道）。
+
+    复用当前登录会话签发，**不要求重新登录**。用户在对话里明确授权定稿后，
+    运行本命令拿到一次性 token（15 分钟有效），agent 用
+    `chapter adopt --human --token <token>` 完成人工定稿，平台记录审计
+    （用户、方式=对话授权、证据原文）。令牌只能由你的会话签发，agent 无法伪造。
+    """
+    body = {
+        "project_id": project_id,
+        "chapter_id": chapter,
+        "scene_id": scene,
+        "kind": "adopt",
+        "purpose": purpose,
+        "evidence": evidence,
+    }
+    result = _session(ctx).request("POST", "/api/decision-tokens", json_body=body, write=True)
+    if not json_output:
+        click.echo(ui.section("=== 人工决策授权令牌 ==="), err=True)
+        click.echo(ui.kv("token", result.get("token")), err=True)
+        click.echo(ui.dim(f"有效期：{result.get('expires_in')} 秒（一次性）"), err=True)
+        if result.get("evidence"):
+            click.echo(ui.dim(f"证据：{result.get('evidence')}"), err=True)
+        click.echo("", err=True)
+        click.echo(
+            ui.dim(
+                f"agent 用法：chapter adopt --human --token <token> <作品号> <章节号> <版本号>"
+                + ("（或对应 scene adopt）" if not chapter else "")
+            ),
+            err=True,
+        )
+        return
+    _emit(result, json_output)
 
 
 @main.command("doctor")
@@ -1941,7 +1996,8 @@ def chapter_list(ctx: click.Context, project_id: str, status: str | None, json_o
         for chapter in volume.get("chapters", []):
             chapter_id = str(chapter["id"])
             docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
-            adopted = next((doc for doc in docs if doc.get("status") == "adopted"), None)
+            adopted_human = next((doc for doc in docs if doc.get("status") == "adopted_human"), None)
+            adopted = adopted_human or next((doc for doc in docs if doc.get("status") == "adopted"), None)
             candidates = [doc for doc in docs if doc.get("status") in ("candidate", "active")]
             candidates.sort(key=lambda doc: doc.get("revision_number", 0), reverse=True)
             row = {
@@ -1949,10 +2005,11 @@ def chapter_list(ctx: click.Context, project_id: str, status: str | None, json_o
                 "title": chapter.get("title"),
                 "target_words": chapter.get("target_words"),
                 "adopted_revision": adopted.get("revision_number") if adopted else None,
+                "adopted_human": adopted_human is not None,
                 "candidate_revisions": [doc.get("revision_number") for doc in candidates],
                 "latest_candidate_id": candidates[0].get("id") if candidates else None,
             }
-            if status is None or (status == "adopted" and adopted) or (status in ("candidate", "active") and candidates):
+            if status is None or (status in ("adopted", "adopted_human") and adopted) or (status in ("candidate", "active") and candidates):
                 rows.append(row)
     _emit(rows, json_output)
 
@@ -2097,34 +2154,49 @@ def chapter_generate(
     is_flag=True,
     help="人工定稿：你已亲自通读本章内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一章前置）",
 )
+@click.option(
+    "--token",
+    "decision_token",
+    default=None,
+    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权），agent 用它执行人工定稿",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, human_decision: bool, json_output: bool) -> None:
+def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool) -> None:
     """Adopt a chapter revision as the working text.
 
     人机协作铁律：定稿必须是人的决策。交互模式会请你确认「是否已亲自通读并
     决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
     下一章创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
     """
-    # 交互模式：先请真人确认（跳过交互确认 = 人工明确授权）
-    if not json_output and not human_decision:
-        if not click.confirm(
-            "你已亲自通读本章全文并决定采纳这份候选稿吗？（人工定稿是继续下一章的前提）",
-            default=False,
-        ):
-            click.echo(ui.warn("已取消定稿——请先通读本章（chapter show），满意后再运行 chapter adopt --human。"), err=True)
-            return
-        human_decision = True
+    # 人机协作铁律：定稿必须是人的决策。三条合法通道：
+    #   --token（用户签发的授权令牌）> 交互确认 > --human（用户亲手执行）
+    if not decision_token and not human_decision:
+        if not json_output:
+            if not click.confirm(
+                "你已亲自通读本章全文并决定采纳这份候选稿吗？（人工定稿是继续下一章的前提）",
+                default=False,
+            ):
+                click.echo(ui.warn("已取消定稿——请先通读本章（chapter show），满意后再运行 chapter adopt --human。"), err=True)
+                return
+            human_decision = True
+        else:
+            raise click.ClickException(
+                "定稿必须由人亲自决策：agent 静默采纳会被平台拒绝。"
+                "请让用户先通读本章（chapter show），然后：① 用户运行 scriptnow authorize 签发令牌，"
+                "agent 用 chapter adopt --token <token> 执行；或 ② 用户亲自运行 chapter adopt --human。"
+            )
+    extra_headers = {}
+    if decision_token:
+        extra_headers["X-Decision-Token"] = decision_token
     result = _session(ctx).request(
         "POST",
         f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
+        headers=extra_headers,
     )
     if not json_output:
-        if human_decision:
-            click.echo(ui.ok(_confirm_line("novel", adopted=True)))
-        else:
-            click.echo(ui.warn("已记录为 agent 采纳（非人工定稿）——下一章创作前必须由你亲自定稿本章（chapter adopt --human）。"), err=True)
+        click.echo(ui.ok(_confirm_line("novel", adopted=True)))
         return
     _emit(result, json_output)
 
@@ -2301,7 +2373,9 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     for chapter in chapters:
         chapter_id = str(chapter["id"])
         docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
-        adopted = next((doc for doc in docs if doc.get("status") == "adopted"), None)
+        # 优先取人工核验定稿（adopted_human），否则 agent 采纳（adopted）
+        adopted_human = next((doc for doc in docs if doc.get("status") == "adopted_human"), None)
+        adopted = adopted_human or next((doc for doc in docs if doc.get("status") == "adopted"), None)
         candidates = [doc for doc in docs if doc.get("status") in ("candidate", "active")]
         candidates.sort(key=lambda doc: doc.get("revision_number", 0), reverse=True)
         plan.append({
@@ -2313,6 +2387,7 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
             "beats": [beat.get("objective") for beat in chapter.get("beats") or []],
             "state": {
                 "adopted_revision": adopted.get("revision_number") if adopted else None,
+                "adopted_human": adopted_human is not None,
                 "candidate_revisions": [doc.get("revision_number") for doc in candidates],
                 "latest_candidate_id": candidates[0].get("id") if candidates else None,
                 "needs_generation": adopted is None and not candidates,
@@ -2338,8 +2413,15 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     click.echo(ui.section(f"=== 全书创作计划（{len(plan)} 章）==="), err=True)
     for item in plan:
         st = item["state"]
-        mark = "已定稿" if st["adopted_revision"] is not None else ("候选待审" if st["has_candidate_pending_review"] else "待创作")
-        icon = ui.ok("✓") if st["adopted_revision"] is not None else (ui.warn("…") if st["has_candidate_pending_review"] else "·")
+        if st["adopted_revision"] is not None:
+            mark = "已定稿"
+            icon = ui.ok("✓")
+        elif st["has_candidate_pending_review"]:
+            mark = "候选待审"
+            icon = ui.warn("…")
+        else:
+            mark = "待创作"
+            icon = "·"
         click.echo(f"  {icon} 第{item.get('ordinal') or '?'}章 · {item.get('title') or '未命名'}（{mark}）", err=True)
     click.echo(ui.dim(f"已定稿 {summary['adopted']}/{len(plan)} 章；待创作 {len(summary['needs_generation'])} 章；候选待审 {len(summary['candidates_pending_review'])} 章"), err=True)
     if names:
@@ -3336,11 +3418,17 @@ def scene_generate(
     is_flag=True,
     help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需）",
 )
+@click.option(
+    "--token",
+    "decision_token",
+    default=None,
+    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权）",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, json_output: bool) -> None:
+def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool) -> None:
     """Adopt a scene revision (alias of script adopt-scene)."""
-    script_adopt_scene.callback(project_id, scene_id, revision_id, human_decision, json_output)
+    script_adopt_scene.callback(project_id, scene_id, revision_id, human_decision, decision_token, json_output)
 
 
 @scene_group.command("propose")
@@ -3945,10 +4033,16 @@ def script_scene(
     is_flag=True,
     help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一场前置）",
 )
+@click.option(
+    "--token",
+    "decision_token",
+    default=None,
+    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权），agent 用它执行人工定稿",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_adopt_scene(
-    ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, json_output: bool
+    ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool
 ) -> None:
     """Adopt a scene revision (script).
 
@@ -3956,24 +4050,34 @@ def script_adopt_scene(
     决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
     下一场创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
     """
-    if not json_output and not human_decision:
-        if not click.confirm(
-            "你已亲自通读本场内容并决定采纳这份候选稿吗？（人工定稿是继续下一场的前提）",
-            default=False,
-        ):
-            click.echo(ui.warn("已取消定稿——请先通读本场（scene show），满意后再运行 scene adopt --human。"), err=True)
-            return
-        human_decision = True
+    # 人机协作铁律：定稿必须是人的决策。三条合法通道：
+    #   --token（用户签发的授权令牌）> 交互确认 > --human（用户亲手执行）
+    if not decision_token and not human_decision:
+        if not json_output:
+            if not click.confirm(
+                "你已亲自通读本场内容并决定采纳这份候选稿吗？（人工定稿是继续下一场的前提）",
+                default=False,
+            ):
+                click.echo(ui.warn("已取消定稿——请先通读本场（scene show），满意后再运行 scene adopt --human。"), err=True)
+                return
+            human_decision = True
+        else:
+            raise click.ClickException(
+                "定稿必须由人亲自决策：agent 静默采纳会被平台拒绝。"
+                "请让用户先通读本场（scene show），然后：① 用户运行 scriptnow authorize 签发令牌，"
+                "agent 用 scene adopt --token <token> 执行；或 ② 用户亲自运行 scene adopt --human。"
+            )
+    extra_headers = {}
+    if decision_token:
+        extra_headers["X-Decision-Token"] = decision_token
     result = _session(ctx).request(
         "POST",
         f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
+        headers=extra_headers,
     )
     if not json_output:
-        if human_decision:
-            click.echo(ui.ok(_confirm_line("script", adopted=True)))
-        else:
-            click.echo(ui.warn("已记录为 agent 采纳（非人工定稿）——下一场创作前必须由你亲自定稿本场（scene adopt --human）。"), err=True)
+        click.echo(ui.ok(_confirm_line("script", adopted=True)))
         return
     _emit(result, json_output)
 

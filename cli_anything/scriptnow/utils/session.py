@@ -57,6 +57,7 @@ class Session:
         write: bool = False,
         timeout: int = 120,
         command: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         def _perform() -> requests.Response:
             headers: dict[str, str] = {
@@ -67,6 +68,8 @@ class Session:
                 "X-ScriptNow-Command": command or "",
                 "X-ScriptNow-Invocation": _INVOCATION_ID,
             }
+            if headers:
+                headers.update(headers)
             if write:
                 if not self.csrf:
                     raise ScriptNowError("session is missing CSRF token; run 'scriptnow login'")
