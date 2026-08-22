@@ -82,9 +82,9 @@ def _pretty_kind(medium: str) -> str:
 
 def _status_word(status: str | None, *, medium: str) -> str:
     """把平台状态词翻译成编辑能懂的话。"""
-    if status in ("adopted", "adopted_human"):
-        return "已定稿"
-    if status in ("candidate", "draft"):
+    if status in ("adopted", "adopted_human", "active"):
+        return "已定稿" if medium == "novel" else "已定稿"
+    if status in ("candidate", "draft", "pending"):
         return "候选稿"
     if status == "succeeded":
         return "完成"
@@ -94,6 +94,8 @@ def _status_word(status: str | None, *, medium: str) -> str:
         return "排队中"
     if status == "failed":
         return "未通过"
+    if status in (None, ""):
+        return "状态未知"
     unit = "章" if medium == "novel" else "场"
     return f"{status}（{unit}状态）"
 
@@ -1826,6 +1828,7 @@ def interpret_local(
             click.echo(ui.ok(f"并已挂载到当前作品 —— 可以开始逐章/逐场创作了。"))
         if result.get("mount_error"):
             click.echo(ui.warn(f"挂载未完成：{result['mount_error']}"))
+        return
     _emit(result, json_output)
 
 
@@ -1927,6 +1930,14 @@ def chapter_show(
         }
         for doc in sorted(docs, key=lambda item: item.get("revision_number", 0))
     ]
+    if not json_output:
+        source_label = "平台生成" if chosen.get("source") == "platform" else "共创回填"
+        status_label = _status_word(chosen.get("status"), medium="novel")
+        click.echo(ui.section(f"=== 第 {chosen.get('revision_number', 1)} 版 · {source_label} · {status_label} ==="), err=True)
+        click.echo((f"{heading}\n\n" if heading else "") + text, err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim(_next_step_after_generate("novel")), err=True)
+        return
     _emit(
         {
             "chapter_id": chapter_id,
@@ -2000,14 +2011,15 @@ def chapter_generate(
 @click.pass_context
 def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, json_output: bool) -> None:
     """Adopt a chapter revision as the working text."""
-    _emit(
-        _session(ctx).request(
-            "POST",
-            f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt",
-            write=True,
-        ),
-        json_output,
+    result = _session(ctx).request(
+        "POST",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt",
+        write=True,
     )
+    if not json_output:
+        click.echo(ui.ok(_confirm_line("novel", adopted=True)))
+        return
+    _emit(result, json_output)
 
 
 _CHAPTER_BLOCKS_FORMAT = """小说章节 blocks JSON 格式（chapter propose --file 要求）：
@@ -2107,6 +2119,7 @@ def chapter_propose(
     if not json_output:
         adopted = result.get("status") in ("adopted", "adopted_human")
         click.echo(ui.ok(_confirm_line("novel", adopted=adopted)))
+        return
     _emit(result, json_output)
 
 
@@ -2139,16 +2152,17 @@ def chapter_quality(
         "idempotency_key": f"cli-quality-{__import__('time').time_ns()}",
         "standard": standard.replace("-", "_"),
     }
-    _emit(
-        _session(ctx).request(
-            "POST",
-            f"/novel/projects/{project_id}/chapters/{chapter_id}/quality-reports/generate",
-            json_body=body,
-            write=True,
-            timeout=600,
-        ),
-        json_output,
+    result = _session(ctx).request(
+        "POST",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/quality-reports/generate",
+        json_body=body,
+        write=True,
+        timeout=600,
     )
+    if not json_output:
+        click.echo(ui.ok("本章质量审读已生成——请通读审读报告，低于标准就用 chapter generate --feedback 迭代。"))
+        return
+    _emit(result, json_output)
 
 
 @main.command("book")
@@ -2208,29 +2222,30 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
         ],
         "plan": plan,
     }
-    _emit(summary, json_output)
-    # 编排前置侦测：项目是否已有方法论 Skill 支撑（仅人读模式，--json 契约不变）
-    if not json_output:
-        mounted = _session(ctx).request("GET", f"/projects/{project_id}/skills")
-        names = [str(item.get("name") or "") for item in mounted] if isinstance(mounted, list) else []
-        click.echo(ui.section(f"=== 全书创作计划（{len(plan)} 章）==="), err=True)
-        for item in plan:
-            st = item["state"]
-            mark = "已定稿" if st["adopted_revision"] is not None else ("候选待审" if st["has_candidate_pending_review"] else "待创作")
-            icon = ui.ok("✓") if st["adopted_revision"] is not None else (ui.warn("…") if st["has_candidate_pending_review"] else "·")
-            click.echo(f"  {icon} 第{item.get('ordinal') or '?'}章 · {item.get('title') or '未命名'}（{mark}）", err=True)
-        click.echo(ui.dim(f"已定稿 {summary['adopted']}/{len(plan)} 章；待创作 {len(summary['needs_generation'])} 章；候选待审 {len(summary['candidates_pending_review'])} 章"), err=True)
-        if names:
-            click.echo(ui.dim(f"方法论 Skill：{', '.join(names)}"), err=True)
-        else:
-            click.echo(
-                ui.warn(
-                    "项目暂无方法论 Skill —— 建议先创建再创作："
-                    "interpret local 一书一 Skill（样本不传平台，Agent 本地蒸馏）"
-                    "或 skill create --domain novel；完成后 skill mount 到本项目。"
-                ),
-                err=True,
-            )
+    if json_output:
+        _emit(summary, json_output)
+        return
+    # 人读模式：只渲染友好创作计划，不打印技术字段
+    mounted = _session(ctx).request("GET", f"/projects/{project_id}/skills")
+    names = [str(item.get("name") or "") for item in mounted] if isinstance(mounted, list) else []
+    click.echo(ui.section(f"=== 全书创作计划（{len(plan)} 章）==="), err=True)
+    for item in plan:
+        st = item["state"]
+        mark = "已定稿" if st["adopted_revision"] is not None else ("候选待审" if st["has_candidate_pending_review"] else "待创作")
+        icon = ui.ok("✓") if st["adopted_revision"] is not None else (ui.warn("…") if st["has_candidate_pending_review"] else "·")
+        click.echo(f"  {icon} 第{item.get('ordinal') or '?'}章 · {item.get('title') or '未命名'}（{mark}）", err=True)
+    click.echo(ui.dim(f"已定稿 {summary['adopted']}/{len(plan)} 章；待创作 {len(summary['needs_generation'])} 章；候选待审 {len(summary['candidates_pending_review'])} 章"), err=True)
+    if names:
+        click.echo(ui.dim(f"方法论 Skill：{', '.join(names)}"), err=True)
+    else:
+        click.echo(
+            ui.warn(
+                "项目暂无方法论 Skill —— 建议先创建再创作："
+                "interpret local 一书一 Skill（样本不传平台，Agent 本地蒸馏）"
+                "或 skill create --domain novel；完成后 skill mount 到本项目。"
+            ),
+            err=True,
+        )
 
 
 # ----------------------------------------------------------------------- storymap
@@ -2484,6 +2499,7 @@ def novel_outline_adopt(ctx: click.Context, project_id: str | None, json_output:
     result = _api_request(ctx, "POST", f"/novel/projects/{pid}/synopsis-outline/adopt", write=True)
     if not json_output:
         click.echo(ui.ok(f"梗概大纲已定稿（v{result.get('version')}）——接下来规划全书结构（storymap）。"))
+        return
     _emit(result, json_output)
 
 
@@ -3429,6 +3445,14 @@ def script_scene_show(
         }
         for doc in sorted(docs, key=lambda item: item.get("revision_number", 0))
     ]
+    if not json_output:
+        source_label = "平台生成" if chosen.get("source") == "platform" else "共创回填"
+        status_label = _status_word(chosen.get("status"), medium="script")
+        click.echo(ui.section(f"=== 本场（第 {chosen.get('revision_number', 1)} 版 · {source_label} · {status_label}）==="), err=True)
+        click.echo(text, err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim(_next_step_after_generate("script")), err=True)
+        return
     _emit(
         {
             "scene_id": scene_id,
@@ -3808,14 +3832,15 @@ def script_adopt_scene(
     ctx: click.Context, project_id: str, scene_id: str, revision_id: str, json_output: bool
 ) -> None:
     """Adopt a scene revision (script)."""
-    _emit(
-        _session(ctx).request(
-            "POST",
-            f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt",
-            write=True,
-        ),
-        json_output,
+    result = _session(ctx).request(
+        "POST",
+        f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt",
+        write=True,
     )
+    if not json_output:
+        click.echo(ui.ok(_confirm_line("script", adopted=True)))
+        return
+    _emit(result, json_output)
 
 
 _SCENE_BLOCKS_FORMAT = """剧本 blocks JSON 格式（scene-propose --file 要求）：
@@ -3952,6 +3977,7 @@ def script_scene_propose(
             ),
             err=True,
         )
+        return
     _emit(result, json_output)
 
 
@@ -4056,6 +4082,7 @@ def script_scene_batch(
             click.echo(ui.error(f"未完成 {len(failed)}/{len(ids)} 场：{', '.join(str(i['scene_id']) for i in failed)}——可续跑：--resume-from {progress_file or '<失败清单>'}"), err=True)
         else:
             click.echo(ui.ok(f"全部完成：{len(ids)} 个场次 ✅ —— 下一步逐场 scene show 审读，满意后 scene adopt 定稿。"))
+        return
     _emit({"total": len(ids), "succeeded": len(ids) - len(failed), "failed": failed, "results": summary}, json_output)
 
 
@@ -4125,7 +4152,9 @@ def script_scene_quality(
             click.echo(f"  {mark} {item['check']}：{item['value']}（目标 {item['target']}）{item['flag']}", err=True)
         passed = sum(1 for item in checks if item["ok"])
         overall = "整体达标" if passed == len(checks) else ("还需打磨" if passed >= 1 else "不达标")
-        click.echo(ui.dim(f"Overall: {overall}（{passed}/{len(checks)} 项通过）"), err=True)
+        click.echo(ui.dim(f"综合评价：{overall}（{passed}/{len(checks)} 项通过）"), err=True)
+        click.echo(ui.dim(_next_step_after_generate("script")), err=True)
+        return
     _emit(
         {
             "scene_id": scene_id,
@@ -4272,7 +4301,7 @@ def script_quality_report(
     for r in sorted(rows, key=lambda x: x["chars"]):
         mark = ui.ok("") if not r["flags"] else ui.warn("")
         click.echo(
-            f"  {mark} {r['scene_id']} rev{r['revision']} {r['chars']}字符 {r['rounds']}轮"
+            f"  {mark} {r['scene_id']} 第{r['revision']}版 {r['chars']}字 {r['rounds']}轮"
             + (f"  ⚠ {'、'.join(r['flags'])}" if r["flags"] else ""),
             err=True,
         )
@@ -4898,6 +4927,7 @@ def cover_package(ctx: click.Context, project_id: str, feedback: str | None, jso
     )
     if not json_output:
         click.echo(ui.ok(f"作品包装已生成：《{result.get('title')}》（v{result.get('version')}）—— 下一步 cover generate 生成封面。"))
+        return
     _emit(result, json_output)
 
 
