@@ -115,7 +115,6 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | version / self-upgrade | 版本查看与强制检查（--check）/ 自动升级（确认后执行） |
-| version / self-upgrade | 版本查看与强制检查（--check）/ 自动升级（确认后执行） |
 
 ## Skill 能力与版本进化
 
