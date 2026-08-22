@@ -281,3 +281,47 @@ def test_login_password_security_paths():
     r = runner.invoke(main, ["login", "--host", "https://x.test", "--email", "a@b.c", "--password-stdin"], input="\n")
     assert r.exit_code != 0
     assert "密码不能为空" in r.output
+
+
+def test_self_upgrade_uses_codeload_and_falls_back_to_git():
+    """self-upgrade：主路径 codeload tar.gz 直装（无 git 依赖）；失败回退 git+https。"""
+    import subprocess
+
+    import pytest
+
+    from cli_anything.scriptnow.utils import upgrade as up_mod
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        from types import SimpleNamespace
+
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(subprocess, "run", fake_run)
+    mp.setattr(up_mod, "_install_command", lambda: ("pip", ["install", "https://codeload.github.com/x", "--force-reinstall"]))
+
+    assert up_mod.upgrade(quiet=True) is True
+    assert len(calls) == 1
+    assert "codeload" in " ".join(calls[0])
+
+    # 主路径失败 → 回退 git+https（fallback 成功）
+    def fake_run_mixed(cmd, **kwargs):
+        calls.append(list(cmd))
+        from types import SimpleNamespace
+
+        # 第一次（主路径）失败，第二次（fallback）成功
+        if "codeload" in " ".join(cmd):
+            return SimpleNamespace(returncode=1, stderr="boom", stdout="")
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    mp2 = pytest.MonkeyPatch()
+    mp2.setattr(subprocess, "run", fake_run_mixed)
+    mp2.setattr(up_mod, "_install_command", lambda: ("pip", ["install", "https://codeload.github.com/x"]))
+    mp2.setattr(up_mod, "_upgrade_fallback", lambda: ["pip", "install", "git+https://x"])
+    calls.clear()
+    assert up_mod.upgrade(quiet=True) is True
+    assert len(calls) == 2
+    assert "git+https://x" in calls[1]

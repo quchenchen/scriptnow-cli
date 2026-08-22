@@ -30,6 +30,16 @@ SCRIPTNOW_PASSWORD='...' scriptnow login --host https://sn.igeewa.com --email yo
 The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
 (owner-only 0600). Alternatively pass `--base-url/--email` on every invocation.
 
+### 安装与升级（MANDATORY）
+
+- **scriptnow-cli 不在 PyPI**：`pip install scriptnow-cli` 必然失败
+  （No matching distribution）。安装/升级只能用 GitHub 独立仓库源：
+  `pip install https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main`
+  或 `git+https://github.com/quchenchen/scriptnow-cli.git`。
+- 老用户用 `scriptnow self-upgrade` 自动升级（codeload 主路径 + git+https 回退）；
+  `scriptnow version --check` 可查最新版本。
+- 遇到「No such option」类报错 = CLI 版本过旧：先升级再排查，不要臆测命令行为。
+
 ### 凭据安全纪律（MANDATORY，agent 与用户一律遵守）
 
 - **密码绝不进命令行参数**：`--password <明文>` 会落在 shell history 与进程列表

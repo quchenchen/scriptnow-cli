@@ -103,7 +103,21 @@ def _install_command() -> tuple[str, list[str]] | None:
 
     if shutil.which("uv"):
         return "uv", ["tool", "upgrade", "scriptnow-cli"]
+    # codeload tar.gz 直装：不依赖 git，比 git+https 更可靠（受限沙箱/无 git 环境也能用）。
+    # scriptnow-cli 不在 PyPI——必须用 GitHub 独立仓库源，否则 pip 报 No matching distribution。
     return "pip", [
+        "install",
+        "--user",
+        "--break-system-packages",
+        "--force-reinstall",
+        "https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main",
+    ]
+
+
+def _upgrade_fallback() -> list[str] | None:
+    """备选升级命令：git+https（当 codeload 被拦时）。"""
+    return [
+        "pip",
         "install",
         "--user",
         "--break-system-packages",
@@ -122,7 +136,14 @@ def upgrade(quiet: bool = False) -> bool:
                 "pip install -e /path/to/scriptnow-cli 后重新运行。"
             )
         return False
-    result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    # command = (program, args...) → 扁平化为可执行列表
+    cmd = [command[0], *command[1]]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        # 主路径（codeload）失败 → 回退 git+https
+        fallback = _upgrade_fallback()
+        if fallback:
+            result = subprocess.run(fallback, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         if not quiet:
             print(result.stderr[-500:] or "升级失败。")

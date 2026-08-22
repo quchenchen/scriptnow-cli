@@ -44,6 +44,11 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
+
+> ⚠️ **CLI 不在 PyPI**：`pip install scriptnow-cli` 会报 "No matching distribution"。
+> 安装/升级一律走 GitHub 源（上方 codeload 或 git+https）。
+> 已有安装的用户可用 `scriptnow self-upgrade` 自动升级（内部同样走 codeload，
+> 失败自动回退 git+https）。
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 ```
