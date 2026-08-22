@@ -770,14 +770,46 @@ def _echo_guide(payload: dict[str, object]) -> None:
 @main.command()
 @click.option("--host", required=True, help="Platform base URL, e.g. https://sn.igeewa.com")
 @click.option("--email", required=True)
-@click.option("--password", required=True, hide_input=True)
+@click.option(
+    "--password",
+    default=None,
+    hide_input=True,
+    help="密码。为安全起见不建议在命令行传明文：可省略后交互式隐藏输入，或用 --password-stdin / 环境变量 SCRIPTNOW_PASSWORD 传入",
+)
+@click.option(
+    "--password-stdin",
+    is_flag=True,
+    help="从标准输入读取密码（管道/agent 安全传入，不落 shell history 与进程列表）",
+)
 @click.option("--json", "json_output", is_flag=True)
-def login_cmd(host: str, email: str, password: str, json_output: bool) -> None:
-    """Authenticate and persist a session (cookie + CSRF)."""
+def login_cmd(host: str, email: str, password: str | None, password_stdin: bool, json_output: bool) -> None:
+    """Authenticate and persist a session (cookie + CSRF).
+
+    密码安全传递（按优先级）：
+      1. --password-stdin：从标准输入读取（推荐给 agent/脚本，不落历史与进程表）
+      2. 环境变量 SCRIPTNOW_PASSWORD（agent 场景）
+      3. 省略 --password：交互式隐藏输入（getpass，屏幕上不显示、不落历史）
+      4. --password <明文>：仅兼容旧脚本；明文会出现在 shell history，尽量不用
+    """
+    import getpass as _getpass
+    import os as _os
+
+    if password is None:
+        if password_stdin:
+            password = click.get_text_stream("stdin").readline().rstrip("\n")
+        else:
+            env_password = _os.environ.get("SCRIPTNOW_PASSWORD")
+            if env_password:
+                password = env_password
+            else:
+                password = _getpass.getpass("密码（输入时不显示）: ")
+    if not password:
+        raise click.ClickException("密码不能为空——请重新运行 scriptnow login")
     try:
         session = login(host, email, password)
     except ScriptNowError as error:
         raise click.ClickException(str(error)) from error
+    password = None  # 用完即弃，避免残留在栈上
     if not json_output:
         click.echo(ui.ok(f"登录成功：{host}（{email}）"))
         if not _onboarding_done():

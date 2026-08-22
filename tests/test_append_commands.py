@@ -225,3 +225,59 @@ def test_skill_craft_assembles_structured_draft_and_requires_confirm():
     r = runner.invoke(main, ["skill", "craft", "--domain", "novel"], input=inputs)
     assert r.exit_code == 0
     assert "已取消" in r.output
+
+
+def test_login_password_security_paths():
+    """登录密码安全传递：--password-stdin 与环境变量，不明文落历史。"""
+    from unittest.mock import Mock
+
+    import pytest
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli_mod
+    from cli_anything.scriptnow.scriptnow_cli import main
+
+    captured: list[str] = []
+
+    def fake_login(base_url: str, email: str, password: str):
+        captured.append(password)
+        s = Mock()
+        s.base_url = base_url
+        s.cookies = {"sf_access": "a", "sf_refresh": "r", "sf_csrf": "c"}
+        s.csrf = "c"
+        s.save = Mock()
+        return s
+
+    monkeypatch = pytest.MonkeyPatch()
+    # login_cmd 引用的是 scriptnow_cli 模块命名空间的 login 绑定
+    monkeypatch.setattr(cli_mod, "login", fake_login)
+    monkeypatch.setattr(
+        cli_mod,
+        "_onboarding_done",
+        lambda: True,
+    )
+
+    runner = CliRunner()
+    # 1) --password-stdin 管道传入
+    r = runner.invoke(main, ["login", "--host", "https://x.test", "--email", "a@b.c", "--password-stdin"], input="secret-abc\n")
+    assert r.exit_code == 0, r.output
+    assert captured and captured[-1] == "secret-abc"
+
+    # 2) 环境变量 SCRIPTNOW_PASSWORD
+    import os
+
+    os.environ["SCRIPTNOW_PASSWORD"] = "env-secret"
+    r = runner.invoke(main, ["login", "--host", "https://x.test", "--email", "a@b.c"])
+    assert r.exit_code == 0, r.output
+    assert captured[-1] == "env-secret"
+    os.environ.pop("SCRIPTNOW_PASSWORD", None)
+
+    # 3) 都不传 → 交互隐藏输入（getpass）——CliRunner 无 tty，getpass 读 stdin
+    r = runner.invoke(main, ["login", "--host", "https://x.test", "--email", "a@b.c"], input="interactive-secret\n")
+    assert r.exit_code == 0, r.output
+    assert captured[-1] == "interactive-secret"
+
+    # 4) 空密码 → 拒绝
+    r = runner.invoke(main, ["login", "--host", "https://x.test", "--email", "a@b.c", "--password-stdin"], input="\n")
+    assert r.exit_code != 0
+    assert "密码不能为空" in r.output

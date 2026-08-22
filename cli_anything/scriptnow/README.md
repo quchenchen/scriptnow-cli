@@ -44,7 +44,7 @@ pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 ## 登录
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email 你的账号 --password '你的密码'
+scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式隐藏输入密码（或 --password-stdin / SCRIPTNOW_PASSWORD）
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。

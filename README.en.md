@@ -59,7 +59,7 @@ pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 ## Login
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'
+scriptnow login --host https://sn.igeewa.com --email you@example.com   # interactive hidden password (or --password-stdin / SCRIPTNOW_PASSWORD)
 ```
 
 The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`

@@ -21,12 +21,24 @@ pip install -e /path/to/cli/scriptnow-cli
 ## Configuration
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'
+# 安全登录（推荐）：省略 --password → 交互式隐藏输入；或 --password-stdin 管道 / 环境变量
+scriptnow login --host https://sn.igeewa.com --email you@example.com --password-stdin
+scriptnow login --host https://sn.igeewa.com --email you@example.com        # 交互式隐藏输入
+SCRIPTNOW_PASSWORD='...' scriptnow login --host https://sn.igeewa.com --email you@example.com
 ```
 
-The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`.
-Alternatively pass `--base-url/--email/--password` on every invocation, or set
-`SCRIPTNOW_BASE_URL`, `SCRIPTNOW_EMAIL`, `SCRIPTNOW_PASSWORD`.
+The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
+(owner-only 0600). Alternatively pass `--base-url/--email` on every invocation.
+
+### 凭据安全纪律（MANDATORY，agent 与用户一律遵守）
+
+- **密码绝不进命令行参数**：`--password <明文>` 会落在 shell history 与进程列表
+  (`ps aux`)，只允许作为旧脚本的兼容路径。优先顺序：
+  `--password-stdin`（管道）> `SCRIPTNOW_PASSWORD`（环境变量）> 交互式 getpass > 明文参数（禁用）。
+- **绝不把密码/令牌写入对话、日志、输出或文件**：CLI 的 `--json` 输出只含
+  `ok/base_url/user`，不含令牌；agent 报告登录结果时不得回显密码或 cookie 值。
+- 登录成功后密码立即从内存丢弃（用完即焚），本地只保存会话 cookie（0600）。
+- 需要重建会话时直接提示用户重新登录，不要从对话历史里取密码。
 
 ## Command Groups
 
