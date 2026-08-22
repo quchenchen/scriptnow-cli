@@ -96,22 +96,51 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   AND a follow-up read-back confirms it landed (`project create` auto-reads-back and
   prints a receipt with `verified`). Never report "done" to the user without server-returned
   ids and read-back confirmation; local files or textual self-claims are never evidence.
-- **MANDATORY: check Skill support before writing (both domains).** Before driving
-  the per-chapter/per-scene creation loop, run `scriptnow skill mounts <project_id>`.
-  If the project has **no** methodology Skill mounted, create one FIRST and mount it,
-  then write:
-  - One-work-one-skill distillation (preferred; keeps samples off-platform):
-    `scriptnow interpret local <work> --spec` → read the work locally, produce the
-    skill JSON per the spec → `scriptnow interpret local <work> --submit @skill.json
-    --project-id <pid>` (creates the personal skill and mounts it). For scripts, set
-    `"domain": "script"` in the skill JSON. Novels may also use `interpret go`
-    (platform read-through; the work is uploaded).
-  - Direct personal-skill submission:
-    `scriptnow skill create --name ... --domain novel|script --role writer --stage
-    writing --instructions "..."`, then `skill mounts <pid>` for the version id and
-    `skill mount <pid> <skill_id> <version_id>`.
-  - The hosted plan command (`scriptnow book`) also flags missing Skill support in
-    human-readable mode.
+- **SKILL IS A MANDATORY PRE-WRITING GATE (both domains, first priority after
+  the project lands).** Once the creative intent is clear and the project exists,
+  **no per-chapter/per-scene generation may start until the project has a
+  robust, project-specific methodology Skill mounted on the platform**. The gate
+  has three phases — plan, harden, mount — and the agent must actively GUIDE the
+  user/author through every one, never shortcutting to writing:
+  1. **PLAN (multi-round, co-created)**: work with the user/author to plan what
+     methodology this work needs — craft rules, style anchors, character/
+     continuity standards, genre conventions, evaluation dimensions. Ask
+     probing questions (opening hooks, pacing, POV discipline, series
+     continuity, taboo/avoid-lists, audience expectations). Refine across
+     rounds until the author agrees it reflects the work's intent. Do NOT skip
+     to writing because a generic Skill exists.
+  2. **HARDEN for robustness (MANDATORY, the agent's active duty)**:
+     - Draft the Skill, then **test-drive it**: write a short sample chapter /
+       scene following the Skill (a beat from the adopted StoryMap, or a probe
+       paragraph), and audit the result against the Skill's own rules.
+     - **Diagnose weaknesses**: does the Skill actually constrain quality, or
+       is it generic filler? Are there gaps (no continuity rule, no voice
+       anchor, no scene-duration discipline for scripts)? Are instructions
+       unambiguous enough that two writers would produce the same discipline?
+     - **Iterate until robust**: fix gaps, tighten vague rules, add concrete
+       examples/anti-examples; re-test the sample until the Skill demonstrably
+       produces on-intent work. Surface each hardening round to the user and
+       get their sign-off — a Skill that merely exists is not enough; it must
+       be battle-tested against the work's intent.
+  3. **MOUNT & VERIFY (MANDATORY)**: create the project-specific Skill on the
+     platform and mount it, then confirm with `scriptnow skill mounts
+     <project_id>` **before** the first `chapter/scene generate` or `propose`
+     body-text write:
+     - One-work-one-skill distillation (preferred; samples stay off-platform):
+       `scriptnow interpret local <work> --spec` → read the work locally, write
+       the skill JSON per the spec → harden it per phase 2 → `scriptnow
+       interpret local <work> --submit @skill.json --project-id <pid>` (creates
+       and mounts). For scripts set `"domain": "script"`. Novels may also use
+       `interpret go` (platform read-through).
+     - Direct personal-skill submission:
+       `scriptnow skill create --name ... --domain novel|script --role writer
+       --stage writing --instructions "..."`, then `skill mounts <pid>` for the
+       version id and `skill mount <pid> <skill_id> <version_id>`.
+  4. **Hard stop if not mounted**: if `scriptnow skill mounts <project_id>` shows
+     **no** methodology Skill, stop and complete the gate — never start
+     per-chapter writing on a bare project. The hosted plan command
+     (`scriptnow book`) flags missing Skill support in human-readable mode;
+     treat that flag as a hard stop for body-text work.
 - **MANDATORY: fill the full project direction yourself — never rely on the
   platform to generate it.** When creating a project or setting direction, the
   agent MUST actively curate and backfill every field that matters for the work

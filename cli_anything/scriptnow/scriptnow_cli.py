@@ -319,6 +319,7 @@ _AGENT_CONTRACT = {
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
+        "Skill 是逐章/逐场创作前的必然门禁，且必须引导健壮性完善：创作意图明确且项目落地后，先与用户规划专属方法论（可多轮），再对 Skill 做健壮性完善——试写样本章节/场次检验其约束力、诊断规则缺口与歧义、迭代加固直到方法论真正稳健并获用户认可，然后在平台创建并挂载到该项目，用 scriptnow skill mounts <pid> 核实已挂载，才能启动正文逐章/逐场创作。项目无已挂载方法论 Skill，或 Skill 未经验证只是通用模板时，禁止开始正文写作。",
         "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
@@ -332,6 +333,7 @@ _AGENT_CONTRACT = {
         "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
+        "Skill 门禁（逐章创作前必做）：与用户规划完善专属方法论 Skill（可多轮）→ scriptnow skill create/interpret local 创建 → scriptnow skill mount <pid> <skill_id> <version_id> → scriptnow skill mounts <pid> 核实已挂载",
         "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 审读 → scriptnow chapter adopt <pid> <cid> <revision_id>",
         "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
         "scriptnow export create <pid> --units chapter-1-1",
@@ -481,6 +483,15 @@ _GUIDE_STEPS = [
     },
     {
         "step": 6,
+        "title": "规划并挂载专属 Skill（门禁 · 须健壮性完善）",
+        "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
+        "why": "Skill 是逐章/逐场创作前的必然检查项：项目落地后必须先规划专属方法论（可多轮），再对其健壮性完善——试写样本章节/场次检验约束力、诊断规则缺口、迭代加固——然后在平台创建并挂载到项目，核实后才能启动正文创作。",
+        "command": "scriptnow skill mounts <pid>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照 Skill 规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <pid>（或 skill create + skill mount）",
+        "verify": "scriptnow skill mounts <pid> 显示该 Skill 已挂载，且经样本试写验证规则有效。",
+        "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？",
+    },
+    {
+        "step": 7,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
         "why": "Agent 逐章创作回填（chapter propose）或平台生成（chapter generate），你逐章审读采纳——这是人机共创的核心循环。",
@@ -507,7 +518,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 7,
+        "step": 8,
         "title": "审读与修订",
         "scene": "编辑的责任：不放过一处瑕疵。逐句逐帧以挑剔受众的目光审读——每一句是否值得停留，每一帧是否推动情绪。",
         "why": "Agent 审读必须严苛：化身资深编剧与挑剔受众，逐句引用证据、点名失败的节拍，拒绝泛泛而谈的称赞；低于标准的正文立即带反馈重新生成。",
@@ -530,7 +541,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 8,
+        "step": 9,
         "title": "包装与导出交付",
         "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
         "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
@@ -556,7 +567,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 9,
+        "step": 10,
         "title": "标记完成",
         "scene": "合上最后一页。第一部作品完成——工作室的门从此为你常开，随时回来继续创作。",
         "why": "完成第一部作品后运行本命令，以后不再打扰；随时可重看本向导。",
