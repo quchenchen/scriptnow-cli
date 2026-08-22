@@ -2186,6 +2186,26 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
                 "请让用户先通读本章（chapter show），然后：① 用户运行 scriptnow authorize 签发令牌，"
                 "agent 用 chapter adopt --token <token> 执行；或 ② 用户亲自运行 chapter adopt --human。"
             )
+    # 前置检查：revision 是否已是定稿（避免重复采纳撞 409）
+    try:
+        state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
+        target = next(
+            (doc for doc in state.get("documents", [])
+             if doc.get("chapter_id") == chapter_id and doc.get("id") == revision_id),
+            None,
+        )
+        if target and target.get("status") in ("adopted", "adopted_human"):
+            msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='novel')}），无需重复采纳。"
+            if not json_output:
+                click.echo(ui.ok(msg), err=True)
+                return
+            _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
+            return
+        if target and target.get("status") == "superseded":
+            click.echo(ui.warn("该版本已过期（superseded）——请用 chapter list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
+            return
+    except ScriptNowError:
+        pass  # 前置检查失败不阻塞，交给平台权威校验
     extra_headers = {}
     if decision_token:
         extra_headers["X-Decision-Token"] = decision_token
@@ -4067,6 +4087,26 @@ def script_adopt_scene(
                 "请让用户先通读本场（scene show），然后：① 用户运行 scriptnow authorize 签发令牌，"
                 "agent 用 scene adopt --token <token> 执行；或 ② 用户亲自运行 scene adopt --human。"
             )
+    # 前置检查：revision 是否已是定稿（避免重复采纳撞 409）
+    try:
+        state = _session(ctx).request("GET", f"/script/projects/{project_id}/state")
+        target = next(
+            (doc for doc in state.get("documents", [])
+             if doc.get("scene_id") == scene_id and doc.get("id") == revision_id),
+            None,
+        )
+        if target and target.get("status") in ("adopted", "adopted_human"):
+            msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='script')}），无需重复采纳。"
+            if not json_output:
+                click.echo(ui.ok(msg), err=True)
+                return
+            _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
+            return
+        if target and target.get("status") == "superseded":
+            click.echo(ui.warn("该版本已过期（superseded）——请用 scene list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
+            return
+    except ScriptNowError:
+        pass  # 前置检查失败不阻塞，交给平台权威校验
     extra_headers = {}
     if decision_token:
         extra_headers["X-Decision-Token"] = decision_token
