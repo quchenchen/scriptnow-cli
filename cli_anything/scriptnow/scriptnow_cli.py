@@ -284,7 +284,14 @@ def guide(steps: bool, complete: bool, status: bool, json_output: bool) -> None:
         _mark_onboarding_done()
         _emit({"onboarded": True, "marked_at": int(_time.time())}, json_output)
         if not json_output:
-            click.echo(ui.ok("新手模式已标记完成；随时可用 scriptnow guide 重看。"))
+            click.echo(ui.ok("新手提示已关闭；随时可用 scriptnow guide 重看。"))
+            click.echo(
+                ui.dim(
+                    "注意：这只是关闭新手引导，不代表作品已完成。"
+                    "作品完成以平台导出物与完结记录为准（cover/export/验收）。"
+                ),
+                err=True,
+            )
         return
 
     if status:
@@ -319,6 +326,7 @@ _AGENT_CONTRACT = {
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
+        "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
     ],
     "quickstart": [
         "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
@@ -803,10 +811,48 @@ def project_create(
     }
     if workflow_kind:
         body["workflow_kind"] = workflow_kind
-    _emit(
-        _session(ctx).request("POST", "/projects", json_body=body, write=True),
-        json_output,
-    )
+    # 幂等键 = 请求参数指纹：网络超时后重试同一条命令会命中同一项目，
+    # 不会产生重复项目（后端按 creation_idempotency_key 去重）。
+    import hashlib as _hashlib
+
+    fingerprint = _hashlib.sha256(
+        (
+            name
+            + "\x00"
+            + medium
+            + "\x00"
+            + source_mode
+            + "\x00"
+            + json.dumps(direction, sort_keys=True, ensure_ascii=False)
+        ).encode("utf-8")
+    ).hexdigest()[:24]
+    body["idempotency_key"] = f"cli-create-{fingerprint}"
+    session = _session(ctx)
+    created = session.request("POST", "/projects", json_body=body, write=True)
+    project_id = str(created.get("id") or "")
+    verified = False
+    if project_id:
+        # 自动回读：立即从平台拉取项目列表，确认已落盘（服务器回读才是完成依据）。
+        try:
+            listing = session.request("GET", "/projects")
+            items = listing if isinstance(listing, list) else listing.get("items", [])
+            verified = any(str(item.get("id")) == project_id for item in items)
+        except ScriptNowError:
+            verified = False
+    receipt = {
+        "command": "project create",
+        "project_id": project_id,
+        "name": name,
+        "medium": medium,
+        "idempotency_key": body["idempotency_key"],
+        "verified": verified,
+    }
+    _emit(receipt, json_output)
+    if not json_output and not verified and project_id:
+        click.echo(
+            ui.warn("项目已创建但回读未确认；请运行 scriptnow project list 复核。"),
+            err=True,
+        )
 
 
 @project_group.command("upload")

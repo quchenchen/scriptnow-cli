@@ -91,6 +91,11 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   super high-risk operation that requires explicit user authorization
   (`--confirm` on adopt) — an Agent must NEVER adopt a storymap on the user's
   behalf.
+- **Reported completion = server read-back (MANDATORY)**: a write operation succeeds
+  only when the server returns an id (project_id / candidate_id / revision_id / run_id)
+  AND a follow-up read-back confirms it landed (`project create` auto-reads-back and
+  prints a receipt with `verified`). Never report "done" to the user without server-returned
+  ids and read-back confirmation; local files or textual self-claims are never evidence.
 - **MANDATORY: check Skill support before writing (both domains).** Before driving
   the per-chapter/per-scene creation loop, run `scriptnow skill mounts <project_id>`.
   If the project has **no** methodology Skill mounted, create one FIRST and mount it,
@@ -290,12 +295,13 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   is simply an **idea already audited by the user** (`project direction
   --apply` with the agreed idea, or a single-core `propose`). Never invent a
   direction the user has not seen.
-- **Synopsis outline (NEW, before StoryMap)**: once the creative direction and
-  blueprint are clear, produce a **≤500-word synopsis outline** (earlier than
-  StoryMap) and submit it for the user's review; only after approval proceed to
-  StoryMap persistence. Platform storage for this outline is not yet built —
-  the CLI emits it for review and the agent keeps the approved text as the
-  StoryMap contract.
+- **Synopsis outline (MANDATORY, before StoryMap)**: once the creative direction
+  and blueprint are clear, produce a **≤500-word synopsis outline** and submit it
+  for the user's review; after approval, persist it ON THE PLATFORM — never keep
+  it only locally — with `novel outline <pid> --text "..."` then
+  `novel outline-adopt <pid>` (check with `novel outline-status <pid>`). StoryMap
+  planning is gated on an adopted outline, so an outline kept only in the agent's
+  local context will cause the next `storymap` step to be rejected.
 - **Quality threshold**: 9-10 excellent · 8-9 acceptable · **<8 regenerate**.
 - **Progress control**: after each episode/volume, report quality statistics and
   ask the user whether to continue. Review is your own judgment (not a platform

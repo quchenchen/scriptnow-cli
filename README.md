@@ -186,6 +186,8 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 - 优先 `--json`；**生成命令默认后台并返回 run_id，用 `run status` 分次轮询**——
   不要用 `--wait` 长阻塞（宿主工具轮候窗口有限会超时）；交互终端可用 `--wait` 或设
   `SCRIPTNOW_WAIT_MAX_SECONDS` 限制单次等待。
+- **报告完成以服务器回读为据**：写操作成功 = 服务器返回 id（project_id/candidate_id/revision_id/run_id）且回读确认落盘；
+  没有 id 与回读确认不得向用户报告“已完成”；`project create` 会自动回读并输出含 `verified` 的 receipt。
 - **StoryMap 修订是超级高危操作**：`storymap adopt` 必须 `--confirm`（平台需勾选知情确认）；
   新增卷/章请用 `append-volume` / `append-chapters`（纯追加，不动已有卷章）；
   被替换的旧结构与正文快照自动归档，平台「结构历史」可查看导出。

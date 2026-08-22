@@ -165,8 +165,9 @@ def test_self_upgrade_already_latest(runner, monkeypatch):
     import cli_anything.scriptnow.utils.upgrade as upgrade_mod
     import cli_anything.scriptnow.scriptnow_cli as cli
 
-    monkeypatch.setattr(upgrade_mod, "latest_version", lambda: "0.3.14")
-    monkeypatch.setattr(cli, "latest_version", lambda: "0.3.14")
+    current = cli.VERSION
+    monkeypatch.setattr(upgrade_mod, "latest_version", lambda: current)
+    monkeypatch.setattr(cli, "latest_version", lambda: current)
     result = runner.invoke(main, ["self-upgrade", "--yes"])
     assert result.exit_code == 0
     assert "已是最新" in result.output

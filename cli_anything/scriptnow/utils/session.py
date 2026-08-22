@@ -22,6 +22,14 @@ from typing import Any
 
 import requests
 
+from cli_anything.scriptnow import __version__ as _CLIENT_VERSION
+
+# Per-process invocation id so the server can correlate retries and audit
+# a logical call across multiple HTTP requests.
+import uuid as _uuid
+
+_INVOCATION_ID = str(_uuid.uuid4())
+
 
 class ScriptNowError(RuntimeError):
     """Raised when the platform returns an error or the session is unusable."""
@@ -48,9 +56,17 @@ class Session:
         files: dict[str, Any] | None = None,
         write: bool = False,
         timeout: int = 120,
+        command: str | None = None,
     ) -> Any:
         def _perform() -> requests.Response:
-            headers: dict[str, str] = {}
+            headers: dict[str, str] = {
+                # 请求元数据：让服务端能够区分 CLI 与网页/自写脚本，并审计到
+                # 具体命令与调用（client 类型 + 版本 + 命令 + 调用标识）。
+                "X-ScriptNow-Client": "scriptnow-cli",
+                "X-ScriptNow-Client-Version": _CLIENT_VERSION,
+                "X-ScriptNow-Command": command or "",
+                "X-ScriptNow-Invocation": _INVOCATION_ID,
+            }
             if write:
                 if not self.csrf:
                     raise ScriptNowError("session is missing CSRF token; run 'scriptnow login'")
