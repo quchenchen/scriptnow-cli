@@ -48,6 +48,11 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式�
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
+
+**Agent 排查入口：先跑 `scriptnow doctor`** —— 输出 CLI 版本、会话文件实际路径、
+是否登录、账号、平台地址与连通性。任何「登录失败 / 找不到配置 / 409 / No such option」
+先 `scriptnow doctor` 定位，不要猜配置位置。`SCRIPTNOW_CLI_CONFIG` 可覆盖会话路径；
+多环境共用同一会话文件时登录一次全部生效。
 也可用 `SCRIPTNOW_BASE_URL` / `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` 环境变量。
 
 ## 快速开始（双域）

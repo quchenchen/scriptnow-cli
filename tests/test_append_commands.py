@@ -325,3 +325,39 @@ def test_self_upgrade_uses_codeload_and_falls_back_to_git():
     assert up_mod.upgrade(quiet=True) is True
     assert len(calls) == 2
     assert "git+https://x" in calls[1]
+
+
+def test_doctor_reports_session_location_and_login_state():
+    """doctor：输出 CLI 版本、会话路径、登录状态与账号；未登录也不崩溃。"""
+    import pytest
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli_mod
+    from cli_anything.scriptnow.scriptnow_cli import main
+
+    runner = CliRunner()
+    # 1) 未登录（无会话文件时 _session 抛错，doctor 应捕获并报告未登录）
+    import cli_anything.scriptnow.utils.session as sess_mod
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(
+        sess_mod,
+        "_config_path",
+        lambda: __import__("pathlib").Path("/tmp/.sn-doctor-nonexistent/session.json"),
+    )
+    r = runner.invoke(main, ["doctor"])
+    assert r.exit_code == 0, r.output
+    assert "会话文件不存在" in r.output or "未登录" in r.output
+
+    # 2) 已登录路径：fake session 报告账号
+    from unittest.mock import Mock
+
+    fake = Mock()
+    fake.base_url = "https://sn.test"
+    fake.request = Mock(return_value={"user_id": "u1", "email": "a@b.c"})
+    mp.setattr(cli_mod, "_session", lambda ctx: fake)
+    r2 = runner.invoke(main, ["doctor"])
+    assert r2.exit_code == 0, r2.output
+    assert "a@b.c" in r2.output
+    assert "u1" in r2.output
+    assert ".config" in r2.output or "session.json" in r2.output

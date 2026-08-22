@@ -66,6 +66,24 @@ The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.jso
 (cookie only, no password, mode 0600). Alternatively use the `SCRIPTNOW_BASE_URL` /
 `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` environment variables.
 
+### Config & session location (agents: run `scriptnow doctor` first)
+
+| Item | Location |
+|---|---|
+| Session (cookies + CSRF) | `~/.config/scriptnow-cli/session.json` |
+| Version-check cache | `~/.config/scriptnow-cli/version-check.json` |
+| Onboarding flag | `~/.config/scriptnow-cli/` (onboarded marker) |
+| Override session path | `SCRIPTNOW_CLI_CONFIG=/path/to/session.json` |
+
+**When anything auth-ish fails — login failure, "cannot find config", 409, or
+"No such option" — run `scriptnow doctor` FIRST.** It prints the CLI version, the
+actual session path, whether you are logged in, which account, the platform URL and
+connectivity. Do not guess where config lives. `doctor` says not logged in → re-run
+`scriptnow login`; logged in but requests 409 → usually a refresh-token rotation race,
+re-login (not a data problem). Shared session file across venvs/pipx/system means one
+login works everywhere; concurrent refresh from multiple ends may revoke the old
+token once (rotation protection) — just log in again.
+
 ## Quick start (dual-domain)
 
 **Prerequisite — check Skill support** (before writing): if the project has no methodology

@@ -324,6 +324,57 @@ def _mark_onboarding_done() -> None:
         pass
 
 
+@main.command("doctor")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def doctor_cmd(ctx: click.Context, json_output: bool) -> None:
+    """诊断：当前 CLI 版本、配置/会话位置、登录账号、平台连通性。
+
+    Agent 排查「登录失败 / 找不到配置 / 409 权限」时先跑本命令，一眼看到
+    会话写在哪、用的是哪个账号、能否连通平台。
+    """
+    from cli_anything.scriptnow import __version__ as _VERSION
+    from cli_anything.scriptnow.utils.session import _config_path
+
+    config = _config_path()
+    report: dict[str, object] = {
+        "version": _VERSION,
+        "session_path": str(config),
+        "session_exists": config.exists(),
+    }
+    # 尝试加载会话并取账号（不抛错，失败也算诊断信息）
+    try:
+        session = _session(ctx)
+        me = session.request("GET", "/auth/me")
+        user_id = me.get("user_id") if isinstance(me, dict) else None
+        email = me.get("email") if isinstance(me, dict) else None
+        report["logged_in"] = True
+        report["user_id"] = user_id
+        report["email"] = email
+        report["base_url"] = session.base_url
+    except Exception as error:  # noqa: BLE001 — 诊断命令要展示任何失败
+        report["logged_in"] = False
+        report["login_error"] = str(error)[:240]
+    if not json_output:
+        click.echo(ui.section("=== scriptnow doctor ==="), err=True)
+        click.echo(ui.kv("CLI 版本", report["version"]), err=True)
+        click.echo(ui.kv("会话文件", report["session_path"]), err=True)
+        click.echo(
+            ui.ok("会话文件存在") if report["session_exists"] else ui.warn("会话文件不存在——先 scriptnow login"),
+            err=True,
+        )
+        if report.get("logged_in"):
+            click.echo(ui.ok(f"已登录：{report.get('email')}（user {report.get('user_id')}）"), err=True)
+            click.echo(ui.dim(f"平台：{report.get('base_url')}"), err=True)
+        else:
+            click.echo(ui.warn(f"未登录：{report.get('login_error')}"), err=True)
+            click.echo(ui.dim("修复：scriptnow login --host <平台地址> --email <账号>（交互输入密码）"), err=True)
+        click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json）"), err=True)
+        click.echo(ui.dim("可用环境变量 SCRIPTNOW_CLI_CONFIG 覆盖会话文件位置"), err=True)
+        return
+    _emit(report, json_output)
+
+
 @main.command()
 @click.option("--steps", is_flag=True, help="只展示完整作品向导步骤（短篇/短剧闭环）")
 @click.option("--complete", is_flag=True, help="标记新手模式已完成（写入 onboarded 标记）")

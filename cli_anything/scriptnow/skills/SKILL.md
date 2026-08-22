@@ -50,6 +50,18 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
 - 登录成功后密码立即从内存丢弃（用完即焚），本地只保存会话 cookie（0600）。
 - 需要重建会话时直接提示用户重新登录，不要从对话历史里取密码。
 
+### 配置与会话定位（Agent 必读，先 doctor 再排查）
+
+- **会话文件**：`~/.config/scriptnow-cli/session.json`（Cookie + CSRF，0600）。
+  同目录还有 `version-check.json` 与新手引导标记；`SCRIPTNOW_CLI_CONFIG` 环境变量
+  可覆盖会话文件位置。
+- **任何「登录失败 / 找不到配置 / 409 / No such option」先跑 `scriptnow doctor`**：
+  一条命令给出 CLI 版本、会话实际路径、是否登录、账号、平台地址与连通性，
+  **不要猜配置写在哪**。`doctor` 显示未登录 → 重新 `scriptnow login`；
+  显示已登录但请求 409 → 多为令牌轮换竞态，重新登录即可（不是数据问题）。
+- 多个 Python 环境（venv/pipx/系统）共用同一会话文件时登录一次全部生效；
+  多端同时刷新令牌可能触发一次性保护（旧令牌作废）——重登即可。
+
 ## Command Groups
 
 | Group | Commands |

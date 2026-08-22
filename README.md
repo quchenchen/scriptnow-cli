@@ -66,6 +66,26 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式�
 （refresh 有效 30 天）——一次登录后 30 天内无需再登录，Agent 长会话也不会中途失效。
 仅当 refresh 也过期（30 天未用）或改密/管理员重置密码/主动登出后，才需要重新 `scriptnow login`。
 
+### 配置与会话定位（Agent 必读）
+
+| 内容 | 位置 |
+|---|---|
+| 登录会话（Cookie + CSRF） | `~/.config/scriptnow-cli/session.json` |
+| 版本检查缓存 | `~/.config/scriptnow-cli/version-check.json` |
+| 新手引导标记 | 写入 `~/.config/scriptnow-cli/`（onboarded 标记） |
+| 环境变量覆盖会话路径 | `SCRIPTNOW_CLI_CONFIG=/path/to/session.json` |
+
+**排查入口：先跑 `scriptnow doctor`** —— 一条命令输出：CLI 版本、会话文件实际路径、
+是否已登录、登录账号、平台地址、连通性。Agent 遇到「登录失败 / 找不到配置 /
+409 权限 / No such option」时，**第一步永远先 `scriptnow doctor`**，不要猜配置位置。
+
+要点：
+- 多个 Python 环境（venv/pipx/系统）装的 scriptnow 若**共用同一会话文件**，登录一次全部生效；
+  若环境变量 `SCRIPTNOW_CLI_CONFIG` 不同则各自独立。
+- `scriptnow doctor` 显示「未登录」→ 重新 `scriptnow login`；显示「已登录但 409」→
+  会话令牌轮换竞态，重新登录即可（多端同时刷新时旧令牌会触发一次性保护）。
+- 配置目录由 CLI 自动创建（0700），无需手工维护；误删 session.json 只会要求重新登录，不丢任何作品数据。
+
 ## 快速开始（双域）
 
 **前置：Skill 支撑检查**（创作前必做）——项目缺方法论 Skill 时先创建再创作：
