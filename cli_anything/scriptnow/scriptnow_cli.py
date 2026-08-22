@@ -2186,24 +2186,32 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
                 "请让用户先通读本章（chapter show），然后：① 用户运行 scriptnow authorize 签发令牌，"
                 "agent 用 chapter adopt --token <token> 执行；或 ② 用户亲自运行 chapter adopt --human。"
             )
-    # 前置检查：revision 是否已是定稿（避免重复采纳撞 409）
+    # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
+    # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid，
+    # 避免 agent 误用版本号导致 409「候选不可用」。
+    resolved_revision_id = revision_id
     try:
         state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
+        docs = [d for d in state.get("documents", []) if d.get("chapter_id") == chapter_id]
         target = next(
-            (doc for doc in state.get("documents", [])
-             if doc.get("chapter_id") == chapter_id and doc.get("id") == revision_id),
+            (d for d in docs
+             if d.get("id") == revision_id
+             or str(d.get("revision_number")) == str(revision_id)
+             or str(revision_id).lower().removeprefix("rev") == str(d.get("revision_number"))),
             None,
         )
-        if target and target.get("status") in ("adopted", "adopted_human"):
-            msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='novel')}），无需重复采纳。"
-            if not json_output:
-                click.echo(ui.ok(msg), err=True)
+        if target:
+            resolved_revision_id = str(target.get("id"))
+            if target.get("status") in ("adopted", "adopted_human"):
+                msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='novel')}），无需重复采纳。"
+                if not json_output:
+                    click.echo(ui.ok(msg), err=True)
+                    return
+                _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
                 return
-            _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
-            return
-        if target and target.get("status") == "superseded":
-            click.echo(ui.warn("该版本已过期（superseded）——请用 chapter list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
-            return
+            if target.get("status") == "superseded":
+                click.echo(ui.warn("该版本已过期（superseded）——请用 chapter list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
+                return
     except ScriptNowError:
         pass  # 前置检查失败不阻塞，交给平台权威校验
     extra_headers = {}
@@ -2211,7 +2219,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
         extra_headers["X-Decision-Token"] = decision_token
     result = _session(ctx).request(
         "POST",
-        f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{resolved_revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
         headers=extra_headers,
     )
@@ -4087,24 +4095,31 @@ def script_adopt_scene(
                 "请让用户先通读本场（scene show），然后：① 用户运行 scriptnow authorize 签发令牌，"
                 "agent 用 scene adopt --token <token> 执行；或 ② 用户亲自运行 scene adopt --human。"
             )
-    # 前置检查：revision 是否已是定稿（避免重复采纳撞 409）
+    # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
+    # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid。
+    resolved_revision_id = revision_id
     try:
         state = _session(ctx).request("GET", f"/script/projects/{project_id}/state")
+        docs = [d for d in state.get("documents", []) if d.get("scene_id") == scene_id]
         target = next(
-            (doc for doc in state.get("documents", [])
-             if doc.get("scene_id") == scene_id and doc.get("id") == revision_id),
+            (d for d in docs
+             if d.get("id") == revision_id
+             or str(d.get("revision_number")) == str(revision_id)
+             or str(revision_id).lower().removeprefix("rev") == str(d.get("revision_number"))),
             None,
         )
-        if target and target.get("status") in ("adopted", "adopted_human"):
-            msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='script')}），无需重复采纳。"
-            if not json_output:
-                click.echo(ui.ok(msg), err=True)
+        if target:
+            resolved_revision_id = str(target.get("id"))
+            if target.get("status") in ("adopted", "adopted_human"):
+                msg = f"该版本（rev{target.get('revision_number')}）已是定稿（{_status_word(target.get('status'), medium='script')}），无需重复采纳。"
+                if not json_output:
+                    click.echo(ui.ok(msg), err=True)
+                    return
+                _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
                 return
-            _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
-            return
-        if target and target.get("status") == "superseded":
-            click.echo(ui.warn("该版本已过期（superseded）——请用 scene list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
-            return
+            if target.get("status") == "superseded":
+                click.echo(ui.warn("该版本已过期（superseded）——请用 scene list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
+                return
     except ScriptNowError:
         pass  # 前置检查失败不阻塞，交给平台权威校验
     extra_headers = {}
@@ -4112,7 +4127,7 @@ def script_adopt_scene(
         extra_headers["X-Decision-Token"] = decision_token
     result = _session(ctx).request(
         "POST",
-        f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
+        f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{resolved_revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
         headers=extra_headers,
     )
