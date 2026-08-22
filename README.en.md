@@ -183,9 +183,12 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   the background (poll `run status`, never block with `--wait`), and StoryMap restructuring is a
   super high-risk operation that requires explicit user authorization (`--confirm`) — an agent must
   NEVER adopt a storymap on the user's behalf.
-- **MANDATORY: check Skill support before writing** — `skill mounts <pid>`; if empty, create
-  one first (interpret local distillation or skill create) and mount it. `book` also flags
-  missing Skill support.
+- **MANDATORY: Skill is a pre-writing gate with a robustness-honing duty** — once the
+  intent is clear and the project exists, plan the methodology with the user (multi-round),
+  then harden it (test-drive a sample chapter/scene against its rules, diagnose gaps, iterate),
+  create and mount it on the platform (interpret local distillation or skill create), and
+  verify with `skill mounts <pid>` before any per-chapter/scene writing. `book` also hard-stops
+  on missing Skill support.
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.

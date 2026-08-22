@@ -52,11 +52,15 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号 --password '�
 
 ## 快速开始（双域）
 
-**前置：Skill 支撑检查**（创作前必做）——项目缺方法论 Skill 时先创建再创作：
+**前置：Skill 是逐章/逐场创作前的必然门禁（须健壮性完善）**——创作意图明确且项目落地后：
+
+1. 与用户规划专属方法论（可多轮，直到代表作品意图）；
+2. **健壮性完善**：试写样本章节/场次检验 Skill 约束力，诊断规则缺口与歧义，迭代加固；
+3. 在平台创建并挂载到项目，`skill mounts <pid>` 核实后，才能启动正文逐章/逐场创作。
 
 ```bash
-scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？
-# 无 → 一书一 Skill 蒸馏（样本不传平台）：interpret local 手稿.docx --spec → 本地解读 → --submit @skill.json --project-id <pid>
+scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？无 → 走下方创建流程
+# 一书一 Skill 蒸馏（样本不传平台）：interpret local 手稿.docx --spec → 本地解读+多轮完善 → --submit @skill.json --project-id <pid>
 #   或 个人 Skill：skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
 ```
 

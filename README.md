@@ -177,8 +177,11 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 - **先读契约（MANDATORY）**：`scriptnow agent-guide` 是连接平台的唯一准则——平台是事实源、
   规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
   StoryMap 修订需用户明确授权（Agent 不得代替采纳）。
-- **编排前置：Skill 支撑检查（MANDATORY）**：创作前 `skill mounts <pid>`；无方法论 Skill 时
-  先创建（interpret local 蒸馏 或 skill create）再创作。`book` 也会在缺 Skill 时提示。
+- **编排前置：Skill 是逐章/逐场创作前的必然门禁（MANDATORY，且须健壮性完善）**：
+  创作意图明确且项目落地后，先与用户规划专属方法论（可多轮），再试写样本章节/场次检验
+  Skill 约束力、诊断缺口并迭代加固（健壮性完善），然后在平台创建并挂载到项目
+  （interpret local 蒸馏 或 skill create），最后 `skill mounts <pid>` 核实已挂载，才能启动
+  正文逐章/逐场创作。`book` 也会在缺 Skill 时硬停提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
 - **规划回填优先**：story_cores / blueprint / storymap 默认由 Agent 本地生成后 `propose` 回填为候选；
