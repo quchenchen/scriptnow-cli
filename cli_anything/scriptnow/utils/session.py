@@ -108,7 +108,18 @@ class Session:
             raise ScriptNowError("登录状态已失效，请重新运行 scriptnow login")
         if response.status_code >= 400:
             detail = _extract_detail(response)
-            raise ScriptNowError(f"HTTP {response.status_code}: {detail}")
+            error = ScriptNowError(f"HTTP {response.status_code}: {detail}")
+            try:
+                from cli_anything.scriptnow.utils.diag import record_error
+
+                record_error(
+                    command=command or "",
+                    args=tuple(),
+                    detail=str(error),
+                )
+            except Exception:
+                pass  # 记录失败不影响主流程
+            raise error
         if response.status_code == 204:
             return None
         try:

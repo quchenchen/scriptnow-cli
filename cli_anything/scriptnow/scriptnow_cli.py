@@ -379,10 +379,58 @@ def authorize_cmd(
     _emit(result, json_output)
 
 
-@main.command("doctor")
+@main.command("feedback")
+@click.option("--note", default="", help="补充说明（可选，例如你遇到的场景描述）")
+@click.option("--send", is_flag=True, help="发送诊断包到平台（默认只本地生成，不发送）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def doctor_cmd(ctx: click.Context, json_output: bool) -> None:
+def feedback_cmd(ctx: click.Context, note: str, send: bool, json_output: bool) -> None:
+    """收集 CLI 诊断包（版本/近期错误/命令记录），供针对性修复。
+
+    默认只生成本地诊断包并展示；--send 才发送到平台（需已登录）。
+    诊断包不含密码、令牌、正文——只含脱敏参数与错误码。
+    """
+    from cli_anything.scriptnow import __version__ as _VERSION
+    from cli_anything.scriptnow.utils.diag import recent_errors
+
+    errors = recent_errors(50)
+    package = {
+        "cli_version": _VERSION,
+        "note": note[:500],
+        "error_count": len(errors),
+        "errors": errors,
+    }
+    if send:
+        try:
+            result = _session(ctx).request(
+                "POST", "/api/cli-feedback", json_body=package, write=True
+            )
+            if not json_output:
+                click.echo(ui.ok("诊断包已发送到平台，感谢反馈！"), err=True)
+            _emit({"sent": True, "result": result}, json_output)
+            return
+        except ScriptNowError as error:
+            raise click.ClickException(f"发送失败：{error}")
+    if not json_output:
+        click.echo(ui.section("=== CLI 诊断包（本地）==="), err=True)
+        click.echo(ui.kv("CLI 版本", package["cli_version"]), err=True)
+        click.echo(ui.kv("错误条数", package["error_count"]), err=True)
+        for e in errors[:5]:
+            click.echo(f"  [{e.get('error_code','?')}] {e.get('iso','?')} {e.get('command','?')}", err=True)
+            click.echo(ui.dim(f"      {str(e.get('detail',''))[:100]}"), err=True)
+        if note:
+            click.echo(ui.dim(f"备注：{note}"), err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim("确认后运行 scriptnow feedback --send 发送到平台（需已登录）。"), err=True)
+        return
+    _emit(package, json_output)
+
+
+@main.command("doctor")
+@click.option("--clear-errors", is_flag=True, help="清空本地 CLI 错误日志（errors.jsonl）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> None:
     """诊断：当前 CLI 版本、配置/会话位置、登录账号、平台连通性。
 
     Agent 排查「登录失败 / 找不到配置 / 409 权限」时先跑本命令，一眼看到
@@ -391,6 +439,13 @@ def doctor_cmd(ctx: click.Context, json_output: bool) -> None:
     from cli_anything.scriptnow import __version__ as _VERSION
     from cli_anything.scriptnow.utils.session import _config_path
 
+    if clear_errors:
+        from cli_anything.scriptnow.utils.diag import clear_errors as _clear
+
+        _clear()
+        if not json_output:
+            click.echo(ui.ok("CLI 错误日志已清空。"), err=True)
+        return
     config = _config_path()
     report: dict[str, object] = {
         "version": _VERSION,
@@ -424,8 +479,25 @@ def doctor_cmd(ctx: click.Context, json_output: bool) -> None:
         else:
             click.echo(ui.warn(f"未登录：{report.get('login_error')}"), err=True)
             click.echo(ui.dim("修复：scriptnow login --host <平台地址> --email <账号>（交互输入密码）"), err=True)
-        click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json）"), err=True)
+        click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json + errors.jsonl）"), err=True)
         click.echo(ui.dim("可用环境变量 SCRIPTNOW_CLI_CONFIG 覆盖会话文件位置"), err=True)
+        # 近期错误诊断
+        from cli_anything.scriptnow.utils.diag import recent_errors
+
+        errs = recent_errors(5)
+        if errs:
+            click.echo("", err=True)
+            click.echo(ui.section("=== 近期 CLI 错误（最近 5 条）==="), err=True)
+            for e in errs:
+                click.echo(
+                    f"  {e.get('iso','?')} [{e.get('error_code','?')}] "
+                    f"{e.get('command','?')} {''.join(e.get('args') or [])[:40]}",
+                    err=True,
+                )
+                click.echo(ui.dim(f"      {str(e.get('detail',''))[:90]}"), err=True)
+            click.echo(ui.dim("可用 scriptnow feedback 发送诊断包；scriptnow doctor --clear-errors 清空。"), err=True)
+        else:
+            click.echo(ui.ok("近期无 CLI 错误记录 ✅"), err=True)
         return
     _emit(report, json_output)
 
@@ -5716,3 +5788,6 @@ def _wait_for_run(session: Session, project_id: str, run_id: str, json_output: b
         f"run {run_id} did not finish within {max_seconds}s; "
         "继续用 scriptnow run status 轮询（agent 场景建议 SCRIPTNOW_WAIT_MAX_SECONDS=45）"
     )
+
+
+
