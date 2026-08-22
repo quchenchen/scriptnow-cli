@@ -69,6 +69,57 @@ def _human(value: Any) -> str:
     return str(value)
 
 
+# ------------------------------------------------------------------ 用户友好交付语言
+# 面向编剧/编辑（非技术用户）的提示翻译：把技术标识、状态词翻译成作品语言，
+# 并在交付关键节点附上「下一步」引导，让用户在 agent+CLI 共创流程里始终知道
+# 自己在哪、刚完成了什么、接下来做什么。--json 结构化输出不受影响。
+
+
+def _pretty_kind(medium: str) -> str:
+    """'novel' → 小说章节, 'script' → 剧本场次（用于生成/回传提示）。"""
+    return "小说章节" if medium == "novel" else "剧本场次"
+
+
+def _status_word(status: str | None, *, medium: str) -> str:
+    """把平台状态词翻译成编辑能懂的话。"""
+    if status in ("adopted", "adopted_human"):
+        return "已定稿"
+    if status in ("candidate", "draft"):
+        return "候选稿"
+    if status == "succeeded":
+        return "完成"
+    if status == "running":
+        return "创作中"
+    if status == "queued":
+        return "排队中"
+    if status == "failed":
+        return "未通过"
+    unit = "章" if medium == "novel" else "场"
+    return f"{status}（{unit}状态）"
+
+
+def _next_step_after_generate(medium: str) -> str:
+    """生成/回传完成后的下一步引导。"""
+    if medium == "novel":
+        return "下一步：用 chapter show 通读全文，满意后用 chapter adopt 定稿；不满意就带着反馈重新生成。"
+    return "下一步：用 scene show 通读本场，满意后用 scene adopt 定稿；不满意就带着反馈重新生成。"
+
+
+def _next_step_after_adopt(medium: str) -> str:
+    """定稿后的下一步引导。"""
+    if medium == "novel":
+        return "本章已定稿并进入正文版本库，可随时回溯。继续下一章，或先审读修订本章。"
+    return "本场已定稿并进入正文版本库，可随时回溯。继续下一场，或先审读修订本场。"
+
+
+def _confirm_line(medium: str, *, adopted: bool) -> str:
+    """生成/定稿的确认语，避免干巴巴的状态词。"""
+    unit = "章节" if medium == "novel" else "场次"
+    if adopted:
+        return f"{unit}已定稿 ✅ —— {_next_step_after_adopt(medium)}"
+    return f"{unit}候选稿已就绪 —— {_next_step_after_generate(medium)}"
+
+
 # ------------------------------------------------------------------ token budget
 
 
@@ -364,7 +415,7 @@ _GUIDE_STEPS = [
         "step": 1,
         "title": "登录平台",
         "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
-        "why": "建立安全会话（cookie+CSRF），之后所有创作命令自动携带身份。",
+        "why": "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。",
         "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
         "verify": "输出 登录成功：https://sn.igeewa.com（<邮箱>）",
         "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
@@ -387,12 +438,12 @@ _GUIDE_STEPS = [
         "step": 2,
         "title": "创建作品项目",
         "scene": "在空白稿纸上写下第一行：作品名、体裁、一句话前提——故事从这里开始呼吸。",
-        "why": "一部作品 = 一个项目；先定体裁（小说/剧本）与故事前提，作为后续一切的锚点。",
+        "why": "先为你的故事建一个家：定下体裁（小说/剧本）与一句话前提，之后的创作都围绕它展开。",
         "command": (
             "scriptnow project create --name <作品名> --medium novel --premise <一句话前提> "
             "--genre <类型> --tone <文风> --chapter-target-words 1200"
         ),
-        "verify": "返回 project_id；保存它（下文用 <pid> 代替）。",
+        "verify": "返回作品编号；保存它（下文用 <作品号> 代替）。",
         "prompt": "如果只能用一个画面来概括你的故事，那会是什么？",
         "masters": [
             {
@@ -436,13 +487,13 @@ _GUIDE_STEPS = [
         "step": 4,
         "title": "规划故事三件套",
         "scene": "摊开编剧的案头：故事核心、蓝图、卷章结构。先想清楚再动笔，是编辑的基本功。",
-        "why": "故事核心（cores）→ 蓝图（blueprint）→ 卷章结构（storymap）。先想清楚再动笔，是编辑的基本功。",
+        "why": "先立故事核心，再画创作蓝图，最后排出全书章节结构——先想清楚再动笔，是编辑的基本功。",
         "command": (
             "scriptnow novel propose cores @cores.json --adopt && "
             "scriptnow novel propose blueprint @blueprint.json --adopt && "
             "scriptnow novel propose storymap @storymap.json（或 novel orchestrate --accept 采纳）"
         ),
-        "verify": "story_map 已采纳，book 计划可打印。",
+        "verify": "全书结构已定稿，创作计划可打印（book）。",
         "prompt": "你的主角最想要什么，又最怕失去什么？",
         "masters": [
             {
@@ -463,9 +514,9 @@ _GUIDE_STEPS = [
         "step": 5,
         "title": "审阅并采纳结构",
         "scene": "把候选结构摊在桌上，像资深编辑逐页过目：接受、调整、或打回重写——采纳前一切可改。",
-        "why": "orchestrate 把候选结构摊开给你裁决：接受、调整、或让 Agent 重写——采纳前一切可改。",
-        "command": "scriptnow novel orchestrate <pid> --accept",
-        "verify": "输出全书创作计划（各章状态 needs_generation）。",
+        "why": "先把候选结构摊开给你裁决：接受、调整、或让 Agent 重写——采纳前一切可改。",
+        "command": "scriptnow novel orchestrate <作品号> --accept",
+        "verify": "输出全书创作计划（各章状态为「待创作」）。",
         "prompt": "这个结构里，哪一章让你最期待动笔？",
         "masters": [
             {
@@ -486,22 +537,22 @@ _GUIDE_STEPS = [
         "step": 6,
         "title": "规划并挂载专属 Skill（门禁 · 须健壮性完善）",
         "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
-        "why": "Skill 是逐章/逐场创作前的必然检查项：项目落地后必须先规划专属方法论（可多轮），再对其健壮性完善——试写样本章节/场次检验约束力、诊断规则缺口、迭代加固——然后在平台创建并挂载到项目，核实后才能启动正文创作。",
-        "command": "scriptnow skill mounts <pid>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照 Skill 规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <pid>（或 skill create + skill mount）",
-        "verify": "scriptnow skill mounts <pid> 显示该 Skill 已挂载，且经样本试写验证规则有效。",
+        "why": "动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格、角色守则与连续性标准——多轮打磨、试写检验，直到它真正代表你的意图，然后挂载到作品上，才能开始逐章创作。",
+        "command": "scriptnow skill mounts <作品号>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照方法论规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <作品号>（或 skill create + skill mount）",
+        "verify": "scriptnow skill mounts <作品号> 显示该方法论已挂载，且经样本试写验证规则有效。",
         "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？",
     },
     {
         "step": 7,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
-        "why": "Agent 逐章创作回填（chapter propose）或平台生成（chapter generate），你逐章审读采纳——这是人机共创的核心循环。",
+        "why": "Agent 递来一叠手稿，你逐页批注、润色、定稿——这是人机共创的核心循环：每一章都经你审读，满意才定稿。",
         "command": (
-            "scriptnow book <pid>（看计划）→ chapter show <pid> <cid> --plain（读文本）→ "
-            "chapter generate <pid> <cid> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "chapter adopt <pid> <cid> <revision_id>"
+            "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（读文本）→ "
+            "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
+            "chapter adopt <作品号> <章节号> <版本号>"
         ),
-        "verify": "每一章都有 adopted 版本。",
+        "verify": "每一章都有已定稿版本。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
         "masters": [
             {
@@ -523,7 +574,7 @@ _GUIDE_STEPS = [
         "title": "审读与修订",
         "scene": "编辑的责任：不放过一处瑕疵。逐句逐帧以挑剔受众的目光审读——每一句是否值得停留，每一帧是否推动情绪。",
         "why": "Agent 审读必须严苛：化身资深编剧与挑剔受众，逐句引用证据、点名失败的节拍，拒绝泛泛而谈的称赞；低于标准的正文立即带反馈重新生成。",
-        "command": "scriptnow chapter show <pid> <cid> --plain（通读全文后裁决；不满意即 chapter generate --feedback 迭代）",
+        "command": "scriptnow chapter show <作品号> <章节号> --plain（通读全文后裁决；不满意即 chapter generate --feedback 迭代）",
         "verify": "每一句都经得起挑剔读者的审视；质量报告无阻断项。",
         "prompt": "如果只能删掉一段，你会删哪一段？删掉之后，故事会不会更有力？",
         "masters": [
@@ -547,8 +598,8 @@ _GUIDE_STEPS = [
         "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
         "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
         "command": (
-            "scriptnow cover package <pid> && scriptnow cover generate <pid> --image-model-id <生图模型> && "
-            "scriptnow export options <pid> && scriptnow export create <pid>"
+            "scriptnow cover package <作品号> && scriptnow cover generate <作品号> --image-model-id <生图模型> && "
+            "scriptnow export options <作品号> && scriptnow export create <作品号>"
         ),
         "verify": "拿到导出文件（或封面 URL）。",
         "prompt": "这部作品完成时，你想把它交给谁？",
@@ -747,8 +798,26 @@ def project_group(ctx: click.Context) -> None:
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def project_list(ctx: click.Context, json_output: bool) -> None:
-    """List projects."""
-    _emit(_session(ctx).request("GET", "/projects"), json_output)
+    """列出你的全部作品。"""
+    result = _session(ctx).request("GET", "/projects")
+    if not json_output and isinstance(result, list):
+        if not result:
+            click.echo(ui.dim("还没有作品——先 project create 建一个吧。"), err=True)
+            return
+        medium_label = {"novel": "小说", "script": "剧本"}
+        click.echo(ui.section("=== 我的作品 ==="), err=True)
+        for item in result:
+            name = item.get("name") or item.get("id") or "未命名"
+            medium = medium_label.get(item.get("medium") or "", item.get("medium") or "")
+            premise = (item.get("premise") or "")[:40]
+            status = _status_word(item.get("status"), medium=item.get("medium") or "novel")
+            line = f"  {name}（{medium} · {status}）"
+            if premise:
+                line += f"\n      {premise}"
+            click.echo(line, err=True)
+            click.echo(ui.dim(f"      作品号 {item.get('id')}"), err=True)
+        return
+    _emit(result, json_output)
 
 
 @project_group.command("create")
@@ -1179,7 +1248,7 @@ def admin_skill_update(
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(f"Skill {skill_name} 已更新（digest {result.get('digest')}）"))
+        click.echo(ui.ok(f"Skill《{skill_name}》已更新并保存新版本"))
     _emit(result, json_output)
 
 
@@ -1424,7 +1493,7 @@ def interpret_go(
         "consent_version": "source-processing-v1",
     }
     if not json_output:
-        click.echo(f"项目: {project_id}  蒸馏: {distillation_id}  开始通读（可能数分钟）…", err=True)
+        click.echo(f"作品 {project_id} 正在通读素材（蒸馏 {distillation_id}，可能数分钟）…", err=True)
     session.request(
         "POST",
         f"/projects/{project_id}/source-distillations/{distillation_id}/read",
@@ -1752,11 +1821,11 @@ def interpret_local(
             except ScriptNowError as error:
                 result["mount_error"] = str(error)
     if not json_output:
-        click.echo(ui.ok(f"Skill 已创建：{created.get('name')}（{skill_id}）"))
+        click.echo(ui.ok(f"专属方法论 Skill《{created.get('name')}》已创建"))
         if result.get("mounted"):
-            click.echo(ui.ok(f"已挂载到项目 {project_id}（version {result['mounted']['version_id']}）"))
+            click.echo(ui.ok(f"并已挂载到当前作品 —— 可以开始逐章/逐场创作了。"))
         if result.get("mount_error"):
-            click.echo(ui.warn(f"挂载失败：{result['mount_error']}"))
+            click.echo(ui.warn(f"挂载未完成：{result['mount_error']}"))
     _emit(result, json_output)
 
 
@@ -2036,7 +2105,8 @@ def chapter_propose(
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(f"章节候选已回传 {chapter_id}（{result.get('status', 'candidate')}）"))
+        adopted = result.get("status") in ("adopted", "adopted_human")
+        click.echo(ui.ok(_confirm_line("novel", adopted=adopted)))
     _emit(result, json_output)
 
 
@@ -2143,6 +2213,13 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     if not json_output:
         mounted = _session(ctx).request("GET", f"/projects/{project_id}/skills")
         names = [str(item.get("name") or "") for item in mounted] if isinstance(mounted, list) else []
+        click.echo(ui.section(f"=== 全书创作计划（{len(plan)} 章）==="), err=True)
+        for item in plan:
+            st = item["state"]
+            mark = "已定稿" if st["adopted_revision"] is not None else ("候选待审" if st["has_candidate_pending_review"] else "待创作")
+            icon = ui.ok("✓") if st["adopted_revision"] is not None else (ui.warn("…") if st["has_candidate_pending_review"] else "·")
+            click.echo(f"  {icon} 第{item.get('ordinal') or '?'}章 · {item.get('title') or '未命名'}（{mark}）", err=True)
+        click.echo(ui.dim(f"已定稿 {summary['adopted']}/{len(plan)} 章；待创作 {len(summary['needs_generation'])} 章；候选待审 {len(summary['candidates_pending_review'])} 章"), err=True)
         if names:
             click.echo(ui.dim(f"方法论 Skill：{', '.join(names)}"), err=True)
         else:
@@ -2373,8 +2450,8 @@ def novel_outline(
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{result.get('status')}）——请用户审阅后采纳："))
-        click.echo(ui.dim("  采纳：scriptnow novel outline-adopt <pid>；storymap 规划前必须采纳。"), err=True)
+        click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{_status_word(result.get('status'), medium='novel')}）——请先通读审阅："))
+        click.echo(ui.dim("  满意就采纳：scriptnow novel outline-adopt <作品号>；采纳后即可规划全书结构。"), err=True)
     _emit(result, json_output)
 
 
@@ -2387,7 +2464,7 @@ def novel_outline_status(ctx: click.Context, project_id: str | None, json_output
     pid = _resolve_project_id(ctx, project_id)
     result = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
     if result is None:
-        click.echo(ui.warn('尚无梗概大纲——novel outline <pid> --text "≤500 字梗概"'), err=True)
+        click.echo(ui.warn('尚无梗概大纲——先写一句 ≤500 字的梗概：novel outline <作品号> --text "……"'), err=True)
         return
     if not json_output:
         mark = ui.ok("已采纳") if result.get("status") == "adopted" else ui.warn("候选待审")
@@ -2406,7 +2483,7 @@ def novel_outline_adopt(ctx: click.Context, project_id: str | None, json_output:
     pid = _resolve_project_id(ctx, project_id)
     result = _api_request(ctx, "POST", f"/novel/projects/{pid}/synopsis-outline/adopt", write=True)
     if not json_output:
-        click.echo(ui.ok(f"梗概大纲已采纳（v{result.get('version')}）——可开始 storymap 规划"))
+        click.echo(ui.ok(f"梗概大纲已定稿（v{result.get('version')}）——接下来规划全书结构（storymap）。"))
     _emit(result, json_output)
 
 
@@ -2424,12 +2501,12 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     direction_ok = bool((state.get("creation_settings") or {}).get("chapter_target_words"))
     checks.append(("创作方向（direction）", direction_ok, "project direction --apply @direction.json"))
     cores = [c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]
-    checks.append(("故事核心（adopted core）", bool(cores), "novel propose cores @file --adopt"))
-    checks.append(("蓝图（blueprint）", state.get("blueprint") is not None, "novel propose blueprint @file --adopt"))
+    checks.append(("故事核心（已定稿）", bool(cores), "novel propose cores @file --adopt"))
+    checks.append(("蓝图", state.get("blueprint") is not None, "novel propose blueprint @file --adopt"))
     outline = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
-    checks.append(("梗概大纲（adopted outline）", bool(outline and outline.get("status") == "adopted"), 'novel outline <pid> --text "…" → outline-adopt'))
+    checks.append(("梗概大纲（已定稿）", bool(outline and outline.get("status") == "adopted"), 'novel outline <作品号> --text "…" → outline-adopt'))
     sm = state.get("story_map") or {}
-    checks.append(("StoryMap", bool(sm.get("volumes")), "novel propose storymap @file 或 storymap generate --wait"))
+    checks.append(("StoryMap（全书结构）", bool(sm.get("volumes")), "novel propose storymap @file 或 storymap generate --wait"))
     try:
         mounted = session.request("GET", f"/projects/{pid}/skills")
         skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
@@ -2449,7 +2526,7 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
         click.echo(f"  {mark} {name}" + ("" if ok else f"  → {fix}"), err=True)
     if skills:
         click.echo(ui.dim(f"  Skill：{', '.join(skills)}"), err=True)
-    click.echo(ui.ok(f"就绪：{sum(1 for c in checks if c[1])}/{len(checks)} 项" if all_ok else ui.error(f"阻塞：{sum(1 for c in checks if not c[1])} 项缺失——先补齐再逐章写作")), err=True)
+    click.echo(ui.ok(f"创作前检查通过：{sum(1 for c in checks if c[1])}/{len(checks)} 项就绪" if all_ok else ui.error(f"还差 {sum(1 for c in checks if not c[1])} 项未就绪——按上面提示补齐后再开始逐章创作")), err=True)
 
 
 
@@ -3032,7 +3109,7 @@ def novel_orchestrate(
             write=True,
         )
         if not json_output:
-            click.echo(ui.ok(f"StoryMap 已采纳（{adopted.get('status')}）"), err=True)
+            click.echo(ui.ok(f"全书结构已定稿（{_status_word(adopted.get('status'), medium='novel')}）——下面打印全书创作计划。"), err=True)
 
     # ④ 输出全书创作计划
     fresh = session.request("GET", f"/novel/projects/{project_id}/state")
@@ -3255,7 +3332,7 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
         if not ok:
             all_ok = False
         click.echo(f"  {mark} {name}" + ("" if ok else f"  → {fix}"), err=True)
-    click.echo(ui.ok(f"就绪：{sum(1 for c in checks if c[1])}/{len(checks)} 项" if all_ok else ui.error(f"阻塞：{sum(1 for c in checks if not c[1])} 项缺失")), err=True)
+    click.echo(ui.ok(f"创作前检查通过：{sum(1 for c in checks if c[1])}/{len(checks)} 项就绪" if all_ok else ui.error(f"还差 {sum(1 for c in checks if not c[1])} 项未就绪——按上面提示补齐")), err=True)
 
 
 
@@ -3866,11 +3943,12 @@ def script_scene_propose(
         )
         result["adopted"] = adopted.get("status")
     if not json_output:
-        click.echo(ui.ok(f"场次候选已回传 {scene_id}（{result.get('status', 'candidate')}）"))
+        adopted = result.get("status") in ("adopted", "adopted_human") or result.get("adopted")
+        click.echo(ui.ok(_confirm_line("script", adopted=adopted)))
         click.echo(
             ui.dim(
-                "下一步：采纳 scriptnow script adopt-scene <pid> <scene_id> <revision_id>；"
-                "审读 scriptnow script scene-show <pid> <scene_id>"
+                "下一步：采纳 scriptnow script adopt-scene <作品号> <场次号> <版本号>；"
+                "审读 scriptnow script scene-show <作品号> <场次号>"
             ),
             err=True,
         )
@@ -3975,9 +4053,9 @@ def script_scene_batch(
             click.echo(ui.dim(f"失败清单已保存：{progress_file}（续跑：--resume-from {progress_file}）"), err=True)
     if not json_output:
         if failed:
-            click.echo(ui.error(f"失败 {len(failed)}/{len(ids)}：{', '.join(str(i['scene_id']) for i in failed)}"), err=True)
+            click.echo(ui.error(f"未完成 {len(failed)}/{len(ids)} 场：{', '.join(str(i['scene_id']) for i in failed)}——可续跑：--resume-from {progress_file or '<失败清单>'}"), err=True)
         else:
-            click.echo(ui.ok(f"全部成功：{len(ids)} 个场次"))
+            click.echo(ui.ok(f"全部完成：{len(ids)} 个场次 ✅ —— 下一步逐场 scene show 审读，满意后 scene adopt 定稿。"))
     _emit({"total": len(ids), "succeeded": len(ids) - len(failed), "failed": failed, "results": summary}, json_output)
 
 
@@ -4040,13 +4118,14 @@ def script_scene_quality(
         "flag": "缺场景标题" if not sluglines else "达标",
     })
     if not json_output:
-        click.echo(ui.section(f"=== {scene_id} · rev{chosen.get('revision_number')}（{chosen.get('source')}）==="), err=True)
+        source_label = "平台生成" if chosen.get("source") == "platform" else "共创回填"
+        click.echo(ui.section(f"=== 本场（第 {chosen.get('revision_number', 1)} 版 · {source_label}）==="), err=True)
         for item in checks:
             mark = ui.ok("") if item["ok"] else ui.warn("")
             click.echo(f"  {mark} {item['check']}：{item['value']}（目标 {item['target']}）{item['flag']}", err=True)
         passed = sum(1 for item in checks if item["ok"])
-        overall = "GOOD" if passed == len(checks) else ("NEEDS WORK" if passed >= 1 else "POOR")
-        click.echo(ui.dim(f"Overall: {overall}（{passed}/{len(checks)} 项达标）"), err=True)
+        overall = "整体达标" if passed == len(checks) else ("还需打磨" if passed >= 1 else "不达标")
+        click.echo(ui.dim(f"Overall: {overall}（{passed}/{len(checks)} 项通过）"), err=True)
     _emit(
         {
             "scene_id": scene_id,
@@ -4099,7 +4178,7 @@ def project_use(ctx: click.Context, project_id: str) -> None:
     import json as _json
 
     path.write_text(_json.dumps({"project_id": project_id}, ensure_ascii=False), encoding="utf-8")
-    click.echo(ui.ok(f"默认项目已设为 {project_id}"))
+    click.echo(ui.ok("默认作品已设置 —— 后续命令可省略作品号。"))
 
 
 @script_group.command("quality-report")
@@ -4255,11 +4334,11 @@ def script_scene_diff(
             json_output,
         )
         return
-    click.echo(ui.section(f"=== {scene_id}：rev{before.get('revision_number')} → rev{after.get('revision_number')} ==="), err=True)
-    click.echo(f"  字符：{a['chars']} → {b['chars']}（{'+' if delta['chars'] >= 0 else ''}{delta['chars']}，{'+' if delta['chars_pct'] >= 0 else ''}{delta['chars_pct']}%）", err=True)
-    click.echo(f"  块：{a['blocks']} → {b['blocks']}（{'+' if delta['blocks'] >= 0 else ''}{delta['blocks']}）", err=True)
+    click.echo(ui.section(f"=== 本场修订对比：第 {before.get('revision_number')} 版 → 第 {after.get('revision_number')} 版 ==="), err=True)
+    click.echo(f"  字数：{a['chars']} → {b['chars']}（{'+' if delta['chars'] >= 0 else ''}{delta['chars']}，{'+' if delta['chars_pct'] >= 0 else ''}{delta['chars_pct']}%）", err=True)
+    click.echo(f"  内容块：{a['blocks']} → {b['blocks']}（{'+' if delta['blocks'] >= 0 else ''}{delta['blocks']}）", err=True)
     click.echo(f"  对白轮：{min(a['characters'], a['dialogues'])} → {min(b['characters'], b['dialogues'])}（{'+' if delta['dialogue_rounds'] >= 0 else ''}{delta['dialogue_rounds']}）", err=True)
-    click.echo(f"  slugline：{a['sluglines']} → {b['sluglines']} | transition：{a['transitions']} → {b['transitions']}", err=True)
+    click.echo(f"  场景标题：{a['sluglines']} → {b['sluglines']} | 转场：{a['transitions']} → {b['transitions']}", err=True)
 
 
 # ----------------------------------------------------------------- translation
@@ -4572,7 +4651,7 @@ def skill_growth_start(
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(f"方法论成长分析已启动：run {result.get('id')}（{result.get('status')}）"))
+        click.echo(ui.ok("方法论成长分析已启动，完成后用 skill growth workspace 查看候选，再 decide → evaluate → publish。"))
         click.echo(ui.dim("完成后用 skill growth workspace 查看候选，再 decide → evaluate → publish。"), err=True)
     _emit(result, json_output)
 
@@ -4818,7 +4897,7 @@ def cover_package(ctx: click.Context, project_id: str, feedback: str | None, jso
         timeout=600,
     )
     if not json_output:
-        click.echo(ui.ok(f"作品包装包已生成：{result.get('title')}（v{result.get('version')}）"))
+        click.echo(ui.ok(f"作品包装已生成：《{result.get('title')}》（v{result.get('version')}）—— 下一步 cover generate 生成封面。"))
     _emit(result, json_output)
 
 
@@ -4870,7 +4949,7 @@ def cover_package_show(ctx: click.Context, project_id: str, json_output: bool) -
     result = _api_request(ctx, "GET", f"/projects/{project_id}/packaging")
     if result is None:
         if not json_output:
-            click.echo(ui.warn("该项目尚未生成作品包装包 —— 先运行 cover package <pid> 生成后再生图。"), err=True)
+            click.echo(ui.warn("该作品尚未生成作品包装——先运行 cover package <作品号> 生成，再生成封面图。"), err=True)
         return
     if not json_output:
         click.echo(ui.section(f"=== 作品包装包 {result.get('id')}（v{result.get('version')}）==="), err=True)
