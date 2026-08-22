@@ -96,6 +96,17 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
   AND a follow-up read-back confirms it landed (`project create` auto-reads-back and
   prints a receipt with `verified`). Never report "done" to the user without server-returned
   ids and read-back confirmation; local files or textual self-claims are never evidence.
+- **HUMAN DECISION GATE — every chapter/scene finalization is a human decision
+  (MANDATORY, no AI self-write/self-review/self-finalize).** After a candidate is
+  produced, STOP and present the full text to the user (`chapter show` / `scene show`
+  plain text). Only when the user personally reads and approves may the agent run
+  `chapter adopt --human` / `scene adopt --human` (records `adopted_human`). A silent
+  agent adopt without `--human` is only a plain adoption and does NOT satisfy the
+  gate: the platform refuses to generate the NEXT chapter/scene until the previous
+  one has been human-finalized (`adopted_human`). The agent must never claim the
+  user "read" content on their behalf, never treat indirect authorizations (e.g.
+  "user approved the outline") as per-chapter human finalization, and never bypass
+  the gate by generating later chapters concurrently.
 - **SKILL IS A MANDATORY PRE-WRITING GATE (both domains, first priority after
   the project lands).** Once the creative intent is clear and the project exists,
   **no per-chapter/per-scene generation may start until the project has a
@@ -151,13 +162,26 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
      platform and mount it, then confirm with `scriptnow skill mounts
      <project_id>` **before** the first `chapter/scene generate` or `propose`
      body-text write:
-     - One-work-one-skill distillation (preferred; samples stay off-platform):
+     - **CO-CREATE WITH THE USER — NEVER BUILD THE SKILL ALONE (MANDATORY).**
+       Most editors/writers do not know what a "Skill" is, so the agent must
+       GUIDE the process in plain language and let the USER supply the actual
+       writing standards. Preferred path for non-technical users:
+       `scriptnow skill craft --domain novel|script` — an interactive wizard
+       that asks (in editor language) about the work, craft rules, voice,
+       continuity, evaluation standards and examples, assembles the structured
+       methodology, and **requires the user to review and confirm before
+       submitting**. The agent may help fill answers, but the user must
+       personally approve the final draft; the agent must never submit a
+       methodology the user has not read and confirmed.
+     - One-work-one-skill distillation (agent-assisted; samples stay
+       off-platform):
        `scriptnow interpret local <work> --spec` → read the work locally, write
-       the skill JSON per the spec → harden it per phase 2 → `scriptnow
-       interpret local <work> --submit @skill.json --project-id <pid>` (creates
-       and mounts). For scripts set `"domain": "script"`. Novels may also use
-       `interpret go` (platform read-through).
-     - Direct personal-skill submission:
+       the skill JSON per the spec → harden it per phase 2 → **present the
+       draft to the user for review/confirmation** → `scriptnow interpret local
+       <work> --submit @skill.json --project-id <pid>` (creates and mounts). For
+       scripts set `"domain": "script"`. Novels may also use `interpret go`
+       (platform read-through).
+     - Direct personal-skill submission (user explicitly specifies every field):
        `scriptnow skill create --name ... --domain novel|script --role writer
        --stage writing --instructions "..."`, then `skill mounts <pid>` for the
        version id and `skill mount <pid> <skill_id> <version_id>`.
@@ -187,9 +211,9 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
     `novel propose cores|blueprint|storymap @file` (agent-side, backfill-first) or
     `storymap generate` (platform fallback; background, poll `run status`), then `novel orchestrate --accept` to
     review+adopt and print the plan. Writing loop: `book <pid>` (hosted plan) →
-    per chapter `chapter show --plain` → judge → `chapter generate --feedback` →
-    `chapter adopt`. Agent-written adaptation text returns via `chapter propose
-    --file @blocks.json`.
+    per chapter `chapter show --plain` (USER reads the full text) → user decides →
+    `chapter generate --feedback` → user finalizes via `chapter adopt --human`.
+    Agent-written adaptation text returns via `chapter propose --file @blocks.json`.
   - **Script (episodes × scenes)**: planning via
     `script propose cores|blueprint|storymap|bibles @file` (agent-side) or the platform
     generation commands (`script story-cores --wait` → adopt → `script blueprint`

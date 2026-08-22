@@ -182,3 +182,46 @@ def test_self_upgrade_unreachable(runner, monkeypatch):
     result = runner.invoke(main, ["self-upgrade", "--yes"])
     assert result.exit_code == 0
     assert "无法连接" in result.output
+
+
+def test_skill_craft_assembles_structured_draft_and_requires_confirm():
+    """skill craft 人机共建：草案必须结构化分节且提交需人工确认（agent 不可绕过）。"""
+    from click.testing import CliRunner
+
+    from cli_anything.scriptnow.scriptnow_cli import (
+        _craft_answers_to_draft,
+        _sanitize_skill_name,
+        _skill_craft_questions,
+        main,
+    )
+
+    # 1) 草案组装：五个维度 + 正反例，满足平台健壮性门禁
+    draft = _craft_answers_to_draft(
+        "novel",
+        {
+            "work": "都市悬疑言情",
+            "craft": "每章结尾留钩子；对白短促有力",
+            "voice": "短句冷冽",
+            "continuity": "不丢已埋伏笔",
+            "evaluation": "按张力/连贯/角色主动性自检；不达标拒收重写",
+            "examples": "正例用动作替代心理描写；反例连续三句解释性旁白",
+        },
+    )
+    for section in ("一、craft", "二、voice", "三、continuity", "四、evaluation", "五、examples"):
+        assert section in draft["instructions"]
+    assert "正例" in draft["instructions"] and "反例" in draft["instructions"]
+
+    # 2) 名称 sanitize
+    assert _sanitize_skill_name("都市悬疑言情") == "都市悬疑言情"
+    assert _sanitize_skill_name("!!") == "my-writing-methodology"
+
+    # 3) 提问清单是编辑语言（无技术术语）
+    prompts = " ".join(str(q["prompt"]) for q in _skill_craft_questions())
+    assert "craft" not in prompts and "skill" not in prompts
+
+    # 4) 交互流程：默认不确认 → 不发起请求（人必须亲自确认）
+    runner = CliRunner()
+    inputs = "都市悬疑言情\n钩子\n冷冽\n伏笔\n自检\n正反例\nmy-sop\n说明\nn\n"
+    r = runner.invoke(main, ["skill", "craft", "--domain", "novel"], input=inputs)
+    assert r.exit_code == 0
+    assert "已取消" in r.output

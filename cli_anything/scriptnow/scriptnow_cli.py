@@ -382,13 +382,14 @@ _AGENT_CONTRACT = {
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
+        "人机协作铁律（逐章/逐场定稿必须是人的决策）：禁止 AI 自写自评自定稿。每章/每场创作候选产出后，必须停下来把内容呈现给用户（chapter show / scene show 通读全文），由用户亲自审读并决策；只有用户明确认可后，agent 才能执行 chapter adopt --human / scene adopt --human 完成人工定稿（adopted_human）。agent 静默 adopt（不带 --human）只记为普通采纳，不满足下一章/下一场创作的前置检查——平台会拒绝继续生成，直到用户亲自定稿上一章/上一场。Agent 不得代用户确认『已通读』，不得用『用户已批准大纲』之类的间接授权代替逐章人工定稿，不得绕过前置检查并发创作后续章节。",
     ],
     "quickstart": [
         "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
         "Skill 门禁（逐章创作前必做）：与用户规划完善专属方法论 Skill（可多轮）→ scriptnow skill create/interpret local 创建 → scriptnow skill mount <pid> <skill_id> <version_id> → scriptnow skill mounts <pid> 核实已挂载",
-        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 审读 → scriptnow chapter adopt <pid> <cid> <revision_id>",
+        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 用户通读 chapter show → 用户认可后 chapter adopt --human <pid> <cid> <revision_id>（人工定稿，否则下一章被拒）",
         "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
@@ -548,13 +549,13 @@ _GUIDE_STEPS = [
         "step": 7,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
-        "why": "Agent 递来一叠手稿，你逐页批注、润色、定稿——这是人机共创的核心循环：每一章都经你审读，满意才定稿。",
+        "why": "Agent 递来一叠手稿，你逐页批注、润色、定稿——这是人机共创的核心循环：每一章都经你亲自通读，由你决策定稿（chapter adopt --human）后才能开始下一章；AI 不会替你定稿。",
         "command": (
-            "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（读文本）→ "
+            "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
             "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "chapter adopt <作品号> <章节号> <版本号>"
+            "chapter adopt --human <作品号> <章节号> <版本号>（你亲自定稿）"
         ),
-        "verify": "每一章都有已定稿版本。",
+        "verify": "每一章都有你亲自定稿的版本（adopted_human）；未定稿前下一章无法开始。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
         "masters": [
             {
@@ -2007,17 +2008,40 @@ def chapter_generate(
 @click.argument("project_id")
 @click.argument("chapter_id")
 @click.argument("revision_id")
+@click.option(
+    "--human",
+    "human_decision",
+    is_flag=True,
+    help="人工定稿：你已亲自通读本章内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一章前置）",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, json_output: bool) -> None:
-    """Adopt a chapter revision as the working text."""
+def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, human_decision: bool, json_output: bool) -> None:
+    """Adopt a chapter revision as the working text.
+
+    人机协作铁律：定稿必须是人的决策。交互模式会请你确认「是否已亲自通读并
+    决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
+    下一章创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
+    """
+    # 交互模式：先请真人确认（跳过交互确认 = 人工明确授权）
+    if not json_output and not human_decision:
+        if not click.confirm(
+            "你已亲自通读本章全文并决定采纳这份候选稿吗？（人工定稿是继续下一章的前提）",
+            default=False,
+        ):
+            click.echo(ui.warn("已取消定稿——请先通读本章（chapter show），满意后再运行 chapter adopt --human。"), err=True)
+            return
+        human_decision = True
     result = _session(ctx).request(
         "POST",
-        f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(_confirm_line("novel", adopted=True)))
+        if human_decision:
+            click.echo(ui.ok(_confirm_line("novel", adopted=True)))
+        else:
+            click.echo(ui.warn("已记录为 agent 采纳（非人工定稿）——下一章创作前必须由你亲自定稿本章（chapter adopt --human）。"), err=True)
         return
     _emit(result, json_output)
 
@@ -3223,11 +3247,17 @@ def scene_generate(
 @click.argument("project_id")
 @click.argument("scene_id")
 @click.argument("revision_id")
+@click.option(
+    "--human",
+    "human_decision",
+    is_flag=True,
+    help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需）",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, json_output: bool) -> None:
+def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, json_output: bool) -> None:
     """Adopt a scene revision (alias of script adopt-scene)."""
-    script_adopt_scene.callback(project_id, scene_id, revision_id, json_output)
+    script_adopt_scene.callback(project_id, scene_id, revision_id, human_decision, json_output)
 
 
 @scene_group.command("propose")
@@ -3826,19 +3856,41 @@ def script_scene(
 @click.argument("project_id")
 @click.argument("scene_id")
 @click.argument("revision_id")
+@click.option(
+    "--human",
+    "human_decision",
+    is_flag=True,
+    help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一场前置）",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_adopt_scene(
-    ctx: click.Context, project_id: str, scene_id: str, revision_id: str, json_output: bool
+    ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, json_output: bool
 ) -> None:
-    """Adopt a scene revision (script)."""
+    """Adopt a scene revision (script).
+
+    人机协作铁律：定稿必须是人的决策。交互模式会请你确认「是否已亲自通读并
+    决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
+    下一场创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
+    """
+    if not json_output and not human_decision:
+        if not click.confirm(
+            "你已亲自通读本场内容并决定采纳这份候选稿吗？（人工定稿是继续下一场的前提）",
+            default=False,
+        ):
+            click.echo(ui.warn("已取消定稿——请先通读本场（scene show），满意后再运行 scene adopt --human。"), err=True)
+            return
+        human_decision = True
     result = _session(ctx).request(
         "POST",
-        f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt",
+        f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{revision_id}/adopt?human_decision={str(human_decision).lower()}",
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(_confirm_line("script", adopted=True)))
+        if human_decision:
+            click.echo(ui.ok(_confirm_line("script", adopted=True)))
+        else:
+            click.echo(ui.warn("已记录为 agent 采纳（非人工定稿）——下一场创作前必须由你亲自定稿本场（scene adopt --human）。"), err=True)
         return
     _emit(result, json_output)
 
@@ -4490,6 +4542,172 @@ def translate_mappings(ctx: click.Context, project_id: str, json_output: bool) -
 @click.pass_context
 def skill_group(ctx: click.Context) -> None:
     """创作 Skill 工坊：列表 / 创建 / 编辑 / 挂载 / 上传。"""
+
+
+# ------------------------------------------------------------------ skill craft
+# 面向编辑/编剧（不懂技术「Skill」概念）的人机共建向导：把「写作方法论」翻译成
+# 编辑语言，用启发式问题引导用户逐条给出作品专属规则，生成 skill JSON 草案后
+# 必须由真人确认/修改才提交。禁止 agent 静默独立完成。
+
+
+def _skill_craft_questions() -> list[dict[str, object]]:
+    """启发式提问清单（编辑语言，非技术术语）。"""
+    return [
+        {
+            "key": "work",
+            "prompt": "这部作品是什么？用一句话说清故事与类型（例如：都市悬疑言情，女主查账本真相）。",
+            "hint": "这就是方法论的开头——让创作搭档知道你在写什么。",
+        },
+        {
+            "key": "craft",
+            "prompt": "写作上你最在意什么？（节奏/张力/视角/镜头感/对白/场景时长……）请给出 2-3 条你希望每一章/每一场都遵守的写作规则。",
+            "hint": "例如：每章结尾留钩子；对白短促有力；镜头语言克制、避免解释性台词。",
+        },
+        {
+            "key": "voice",
+            "prompt": "这部作品的「声音」是什么？句式、语感、用词上有哪些讲究？（短句冷冽 / 细腻长句 / 画面感优先……）",
+            "hint": "这是作品区别于其他故事的辨识度所在。",
+        },
+        {
+            "key": "continuity",
+            "prompt": "连续性上必须守住什么？伏笔、设定、人物性格、跨场衔接……哪些不能破坏？",
+            "hint": "例如：不丢已埋伏笔；已确立的设定不可更改；服装道具贯穿全剧。",
+        },
+        {
+            "key": "evaluation",
+            "prompt": "你判断一章/一场「写得好不好」的标准是什么？不满意时怎么处理？",
+            "hint": "例如：按张力/连贯/角色主动性三维自检；不达标就拒收重写。",
+        },
+        {
+            "key": "examples",
+            "prompt": "给一个你喜欢的写法（正例）和一个你绝不想要的写法（反例）？",
+            "hint": "例如：正例——用动作替代心理描写；反例——连续三句解释性旁白。",
+        },
+    ]
+
+
+def _craft_answers_to_draft(domain: str, answers: dict[str, str]) -> dict[str, str]:
+    """把编辑语言的回答组装成平台 skill 规范草案（结构化分节 + 正反例配对）。"""
+    work = answers.get("work", "").strip()
+    craft = answers.get("craft", "").strip()
+    voice = answers.get("voice", "").strip()
+    continuity = answers.get("continuity", "").strip()
+    evaluation = answers.get("evaluation", "").strip()
+    examples = answers.get("examples", "").strip()
+    instructions = (
+        f"本作品：{work}。"
+        f"一、craft：{craft}"
+        f"二、voice：{voice}"
+        f"三、continuity：{continuity}"
+        f"四、evaluation：{evaluation}"
+        f"五、examples：{examples}"
+    )
+    return {"instructions": instructions, "work": work}
+
+
+def _sanitize_skill_name(work: str) -> str:
+    """从一句话作品描述生成 kebab-case skill 名（可人工修改）。"""
+    import re as _re
+
+    cleaned = _re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff]+", "-", work.strip().lower())
+    cleaned = _re.sub(r"-+", "-", cleaned).strip("-")
+    if not cleaned:
+        cleaned = "my-writing-methodology"
+    return cleaned[:48]
+
+
+@skill_group.command("craft")
+@click.option("--domain", type=click.Choice(["novel", "script"]), default="novel", help="体裁：小说（novel）或剧本（script）")
+@click.option("--project-id", default=None, help="可选：完成后挂载到指定作品（作品号）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_craft(
+    ctx: click.Context,
+    domain: str,
+    project_id: str | None,
+    json_output: bool,
+) -> None:
+    """人机共建写作方法论（Skill）—— 不需要懂技术，用编辑的语言逐条回答即可。
+
+    这是一个「启发式共创」向导：用大白话问你作品与写作规则，把回答整理成
+    平台需要的结构化方法论，最后必须由你亲自确认才提交。AI 不会替你决定
+    你的写作标准——这份方法论代表你的判断。
+    """
+    medium = "小说" if domain == "novel" else "剧本"
+    if not json_output:
+        click.echo(ui.section("=== 人机共建写作方法论（共创向导）==="), err=True)
+        click.echo(ui.paint(f"先花两分钟说清「{medium}」的创作标准——之后每一章/每一场都按它来写。", ui.GOLD), err=True)
+        click.echo(ui.dim("所谓「Skill」就是这份写作方法的存档：你负责定规则，创作搭档负责严格执行。"), err=True)
+        click.echo("", err=True)
+
+    answers: dict[str, str] = {}
+    for q in _skill_craft_questions():
+        key = str(q["key"])
+        prompt = str(q["prompt"])
+        hint = str(q["hint"])
+        if not json_output:
+            click.echo(ui.dim(f"◆ {hint}"), err=True)
+            click.echo(f"{prompt}", err=True)
+            value = click.prompt("  你的回答（可直接回车跳过此项）", default="", show_default=False)
+        else:
+            # --json 模式：允许 Agent 代问，但下方仍强制人工确认
+            value = ""
+        answers[key] = value.strip()
+
+    draft = _craft_answers_to_draft(domain, answers)
+    suggested = _sanitize_skill_name(draft.get("work") or "my-methodology")
+    if not json_output:
+        click.echo("", err=True)
+        click.echo(ui.section("=== 方法论草案（请审阅）==="), err=True)
+        click.echo(draft["instructions"], err=True)
+        click.echo("", err=True)
+        name = click.prompt("方法论名称（kebab-case，可改）", default=suggested, show_default=True)
+        description = click.prompt(
+            f"一句话说明（例如：{medium}写作方法论——{draft.get('work') or '作品专属'}）",
+            default=f"{medium}写作方法论",
+            show_default=True,
+        )
+    else:
+        name = suggested
+        description = f"{medium}写作方法论"
+    name = name.strip() or suggested
+    description = description.strip() or f"{medium}写作方法论"
+
+    payload = {
+        "name": name,
+        "description": description,
+        "domain": domain,
+        "roles": ["writer"],
+        "stages": ["writing"],
+        "instructions": draft["instructions"],
+    }
+    if not json_output:
+        click.echo("", err=True)
+        if not click.confirm("你已审阅这份方法论并确认它代表你的创作标准吗？（确认后提交）", default=False):
+            click.echo(ui.warn("已取消——你可以用 skill update 修改已创建的方法论，或重新运行 skill craft。"), err=True)
+            return
+    result = _session(ctx).request("POST", "/skills/personal", json_body=payload, write=True)
+    if project_id:
+        skill_id = str(result.get("id") or result.get("skill_id") or "")
+        if skill_id:
+            version_id = str(result.get("version_id") or result.get("versions", [{}])[0].get("id") or "")
+            try:
+                _session(ctx).request(
+                    "POST",
+                    f"/projects/{project_id}/skills/{skill_id}",
+                    json_body={"version_id": version_id} if version_id else {},
+                    write=True,
+                )
+                if not json_output:
+                    click.echo(ui.ok(f"方法论《{name}》已创建并挂载到作品 {project_id} —— 可以开始逐章创作了。"))
+                _emit({**result, "mounted_to": project_id}, json_output)
+                return
+            except ScriptNowError as mount_error:
+                if not json_output:
+                    click.echo(ui.warn(f"方法论已创建，但挂载未完成：{mount_error}——可稍后 skill mount 手动挂载。"), err=True)
+    if not json_output:
+        click.echo(ui.ok(f"方法论《{name}》已创建 —— 用 skill mount <作品号> <skill_id> <version_id> 挂载到作品后即可开始创作。"))
+    _emit(result, json_output)
 
 
 @skill_group.command("list")
