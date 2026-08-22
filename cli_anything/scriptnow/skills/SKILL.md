@@ -122,6 +122,31 @@ Alternatively pass `--base-url/--email/--password` on every invocation, or set
        produces on-intent work. Surface each hardening round to the user and
        get their sign-off — a Skill that merely exists is not enough; it must
        be battle-tested against the work's intent.
+   - **REFERENCE — a robust novel Skill (passes the gate)** — structure your
+     Skill at least this concretely:
+     ```
+     本作品《血月契约》是悬疑言情，叙述笔调冷冽克制、以动作与物象代心理。
+     一、craft：慢热递进的张力节奏，每章结尾留钩子；视角纪律——第三人称限知只跟随女主；
+         对白短促有力、避免长篇独白；以动作推进叙事而非心理旁白。
+     二、voice：短句冷冽、句式忌排比堆砌；用物件意象暗示情绪（灯、信、镜子）。
+     三、continuity：不得违反已采纳正文的伏笔；前文确立的设定不可更改；角色性格通过动作呈现。
+     四、evaluation：每章按张力/连贯/角色主动性三维自检，低于门槛即拒收重写。
+     五、examples：例如「她把信折了三折，没有抬头」；避免「她很难过」；
+         反例：连续三句解释性旁白应删至一句。
+     ```
+   - **REFERENCE — a robust script Skill (passes the gate)**:
+     ```
+     本剧《第101天》是都市悬疑短剧，台词风格冷硬克制、画面感优先。
+     一、craft：镜头语言克制，每场 40 秒完成一个行动节拍；对白短促、避免台词化说明；
+         转场用物件衔接；场次时长纪律——动作戏 30 秒、对白场 45 秒。
+     二、voice：台词信息量大、潜台词优先；情绪靠表演而非旁白。
+     三、continuity：跨场不丢伏笔；服装道具贯穿；角色语气一贯。
+     四、evaluation：逐场审读自检，按镜头信息量/对白推动力/时长利用率三维评估，不达质量门槛即拒收重写。
+     五、examples：例如以特写开场建立悬念；避免用旁白交代动机；
+         反例：连续三句解释性对白应删至一句。
+     ```
+     Use these as the minimum bar: if your Skill is thinner than these
+     examples, it will fail the gate — harden it before mounting.
   3. **MOUNT & VERIFY (MANDATORY)**: create the project-specific Skill on the
      platform and mount it, then confirm with `scriptnow skill mounts
      <project_id>` **before** the first `chapter/scene generate` or `propose`

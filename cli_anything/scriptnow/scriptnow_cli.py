@@ -320,6 +320,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
         "Skill 是逐章/逐场创作前的必然门禁，且必须引导健壮性完善：创作意图明确且项目落地后，先与用户规划专属方法论（可多轮），再对 Skill 做健壮性完善——试写样本章节/场次检验其约束力、诊断规则缺口与歧义、迭代加固直到方法论真正稳健并获用户认可，然后在平台创建并挂载到该项目，用 scriptnow skill mounts <pid> 核实已挂载，才能启动正文逐章/逐场创作。项目无已挂载方法论 Skill，或 Skill 未经验证只是通用模板时，禁止开始正文写作。",
+        "Skill 健壮性参照示例：方法论至少应达到「craft / voice / continuity / evaluation / examples」五个维度都有实质内容并含正反例（小说示例见 `interpret local --spec`，剧本同理换 craft 词：镜头/对白/转场/场次时长）。你的 Skill 比示例更单薄时必然过不了平台健壮性门禁——先完善再挂载，不要带着 stub 开始创作。",
         "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
@@ -1616,6 +1617,32 @@ LOCAL_SKILL_SPEC = """\
 - 视角：镜头、限制、叙述者不可知之事
 - 世界规则：设定规则如何引入与强制
 - 爽点结构：愿望满足节拍、升级、释放
+
+## 达标示例（达到此厚度与具体度才算健壮，能通过平台健壮性门禁）
+
+小说（novel）示例：
+本作品《血月契约》是悬疑言情，叙述笔调冷冽克制、以动作与物象代心理。
+一、craft：慢热递进的张力节奏，每章结尾留钩子；视角纪律——第三人称限知只跟随女主；
+    对白短促有力、避免长篇独白；以动作推进叙事而非心理旁白。
+二、voice：短句冷冽、句式忌排比堆砌；用物件意象暗示情绪（灯、信、镜子）。
+三、continuity：不得违反已采纳正文的伏笔；前文确立的设定不可更改；角色性格通过动作呈现。
+四、evaluation：每章按张力/连贯/角色主动性三维自检，低于门槛即拒收重写。
+五、examples：例如「她把信折了三折，没有抬头」；避免「她很难过」；
+    反例：连续三句解释性旁白应删至一句。
+
+剧本（script）示例：
+本剧《第101天》是都市悬疑短剧，台词风格冷硬克制、画面感优先。
+一、craft：镜头语言克制，每场 40 秒完成一个行动节拍；对白短促、避免台词化说明；
+    转场用物件衔接；场次时长纪律——动作戏 30 秒、对白场 45 秒。
+二、voice：台词信息量大、潜台词优先；情绪靠表演而非旁白。
+三、continuity：跨场不丢伏笔；服装道具贯穿；角色语气一贯。
+四、evaluation：逐场审读自检，按镜头信息量/对白推动力/时长利用率三维评估，不达质量门槛即拒收重写。
+五、examples：例如以特写开场建立悬念；避免用旁白交代动机；
+    反例：连续三句解释性对白应删至一句。
+
+要求：你的 instructions 至少达到上述示例的厚度与具体度（craft/voice/continuity/
+evaluation/examples 五个维度都有实质内容、含正反例），否则平台健壮性门禁会判
+revise/block，需要继续完善后才能挂载并开始逐章创作。
 - 语言习惯：句式形态、隐喻密度、重复意象
 - 禁忌与边界：本作品绝不做的、语气护栏
 
@@ -1875,12 +1902,21 @@ def chapter_generate(
     body: dict[str, Any] = {"idempotency_key": f"cli-chapter-{__import__('time').time_ns()}", "feedback": feedback}
     if model_id:
         body["model_id"] = model_id
-    result = session.request(
-        "POST",
-        f"/novel/projects/{project_id}/chapters/{chapter_id}/generate?background=true",
-        json_body=body,
-        write=True,
-    )
+    try:
+        result = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/chapters/{chapter_id}/generate?background=true",
+            json_body=body,
+            write=True,
+        )
+    except ScriptNowError as error:
+        if "concurrent" in str(error) or "already active" in str(error):
+            raise click.ClickException(
+                "并发逐章创作被拒绝：同一项目已有正文生成在运行。\n"
+                "正确方式：逐章严格串行——用 scriptnow run status <run_id> 等当前生成完成后，再生成下一章。\n"
+                "不要并发启动多个 chapter generate（设定会漂移、伏笔会失联）。"
+            ) from error
+        raise
     if wait and result.get("run_id"):
         _wait_for_run(session, project_id, str(result["run_id"]), json_output)
         return
@@ -3664,12 +3700,21 @@ def script_scene(
     body: dict[str, Any] = {"idempotency_key": f"cli-scene-{__import__('time').time_ns()}", "feedback": feedback}
     if model_id:
         body["model_id"] = model_id
-    result = session.request(
-        "POST",
-        f"/script/projects/{project_id}/scenes/{scene_id}/generate?background=true",
-        json_body=body,
-        write=True,
-    )
+    try:
+        result = session.request(
+            "POST",
+            f"/script/projects/{project_id}/scenes/{scene_id}/generate?background=true",
+            json_body=body,
+            write=True,
+        )
+    except ScriptNowError as error:
+        if "concurrent" in str(error) or "already active" in str(error):
+            raise click.ClickException(
+                "并发逐场创作被拒绝：同一项目已有正文生成在运行。\n"
+                "正确方式：逐场严格串行——用 scriptnow run status <run_id> 等当前生成完成后，再生成下一场。\n"
+                "不要并发启动多个 scene generate（设定会漂移、伏笔会失联）。"
+            ) from error
+        raise
     if wait and result.get("run_id"):
         _wait_for_run(session, project_id, str(result["run_id"]), json_output, domain="script")
         return
