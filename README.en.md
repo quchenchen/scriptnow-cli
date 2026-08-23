@@ -138,6 +138,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 | Group | Purpose |
 |-------|---------|
+| guide | Focused newcomer flow: `--step 1..10 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map |
 | project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
@@ -149,10 +150,30 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / download (novel/script) |
-| skill | Skill workshop: list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
+| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 | version / self-upgrade | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) |
+
+## Focused newcomer mode
+
+`scriptnow guide` now starts with one calm creative step instead of a command wall.
+Each step asks one main question, offers optional inspiration lenses, mirrors the
+creator's intent, and presents one candidate for a simple keep / adjust / change
+direction decision. Commands stay backstage.
+
+Chapter/scene finalization follows a one-explicit-statement rule: when the user
+says finalize, use this version, or continue in the Agent conversation, the
+Agent may run `chapter adopt --human` / `scene adopt --human`. No repeated
+terminal/UI action or mandatory token is required; ask once only if ambiguous.
+
+```bash
+scriptnow guide --step 1 --medium novel --json
+scriptnow guide --step 1 --medium script --json
+scriptnow guide --steps
+scriptnow guide --step 4 --medium novel --pulse @pulse.json --json
+scriptnow guide --step 4 --medium novel --resume --json
+```
 
 ## Skill capability & version evolution
 

@@ -142,7 +142,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 | 组 | 用途 |
 |----|------|
-| guide | 新手模式：能力介绍与完整作品向导（steps / complete / status） |
+| guide | 聚焦式新手创作向导：`--step 1..10 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图 |
 | agent-guide | **Agent 操作契约**：连接平台唯一准则（--json 结构化输出） |
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
@@ -154,10 +154,30 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / download（novel/script） |
-| skill | Skill 工坊：list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
+| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | version / self-upgrade | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版） |
+
+## 聚焦式新手模式
+
+默认 `scriptnow guide` 不再打印整套命令墙，而是从第一幕开始。每一幕只提出一个创作问题；
+没有灵感时任选一个观察角度，Agent 先复述理解、再给一个候选，用户只需决定“保留 / 调整 / 换方向”。
+技术命令由 Agent 在幕后执行。
+
+逐章/逐场定稿采用“一次明确表达”原则：用户在 Agent 对话中说“定稿”“采用这版”
+或“可以继续”，Agent 即可执行 `chapter adopt --human` / `scene adopt --human`。
+不要求用户重复操作终端或页面，也不强制授权令牌；表达不明确时只需追问一次。
+
+```bash
+scriptnow guide --step 1 --medium novel --json
+scriptnow guide --step 1 --medium script --json
+scriptnow guide --steps
+# 多轮发散后：轻量判断 on_track / useful_detour / drifting / conflict，不写平台状态
+scriptnow guide --step 4 --medium novel --pulse @pulse.json --json
+# 明确需要收拢时，也可直接温和接回
+scriptnow guide --step 4 --medium novel --resume --json
+```
 
 ## Skill 能力与版本进化
 

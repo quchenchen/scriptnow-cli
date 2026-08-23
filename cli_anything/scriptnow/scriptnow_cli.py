@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +27,6 @@ from cli_anything.scriptnow.utils.session import (
     write_json,
 )
 from cli_anything.scriptnow.utils.upgrade import (
-    check_for_update,
     latest_version,
     maybe_warn_in_background,
     upgrade as _upgrade_cli,
@@ -284,7 +282,7 @@ def self_upgrade_cmd(assume_yes: bool, json_output: bool) -> None:
     _emit({"ok": success, "current": VERSION, "latest": latest, "upgraded": success}, json_output)
     if not json_output:
         if success:
-            click.echo(ui.ok(f"升级完成，请重新运行 scriptnow --version 确认。"))
+            click.echo(ui.ok("升级完成，请重新运行 scriptnow --version 确认。"))
         else:
             click.echo(ui.warn("升级未完成；本地开发模式请手动 pip install -e。"))
 
@@ -370,7 +368,7 @@ def authorize_cmd(
         click.echo("", err=True)
         click.echo(
             ui.dim(
-                f"agent 用法：chapter adopt --human --token <token> <作品号> <章节号> <版本号>"
+                "agent 用法：chapter adopt --human --token <token> <作品号> <章节号> <版本号>"
                 + ("（或对应 scene adopt）" if not chapter else "")
             ),
             err=True,
@@ -512,10 +510,14 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
 
 @main.command()
 @click.option("--steps", is_flag=True, help="只展示完整作品向导步骤（短篇/短剧闭环）")
+@click.option("--step", type=click.IntRange(1, 10), default=None, help="只进入当前创作步骤，避免一次展示整套命令")
+@click.option("--medium", type=click.Choice(["novel", "script"]), default="novel", help="按小说或剧本显示对应创作路径")
+@click.option("--resume", is_flag=True, help="多轮发散后温和回到当前步骤（须与 --step 一起使用，不改变平台状态）")
+@click.option("--pulse", default=None, help="最近对话的轻量脉搏 JSON（@file 或内联）；判断是否需要柔性回归，不写平台状态")
 @click.option("--complete", is_flag=True, help="标记新手模式已完成（写入 onboarded 标记）")
 @click.option("--status", is_flag=True, help="查看新手模式完成状态")
 @click.option("--json", "json_output", is_flag=True)
-def guide(steps: bool, complete: bool, status: bool, json_output: bool) -> None:
+def guide(steps: bool, step: int | None, medium: str, resume: bool, pulse: str | None, complete: bool, status: bool, json_output: bool) -> None:
     """新手模式：编辑/编剧视角介绍核心能力、共创愿景，并给出完成一部完整作品的向导。"""
     import time as _time
 
@@ -541,8 +543,19 @@ def guide(steps: bool, complete: bool, status: bool, json_output: bool) -> None:
             )
         return
 
-    if steps:
-        guide_payload = _guide_steps()
+    if (resume or pulse) and step is None:
+        raise click.ClickException("--resume/--pulse 需要同时指定 --step <1..10>，以免猜测当前创作位置")
+    if step is not None:
+        guide_payload = (
+            _guide_pulse(step, medium, pulse)
+            if pulse
+            else _guide_focus(step, medium, resume=resume)
+        )
+    elif steps:
+        guide_payload = _guide_steps(medium)
+    elif not json_output:
+        # 人类首次进入只看当前一幕；完整路线仍可用 --steps 随时查看。
+        guide_payload = _guide_focus(1, medium, welcome=True)
     else:
         guide_payload = _guide_full()
     _emit(guide_payload, json_output)
@@ -555,10 +568,11 @@ _AGENT_CONTRACT = {
     "title": "ScriptNow Agent 操作契约 —— 连接平台前必读",
     "audience": "在 ScriptNow 平台上创作小说/剧本的 AI Agent。以本契约为唯一操作准则；本契约与平台后端返回为准，优先于任何对平台的猜测。",
     "rules": [
+        "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
-        "Skill 是逐章/逐场创作前的必然门禁，且必须引导健壮性完善：创作意图明确且项目落地后，先与用户规划专属方法论（可多轮），再对 Skill 做健壮性完善——试写样本章节/场次检验其约束力、诊断规则缺口与歧义、迭代加固直到方法论真正稳健并获用户认可，然后在平台创建并挂载到该项目，用 scriptnow skill mounts <pid> 核实已挂载，才能启动正文逐章/逐场创作。项目无已挂载方法论 Skill，或 Skill 未经验证只是通用模板时，禁止开始正文写作。",
+        "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         "Skill 健壮性参照示例：方法论至少应达到「craft / voice / continuity / evaluation / examples」五个维度都有实质内容并含正反例（小说示例见 `interpret local --spec`，剧本同理换 craft 词：镜头/对白/转场/场次时长）。你的 Skill 比示例更单薄时必然过不了平台健壮性门禁——先完善再挂载，不要带着 stub 开始创作。",
         "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
@@ -568,14 +582,15 @@ _AGENT_CONTRACT = {
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
-        "人机协作铁律（逐章/逐场定稿必须是人的决策）：禁止 AI 自写自评自定稿。每章/每场创作候选产出后，必须停下来把内容呈现给用户（chapter show / scene show 通读全文），由用户亲自审读并决策；只有用户明确认可后，agent 才能执行 chapter adopt --human / scene adopt --human 完成人工定稿（adopted_human）。agent 静默 adopt（不带 --human）只记为普通采纳，不满足下一章/下一场创作的前置检查——平台会拒绝继续生成，直到用户亲自定稿上一章/上一场。Agent 不得代用户确认『已通读』，不得用『用户已批准大纲』之类的间接授权代替逐章人工定稿，不得绕过前置检查并发创作后续章节。",
+        "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后应把全文或用户要求的审读范围呈现出来；用户在对话中明确表达『定稿』『采用这版』『可以进入下一章/场』等，即构成人工决定，Agent 可直接执行 chapter adopt --human / scene adopt --human，平台记录 adopted_human。无需用户重复去终端或页面确认，也不强制签发令牌；令牌仅是可选的增强审计方式。没有明确表达时才追问一次，Agent 不得从沉默、泛泛称赞或大纲授权中自行推断定稿。",
     ],
     "quickstart": [
-        "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
+        "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
+        "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
-        "Skill 门禁（逐章创作前必做）：与用户规划完善专属方法论 Skill（可多轮）→ scriptnow skill create/interpret local 创建 → scriptnow skill mount <pid> <skill_id> <version_id> → scriptnow skill mounts <pid> 核实已挂载",
-        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 用户通读 chapter show → 用户认可后 chapter adopt --human <pid> <cid> <revision_id>（人工定稿，否则下一章被拒）",
+        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
+        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 呈现正文 → 用户在对话中明确采用后，Agent 直接 chapter adopt --human <pid> <cid> <revision_id>",
         "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
@@ -605,7 +620,7 @@ _GUIDE_STEPS = [
         "title": "登录平台",
         "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
         "why": "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。",
-        "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱> --password <密码>",
+        "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "verify": "输出 登录成功：https://sn.igeewa.com（<邮箱>）",
         "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
         "masters": [
@@ -735,13 +750,13 @@ _GUIDE_STEPS = [
         "step": 7,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
-        "why": "Agent 递来一叠手稿，你逐页批注、润色、定稿——这是人机共创的核心循环：每一章都经你亲自通读，由你决策定稿（chapter adopt --human）后才能开始下一章；AI 不会替你定稿。",
+        "why": "创作搭档递来手稿，你可以通读、局部审阅、批注或直接表达采用。只要你在对话中明确决定定稿，Agent 就会记录这次决定并继续；不要求你重复操作命令或页面。",
         "command": (
             "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
             "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "chapter adopt --human <作品号> <章节号> <版本号>（你亲自定稿）"
+            "用户在对话中明确采用 → Agent 执行 chapter adopt --human <作品号> <章节号> <版本号>"
         ),
-        "verify": "每一章都有你亲自定稿的版本（adopted_human）；未定稿前下一章无法开始。",
+        "verify": "每一章都有来自用户明确表达的定稿版本（adopted_human）；无需重复确认。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
         "masters": [
             {
@@ -833,13 +848,174 @@ _GUIDE_STEPS = [
 ]
 
 
-def _guide_steps() -> dict[str, object]:
+def _guide_steps(medium: str | None = None) -> dict[str, object]:
+    items = [dict(item) for item in _GUIDE_STEPS]
+    if medium == "script":
+        for item in items:
+            if int(item["step"]) in _SCRIPT_GUIDE_OVERRIDES:
+                item.update(_SCRIPT_GUIDE_OVERRIDES[int(item["step"])])
     return {
         "guide": "complete-works-onboarding",
         "title": "从零到一部完整作品（短篇/短剧闭环）",
         "mode": "agent-led",
-        "steps": _GUIDE_STEPS,
+        "medium": medium,
+        "steps": items,
     }
+
+
+_GUIDE_CREATIVE_LENSES: dict[int, list[str]] = {
+    1: ["一个忘不掉的人", "一个反复出现的画面", "一个让你不甘心的问题"],
+    2: ["谁正在争取什么", "什么力量阻止了他/她", "失败后会失去什么"],
+    3: ["读者应感到什么", "作品坚决不成为什么", "语言与节奏更接近哪种气质"],
+    4: ["主角的欲望与代价", "不可逆的关键选择", "结尾如何回应开端"],
+    5: ["最期待的一段", "最像套路的一段", "尚未被结构回答的问题"],
+    6: ["必须始终遵守的写法", "最容易写偏的地方", "一眼就能识别的正反例"],
+    7: ["本章/场唯一任务", "人物在结束时发生的变化", "让读者继续下去的悬念"],
+    8: ["删掉也不影响故事的内容", "人物只是被剧情推着走的地方", "解释多于行动的句子"],
+    9: ["作品最适合交给谁", "一句能让目标读者停下来的介绍", "封面必须传达的第一情绪"],
+    10: ["这次最满意的判断", "下次想改进的创作习惯", "下一部作品的第一颗种子"],
+}
+
+
+_SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
+    2: {
+        "command": "scriptnow project create --name <作品名> --medium script --premise <一句话前提> --genre <类型> --tone <影像与台词气质>",
+        "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。",
+    },
+    4: {
+        "command": "scriptnow script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt → storymap @storymap.json",
+        "verify": "故事核心与蓝图已采纳，季/集/场结构成为可审阅候选。",
+    },
+    5: {
+        "command": "scriptnow script state <作品号> --json（展示候选结构；调整后再由用户决定是否采纳）",
+        "verify": "用户能复述每集推进与关键场功能，并明确接受或指出调整。",
+    },
+    7: {
+        "command": "scriptnow scene list <作品号> → scene generate/propose <作品号> <场次号> → 呈现正文 → 用户明确采用后 Agent 执行 scene adopt --human",
+        "verify": "当前场有来自用户明确表达的 adopted_human 版本；不要求重复终端或页面确认。",
+    },
+    8: {
+        "command": "scriptnow scene show <作品号> <场次号> --plain → scene quality <作品号> <场次号> → 按反馈修订",
+        "verify": "场次功能、可拍性、潜台词与转折无阻断项；用户决定保留什么、修改什么。",
+    },
+}
+
+
+def _guide_focus(
+    step: int, medium: str, *, welcome: bool = False, resume: bool = False
+) -> dict[str, object]:
+    """Return one calm, creative step instead of a command wall."""
+    source = next(item for item in _GUIDE_STEPS if int(item["step"]) == step)
+    item = dict(source)
+    if medium == "script" and step in _SCRIPT_GUIDE_OVERRIDES:
+        item.update(_SCRIPT_GUIDE_OVERRIDES[step])
+    masters = list(item.get("masters") or [])
+    if masters:
+        item["masters"] = masters[:1]
+    item["lenses"] = _GUIDE_CREATIVE_LENSES[step]
+    item["interaction"] = {
+        "ask": item.get("prompt"),
+        "how": "先听用户自由表达；只有表达停滞时才从三个观察角度中选一个启发，不要逐项盘问。",
+        "agent_response": "先用一句话复述你听懂的创作意图，再提出一个具体候选；不要讲术语，不要先贴命令。",
+        "decision": "请用户选择：保留、调整，或换一个方向。一次只处理一个决定。",
+    }
+    item["completion"] = item.get("verify")
+    item["recovery"] = {
+        "mode": "soft-return",
+        "trigger": "仅在连续 3-4 轮没有推进当前决定或形成可用素材、进入下一阶段前仍有关键缺口、或新旧设定冲突时使用。",
+        "capture": "先从刚才对话中提炼最多 3 条有价值的新素材；不要把发散描述为错误。",
+        "bridge": "用一句话说明这些素材如何服务当前作品，再指出当前步骤只剩的一个决定。",
+        "invite": f"用当前主问题温和邀请：{item.get('prompt')}；同时明确用户可以继续探索。",
+        "choices": ["回到当前决定", "再探索一会儿", "把当前步骤换成更合适的问题"],
+        "must_not": ["警告用户偏离流程", "丢弃刚才的灵感", "强制进入下一步", "重复整套路线"],
+    }
+    item["next_step"] = (
+        None
+        if step == 10
+        else {
+            "step": step + 1,
+            "command": f"scriptnow guide --step {step + 1} --medium {medium}",
+            "handoff": "本步完成并经用户认可后再进入下一步；不要提前抛出后续命令。",
+        }
+    )
+    payload: dict[str, object] = {
+        "guide": "scriptnow-creative-companion",
+        "title": f"创作工作室 · 第 {step} 幕 / 10",
+        "mode": "focused-step",
+        "medium": medium,
+        "medium_label": "小说" if medium == "novel" else "剧本",
+        "step": item,
+        "map_command": "scriptnow guide --steps",
+        "resuming": resume,
+    }
+    if welcome:
+        payload["opening"] = (
+            "先别急着学命令。我们从你脑海里最舍不得放下的那个人、那个画面或那个问题开始。"
+            "你负责判断什么值得写，我负责把模糊的念头整理成可以继续创作的候选。"
+        )
+    if resume:
+        payload["opening"] = (
+            "刚才的探索不是绕路。我会先把其中有价值的东西收好，再轻轻接回我们尚未完成的那个决定；"
+            "如果灵感还在生长，也可以继续聊。"
+        )
+    return payload
+
+
+def _guide_pulse(step: int, medium: str, value: str) -> dict[str, object]:
+    """Assess conversational drift without writing workflow or project state."""
+    raw = Path(value[1:]).read_text(encoding="utf-8") if value.startswith("@") else value
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise click.ClickException(f"pulse JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("pulse JSON 根必须是对象")
+
+    def short_list(key: str) -> list[str]:
+        source = data.get(key) or []
+        if not isinstance(source, list):
+            raise click.ClickException(f"pulse.{key} 必须是字符串数组")
+        return [str(item).strip()[:300] for item in source if str(item).strip()][:5]
+
+    try:
+        quiet_rounds = max(0, min(20, int(data.get("rounds_without_progress") or 0)))
+    except (TypeError, ValueError) as error:
+        raise click.ClickException("pulse.rounds_without_progress 必须是整数") from error
+    captured = short_list("captured_material")
+    unresolved = short_list("unresolved")
+    conflicts = short_list("conflicts")
+    decision_advanced = bool(data.get("decision_advanced"))
+    next_stage_requested = bool(data.get("next_stage_requested"))
+
+    if conflicts:
+        pulse_status = "conflict"
+        reason = "新旧创作设定出现冲突，需要一次温和取舍。"
+    elif next_stage_requested and unresolved:
+        pulse_status = "drifting"
+        reason = "准备进入下一阶段，但当前仍有一个关键决定未完成。"
+    elif quiet_rounds >= 4 and not captured and not decision_advanced:
+        pulse_status = "drifting"
+        reason = "连续多轮既未推进当前决定，也没有形成可回填素材。"
+    elif captured and not decision_advanced:
+        pulse_status = "useful_detour"
+        reason = "讨论暂时离开当前决定，但形成了值得保留的新素材。"
+    else:
+        pulse_status = "on_track"
+        reason = "对话仍在推进当前创作，或发散尚未影响流程衔接。"
+
+    should_return = pulse_status in {"drifting", "conflict"}
+    payload = _guide_focus(step, medium, resume=should_return)
+    payload["pulse"] = {
+        "status": pulse_status,
+        "reason": reason,
+        "should_invite_return": should_return,
+        "captured_material": captured,
+        "unresolved": unresolved,
+        "conflicts": conflicts,
+        "return_prompt": payload["step"]["prompt"] if should_return else None,
+        "user_freedom": "用户可以选择回归、继续探索或重写当前问题；CLI 不改变任何平台状态。",
+    }
+    return payload
 
 
 def _guide_full() -> dict[str, object]:
@@ -902,6 +1078,44 @@ def _echo_guide(payload: dict[str, object]) -> None:
     if "opening" in payload:
         click.echo(ui.paint(payload["opening"], ui.GOLD), err=True)
         click.echo("", err=True)
+    if payload.get("mode") == "focused-step":
+        item = dict(payload["step"])
+        click.echo(ui.ok(f"{item['title']} · {payload['medium_label']}"), err=True)
+        click.echo(ui.dim(str(item.get("scene") or "")), err=True)
+        click.echo("", err=True)
+        pulse = payload.get("pulse")
+        if pulse:
+            click.echo(ui.dim(f"创作脉搏：{pulse['reason']}"), err=True)
+            if pulse.get("captured_material"):
+                click.echo(ui.dim("刚才值得收好的灵感："), err=True)
+                for material in pulse["captured_material"][:3]:
+                    click.echo(f"  · {material}", err=True)
+            click.echo("", err=True)
+        click.echo(ui.paint(f"现在只想一件事：{item['prompt']}", ui.CYAN), err=True)
+        click.echo(ui.dim("如果一时没有答案，可以任选一个角度开口："), err=True)
+        for lens in item.get("lenses") or []:
+            click.echo(f"  · {lens}", err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim("你说完后，创作搭档应先复述理解，再给一个具体候选；你只需决定保留、调整或换方向。"), err=True)
+        if payload.get("resuming"):
+            click.echo(ui.dim("先收好刚才产生的新素材，再邀请你选择："), err=True)
+            for choice in item["recovery"]["choices"]:
+                click.echo(f"  · {choice}", err=True)
+        masters = item.get("masters") or []
+        if masters:
+            master = masters[0]
+            click.echo(ui.paint(f"「{master['quote']}」—— {master['name']}", ui.GOLD), err=True)
+        click.echo("", err=True)
+        click.echo(ui.dim("◆ 幕后操作（由 Agent 执行，你不需要记）"), err=True)
+        click.echo(f"  {item['command']}", err=True)
+        click.echo(ui.dim(f"  完成标志：{item['completion']}"), err=True)
+        next_step = item.get("next_step")
+        if next_step:
+            click.echo(ui.ok(f"完成后进入第 {next_step['step']} 幕：{next_step['command']}"), err=True)
+        else:
+            click.echo(ui.ok("作品闭环完成。工作室的门随时为你打开。"), err=True)
+        click.echo(ui.dim(f"完整路线：{payload['map_command']}"), err=True)
+        return
     if "vision" in payload:
         click.echo(ui.dim("◆ 共创愿景"), err=True)
         click.echo(ui.paint(payload["vision"], ui.GOLD), err=True)
@@ -1000,7 +1214,7 @@ def login_cmd(host: str, email: str, password: str | None, password_stdin: bool,
         click.echo(ui.ok(f"登录成功：{host}（{email}）"))
         if not _onboarding_done():
             click.echo(
-                ui.warn("首次使用？运行 scriptnow guide 进入新手模式——Agent 将带你完成一部完整作品。"),
+                ui.warn("第一次来？小说运行 scriptnow guide --medium novel；剧本运行 --medium script。我们从一个念头开始。"),
                 err=True,
             )
     _emit({"ok": True, "base_url": session.base_url, "user": email}, json_output)
@@ -2044,7 +2258,7 @@ def interpret_local(
     if not json_output:
         click.echo(ui.ok(f"专属方法论 Skill《{created.get('name')}》已创建"))
         if result.get("mounted"):
-            click.echo(ui.ok(f"并已挂载到当前作品 —— 可以开始逐章/逐场创作了。"))
+            click.echo(ui.ok("并已挂载到当前作品 —— 可以开始逐章/逐场创作了。"))
         if result.get("mount_error"):
             click.echo(ui.warn(f"挂载未完成：{result['mount_error']}"))
         return
@@ -2232,39 +2446,37 @@ def chapter_generate(
     "--human",
     "human_decision",
     is_flag=True,
-    help="人工定稿：你已亲自通读本章内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一章前置）",
+    help="人工决定已明确：用户本人执行，或已在与 Agent 的对话中明确表示定稿/采用这版",
 )
 @click.option(
     "--token",
     "decision_token",
     default=None,
-    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权），agent 用它执行人工定稿",
+    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
 )
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool) -> None:
     """Adopt a chapter revision as the working text.
 
-    人机协作铁律：定稿必须是人的决策。交互模式会请你确认「是否已亲自通读并
-    决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
-    下一章创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
+    定稿必须来自人的明确决定。用户本人运行，或在与 Agent 的对话中明确表示
+    「定稿 / 采用这版 / 可以继续」后，均可带 --human；无需重复终端确认。
     """
-    # 人机协作铁律：定稿必须是人的决策。三条合法通道：
-    #   --token（用户签发的授权令牌）> 交互确认 > --human（用户亲手执行）
+    # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
+    # --token 仅为需要更强审计时的可选通道。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
-                "你已亲自通读本章全文并决定采纳这份候选稿吗？（人工定稿是继续下一章的前提）",
+                "你明确决定采用这份候选稿并将其定稿吗？",
                 default=False,
             ):
-                click.echo(ui.warn("已取消定稿——请先通读本章（chapter show），满意后再运行 chapter adopt --human。"), err=True)
+                click.echo(ui.warn("已取消定稿——你可以继续讨论或修改；明确采用时再运行 chapter adopt --human。"), err=True)
                 return
             human_decision = True
         else:
             raise click.ClickException(
-                "定稿必须由人亲自决策：agent 静默采纳会被平台拒绝。"
-                "请让用户先通读本章（chapter show），然后：① 用户运行 scriptnow authorize 签发令牌，"
-                "agent 用 chapter adopt --token <token> 执行；或 ② 用户亲自运行 chapter adopt --human。"
+                "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
+                "Agent 可直接用 chapter adopt --human。--token 仅为可选增强审计方式。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid，
@@ -2809,7 +3021,6 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     pid = _resolve_project_id(ctx, project_id)
     session = _session(ctx)
     state = session.request("GET", f"/novel/projects/{pid}/state")
-    direction = state.get("blueprint") is not None and bool(state.get("creation_settings"))
     checks = []
     direction_ok = bool((state.get("creation_settings") or {}).get("chapter_target_words"))
     checks.append(("创作方向（direction）", direction_ok, "project direction --apply @direction.json"))
@@ -3524,13 +3735,13 @@ def scene_generate(
     "--human",
     "human_decision",
     is_flag=True,
-    help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需）",
+    help="人工决定已明确：用户本人执行，或已在与 Agent 的对话中明确表示定稿/采用这版",
 )
 @click.option(
     "--token",
     "decision_token",
     default=None,
-    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权）",
+    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
 )
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -4139,13 +4350,13 @@ def script_scene(
     "--human",
     "human_decision",
     is_flag=True,
-    help="人工定稿：你已亲自通读本场内容并决定采纳（人机协作铁律必需；无此标记视为 agent 静默采纳，不满足下一场前置）",
+    help="人工决定已明确：用户本人执行，或已在与 Agent 的对话中明确表示定稿/采用这版",
 )
 @click.option(
     "--token",
     "decision_token",
     default=None,
-    help="一次性授权令牌：用户已用 scriptnow authorize 签发（对话内文字授权），agent 用它执行人工定稿",
+    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
 )
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -4154,26 +4365,24 @@ def script_adopt_scene(
 ) -> None:
     """Adopt a scene revision (script).
 
-    人机协作铁律：定稿必须是人的决策。交互模式会请你确认「是否已亲自通读并
-    决定采纳」；agent 调用（--json）不携带 --human 时，平台记为非人工定稿，
-    下一场创作会被前置检查拒绝——必须由你亲自定稿后才能继续。
+    定稿必须来自人的明确决定。用户本人运行，或在与 Agent 的对话中明确表示
+    「定稿 / 采用这版 / 可以继续」后，均可带 --human；无需重复终端确认。
     """
-    # 人机协作铁律：定稿必须是人的决策。三条合法通道：
-    #   --token（用户签发的授权令牌）> 交互确认 > --human（用户亲手执行）
+    # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
+    # --token 仅为需要更强审计时的可选通道。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
-                "你已亲自通读本场内容并决定采纳这份候选稿吗？（人工定稿是继续下一场的前提）",
+                "你明确决定采用这份候选稿并将其定稿吗？",
                 default=False,
             ):
-                click.echo(ui.warn("已取消定稿——请先通读本场（scene show），满意后再运行 scene adopt --human。"), err=True)
+                click.echo(ui.warn("已取消定稿——你可以继续讨论或修改；明确采用时再运行 scene adopt --human。"), err=True)
                 return
             human_decision = True
         else:
             raise click.ClickException(
-                "定稿必须由人亲自决策：agent 静默采纳会被平台拒绝。"
-                "请让用户先通读本场（scene show），然后：① 用户运行 scriptnow authorize 签发令牌，"
-                "agent 用 scene adopt --token <token> 执行；或 ② 用户亲自运行 scene adopt --human。"
+                "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
+                "Agent 可直接用 scene adopt --human。--token 仅为可选增强审计方式。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid。
@@ -4547,7 +4756,6 @@ def script_scene_quality(
 
 
 def _default_project_file() -> Path:
-    import os as _os
 
     if os.environ.get("SCRIPTNOW_CLI_CONFIG"):
         return Path(os.environ["SCRIPTNOW_CLI_CONFIG"]).with_name("project.json")
@@ -4927,26 +5135,59 @@ def _craft_answers_to_draft(domain: str, answers: dict[str, str]) -> dict[str, s
     return {"instructions": instructions, "work": work}
 
 
+def _load_skill_craft_answers(value: str) -> dict[str, str]:
+    """Load agent-collected editor answers without creating project-like local state."""
+    import json as _json
+
+    raw = (
+        Path(value[1:]).read_text(encoding="utf-8")
+        if value.startswith("@")
+        else value
+    )
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"answers JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("answers JSON 根必须是对象")
+    keys = {str(item["key"]) for item in _skill_craft_questions()}
+    return {key: str(data.get(key) or "").strip() for key in keys}
+
+
+def _craft_missing_answers(answers: dict[str, str]) -> list[str]:
+    """All six answers materially affect downstream writing quality."""
+    return [str(item["key"]) for item in _skill_craft_questions() if not answers.get(str(item["key"]), "").strip()]
+
+
 def _sanitize_skill_name(work: str) -> str:
     """从一句话作品描述生成 kebab-case skill 名（可人工修改）。"""
     import re as _re
 
-    cleaned = _re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff]+", "-", work.strip().lower())
+    cleaned = _re.sub(r"[^0-9a-zA-Z]+", "-", work.strip().lower())
     cleaned = _re.sub(r"-+", "-", cleaned).strip("-")
     if not cleaned:
-        cleaned = "my-writing-methodology"
+        import hashlib as _hashlib
+
+        if work.strip():
+            cleaned = "work-methodology-" + _hashlib.sha256(work.strip().encode("utf-8")).hexdigest()[:8]
+        else:
+            cleaned = "my-writing-methodology"
     return cleaned[:48]
 
 
 @skill_group.command("craft")
 @click.option("--domain", type=click.Choice(["novel", "script"]), default="novel", help="体裁：小说（novel）或剧本（script）")
 @click.option("--project-id", default=None, help="可选：完成后挂载到指定作品（作品号）")
+@click.option("--answers", default=None, help="Agent 已与用户共创的答案 JSON（@file 或内联 JSON）")
+@click.option("--confirm", is_flag=True, help="确认用户已审阅最终方法论；Agent/JSON 模式提交必需")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def skill_craft(
     ctx: click.Context,
     domain: str,
     project_id: str | None,
+    answers: str | None,
+    confirm: bool,
     json_output: bool,
 ) -> None:
     """人机共建写作方法论（Skill）—— 不需要懂技术，用编辑的语言逐条回答即可。
@@ -4962,23 +5203,38 @@ def skill_craft(
         click.echo(ui.dim("所谓「Skill」就是这份写作方法的存档：你负责定规则，创作搭档负责严格执行。"), err=True)
         click.echo("", err=True)
 
-    answers: dict[str, str] = {}
-    for q in _skill_craft_questions():
-        key = str(q["key"])
-        prompt = str(q["prompt"])
-        hint = str(q["hint"])
-        if not json_output:
+    if json_output and answers is None:
+        _emit(
+            {
+                "status": "needs_user_input",
+                "domain": domain,
+                "questions": _skill_craft_questions(),
+                "answer_schema": {str(item["key"]): "" for item in _skill_craft_questions()},
+                "next": "与用户自然共创后，将答案写入一个 JSON 对象，再运行 skill craft --answers @answers.json --confirm --json。",
+            },
+            True,
+        )
+        return
+
+    collected: dict[str, str] = _load_skill_craft_answers(answers) if answers else {}
+    if answers is None:
+        for q in _skill_craft_questions():
+            key = str(q["key"])
+            prompt = str(q["prompt"])
+            hint = str(q["hint"])
             click.echo(ui.dim(f"◆ {hint}"), err=True)
             click.echo(f"{prompt}", err=True)
-            value = click.prompt("  你的回答（可直接回车跳过此项）", default="", show_default=False)
-        else:
-            # --json 模式：允许 Agent 代问，但下方仍强制人工确认
-            value = ""
-        answers[key] = value.strip()
+            collected[key] = click.prompt("  你的回答", default="", show_default=False).strip()
 
-    draft = _craft_answers_to_draft(domain, answers)
+    missing = _craft_missing_answers(collected)
+    if missing:
+        raise click.ClickException(
+            "方法论信息不完整（缺少：" + ", ".join(missing) + "）。请补齐后一次提交，避免用通用模板进入正文创作。"
+        )
+
+    draft = _craft_answers_to_draft(domain, collected)
     suggested = _sanitize_skill_name(draft.get("work") or "my-methodology")
-    if not json_output:
+    if answers is None:
         click.echo("", err=True)
         click.echo(ui.section("=== 方法论草案（请审阅）==="), err=True)
         click.echo(draft["instructions"], err=True)
@@ -5003,11 +5259,37 @@ def skill_craft(
         "stages": ["writing"],
         "instructions": draft["instructions"],
     }
-    if not json_output:
+    if answers is None:
         click.echo("", err=True)
         if not click.confirm("你已审阅这份方法论并确认它代表你的创作标准吗？（确认后提交）", default=False):
             click.echo(ui.warn("已取消——你可以用 skill update 修改已创建的方法论，或重新运行 skill craft。"), err=True)
             return
+    check_result = _session(ctx).request(
+        "POST", "/skills/personal/robustness-check", json_body=payload, write=True
+    )
+    check = dict(check_result.get("check") or {})
+    if check.get("overall_status") != "pass":
+        result = {
+            "status": "needs_revision",
+            "draft": payload,
+            "robustness": check,
+            "next": "只修改报告中 revise/block 的维度；保留用户已确认的创作意图，再次运行 craft 预检。",
+        }
+        _emit(result, json_output)
+        if not json_output:
+            click.echo(ui.warn("方法论尚未通过健壮性预检，未创建、未挂载。请按报告完善后重试。"), err=True)
+        return
+    if answers is not None and not confirm:
+        _emit(
+            {
+                "status": "needs_confirmation",
+                "draft": payload,
+                "robustness": check,
+                "next": "把 draft.instructions 完整展示给用户；明确认可后原命令加 --confirm。",
+            },
+            json_output,
+        )
+        return
     result = _session(ctx).request("POST", "/skills/personal", json_body=payload, write=True)
     if project_id:
         skill_id = str(result.get("id") or result.get("skill_id") or "")
@@ -5015,21 +5297,23 @@ def skill_craft(
             version_id = str(result.get("version_id") or result.get("versions", [{}])[0].get("id") or "")
             try:
                 _session(ctx).request(
-                    "POST",
+                    "PUT",
                     f"/projects/{project_id}/skills/{skill_id}",
                     json_body={"version_id": version_id} if version_id else {},
                     write=True,
                 )
+                mounted = _session(ctx).request("GET", f"/projects/{project_id}/skills")
+                verified = any(str(item.get("skill_id") or item.get("id") or "") == skill_id for item in (mounted or []))
                 if not json_output:
-                    click.echo(ui.ok(f"方法论《{name}》已创建并挂载到作品 {project_id} —— 可以开始逐章创作了。"))
-                _emit({**result, "mounted_to": project_id}, json_output)
+                    click.echo(ui.ok(f"方法论《{name}》已创建并挂载到作品 {project_id}（回读{'通过' if verified else '未通过'}）。"))
+                _emit({**result, "robustness": check, "mounted_to": project_id, "verified": verified}, json_output)
                 return
             except ScriptNowError as mount_error:
                 if not json_output:
                     click.echo(ui.warn(f"方法论已创建，但挂载未完成：{mount_error}——可稍后 skill mount 手动挂载。"), err=True)
     if not json_output:
         click.echo(ui.ok(f"方法论《{name}》已创建 —— 用 skill mount <作品号> <skill_id> <version_id> 挂载到作品后即可开始创作。"))
-    _emit(result, json_output)
+    _emit({**result, "robustness": check}, json_output)
 
 
 @skill_group.command("list")
@@ -5796,6 +6080,3 @@ def _wait_for_run(session: Session, project_id: str, run_id: str, json_output: b
         f"run {run_id} did not finish within {max_seconds}s; "
         "继续用 scriptnow run status 轮询（agent 场景建议 SCRIPTNOW_WAIT_MAX_SECONDS=45）"
     )
-
-
-

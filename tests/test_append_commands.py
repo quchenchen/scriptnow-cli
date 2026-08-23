@@ -7,6 +7,7 @@ the `--adopt` second request.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock
 
 import pytest
@@ -212,8 +213,8 @@ def test_skill_craft_assembles_structured_draft_and_requires_confirm():
     assert "正例" in draft["instructions"] and "反例" in draft["instructions"]
 
     # 2) 名称 sanitize
-    assert _sanitize_skill_name("都市悬疑言情") == "都市悬疑言情"
-    assert _sanitize_skill_name("!!") == "my-writing-methodology"
+    assert _sanitize_skill_name("都市悬疑言情").startswith("work-methodology-")
+    assert _sanitize_skill_name("!!").startswith("work-methodology-")
 
     # 3) 提问清单是编辑语言（无技术术语）
     prompts = " ".join(str(q["prompt"]) for q in _skill_craft_questions())
@@ -225,6 +226,150 @@ def test_skill_craft_assembles_structured_draft_and_requires_confirm():
     r = runner.invoke(main, ["skill", "craft", "--domain", "novel"], input=inputs)
     assert r.exit_code == 0
     assert "已取消" in r.output
+
+    # 5) Agent 模式先返回共创协议，不得用空答案静默创建 Skill
+    schema = runner.invoke(main, ["skill", "craft", "--domain", "script", "--json"])
+    assert schema.exit_code == 0
+    payload = json.loads(schema.output)
+    assert payload["status"] == "needs_user_input"
+    assert set(payload["answer_schema"]) == {
+        "work", "craft", "voice", "continuity", "evaluation", "examples"
+    }
+
+    # 6) Agent 回填仍须显式 --confirm，且缺项会在任何网络写入前失败
+    incomplete = runner.invoke(
+        main,
+        ["skill", "craft", "--answers", '{"work":"短剧"}', "--json"],
+    )
+    assert incomplete.exit_code != 0
+    assert "方法论信息不完整" in incomplete.output
+
+
+def test_skill_craft_agent_flow_preflights_mounts_and_reads_back(monkeypatch):
+    """Agent 共创只用一次 answers 回填；pass 后创建、正确挂载并回读。"""
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+
+    def request(method, path, **kwargs):
+        if path.endswith("/robustness-check"):
+            return {"check": {"overall_status": "pass", "maturity_score": 92}}
+        if path == "/skills/personal":
+            return {"id": "skill-1", "version_id": "version-1", "name": "work-methodology"}
+        if method == "PUT":
+            return {"ok": True}
+        if path == "/projects/project-1/skills":
+            return [{"skill_id": "skill-1", "version_id": "version-1"}]
+        raise AssertionError((method, path, kwargs))
+
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    answers = json.dumps(
+        {
+            "work": "都市悬疑小说，调查者追查账本真相",
+            "craft": "第三人称限知；每章以行动推进并在结尾留钩子；对白短促",
+            "voice": "冷冽短句，使用物件意象，避免排比和解释性旁白",
+            "continuity": "已采纳正文与人物设定不可改；伏笔必须登记并在约定章节回收",
+            "evaluation": "按张力、因果、角色主动性、连续性逐项自检；任一不达标即重写",
+            "examples": "正例：她把信折了三折，没有抬头；反例：直接说明她很悲伤并连续解释三句",
+        },
+        ensure_ascii=False,
+    )
+    result = CliRunner().invoke(
+        main,
+        [
+            "skill", "craft", "--domain", "novel", "--project-id", "project-1",
+            "--answers", answers, "--confirm", "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["verified"] is True
+    assert session.request.call_args_list[2].args[:2] == (
+        "PUT", "/projects/project-1/skills/skill-1"
+    )
+
+
+def test_guide_focuses_one_creative_decision_and_adapts_script_path():
+    runner = CliRunner()
+
+    focused = runner.invoke(
+        main, ["guide", "--step", "4", "--medium", "script", "--json"]
+    )
+    assert focused.exit_code == 0, focused.output
+    payload = json.loads(focused.output)
+    assert payload["mode"] == "focused-step"
+    assert payload["medium"] == "script"
+    assert payload["step"]["step"] == 4
+    assert len(payload["step"]["lenses"]) == 3
+    assert "script propose" in payload["step"]["command"]
+    assert payload["step"]["next_step"]["step"] == 5
+    assert "一次只处理一个决定" in payload["step"]["interaction"]["decision"]
+
+    script_map = runner.invoke(main, ["guide", "--steps", "--medium", "script", "--json"])
+    assert script_map.exit_code == 0
+    map_payload = json.loads(script_map.output)
+    assert "script propose" in map_payload["steps"][3]["command"]
+    assert "scene quality" in map_payload["steps"][7]["command"]
+
+    # 人类默认入口只展示第一幕，不再输出十步命令墙。
+    human = runner.invoke(main, ["guide", "--medium", "novel"])
+    assert human.exit_code == 0, human.output
+    assert "第 1 幕 / 10" in human.output
+    assert "现在只想一件事" in human.output
+    assert "Step 10" not in human.output
+
+    # Agent 无 step 的 --json 仍保留完整机器可读地图，兼容旧调用。
+    full = runner.invoke(main, ["guide", "--json"])
+    assert full.exit_code == 0
+    assert len(json.loads(full.output)["next"]["steps"]) == 10
+
+
+def test_guide_pulse_preserves_useful_detours_and_softly_returns_from_drift():
+    runner = CliRunner()
+    useful = json.dumps(
+        {
+            "rounds_without_progress": 4,
+            "decision_advanced": False,
+            "captured_material": ["父亲的录音可以成为中段伏笔"],
+            "unresolved": ["女主继续调查的代价"],
+            "conflicts": [],
+            "next_stage_requested": False,
+        },
+        ensure_ascii=False,
+    )
+    result = runner.invoke(
+        main,
+        ["guide", "--step", "4", "--medium", "novel", "--pulse", useful, "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    pulse = json.loads(result.output)["pulse"]
+    assert pulse["status"] == "useful_detour"
+    assert pulse["should_invite_return"] is False
+    assert pulse["captured_material"] == ["父亲的录音可以成为中段伏笔"]
+
+    drifting = json.dumps(
+        {
+            "rounds_without_progress": 4,
+            "decision_advanced": False,
+            "captured_material": [],
+            "unresolved": ["女主继续调查的代价"],
+        },
+        ensure_ascii=False,
+    )
+    result = runner.invoke(
+        main,
+        ["guide", "--step", "4", "--medium", "novel", "--pulse", drifting, "--json"],
+    )
+    payload = json.loads(result.output)
+    assert payload["pulse"]["status"] == "drifting"
+    assert payload["pulse"]["should_invite_return"] is True
+    assert payload["resuming"] is True
+    assert "强制进入下一步" in payload["step"]["recovery"]["must_not"]
+
+    missing_step = runner.invoke(main, ["guide", "--resume", "--json"])
+    assert missing_step.exit_code != 0
+    assert "需要同时指定 --step" in missing_step.output
 
 
 def test_login_password_security_paths():

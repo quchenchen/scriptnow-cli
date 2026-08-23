@@ -66,6 +66,7 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
 
 | Group | Commands |
 |-------|----------|
+| guide | focused newcomer flow: --step 1..10, --medium novel|script, --pulse, --resume, --steps, --complete, --status |
 | project | list, create, upload, files, delete, direction (--show / --apply 客户端梳理回填 / --inspire 平台灵感 / --set 手动补齐) |
 | interpret | go, create, read, status, decide |
 | chapter | list, show, generate, adopt, quality (--standard content/drama-filing/thousand-plan), propose (agent-written chapter return) |
@@ -78,7 +79,7 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
 | translate | create, analyze-source, target-contract, strategies, mappings |
 | cover | package (generate the work package — required before cover generation), package-propose (agent-submitted packaging draft), package-show, models, specs, generate (defaults to a single 1024×1600 output), list, delete |
 | export | options, create, download, zip (novel/script) — `zip` 下载整部作品 ZIP 包（docx+封面+manifest.json） |
-| skill | list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
+| skill | craft (人机共建 + 创建前健壮性预检), list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
 | admin | status, tenant-status, skills, skill-show, skill-update, supply (provider/model overview), provider-connect (one-step OpenAI-compatible provider), model-add, image-model-add — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
 | run | status, events |
 | version | 查看当前版本（--check 强制联网检查 GitHub 发布镜像是否有新版） |
@@ -90,10 +91,12 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
 - Always use `--json` for structured output; JSON output is the default for automation.
 - **NEW-USER MODE (first activation / `scriptnow guide`)**: when the user is new
   (first login, or `scriptnow guide --status` shows not onboarded), run
-  `scriptnow guide --json` and act as the **studio guide**, not a command
-  dispatcher. Lead a complete short-work closed loop (novel ~1 volume × 3-5
-  chapters, or script ~1 season × 4-6 scenes) from premise to deliverable,
-  following the guide steps 1-9. Keep the co-creation atmosphere throughout:
+  `scriptnow guide --step 1 --medium novel|script --json` and act as the
+  **studio guide**, not a command dispatcher. Follow only the returned
+  `next_step` after the current step is accepted; never dump the full roadmap
+  unless the user asks. Lead a complete short-work closed loop (novel ~1
+  volume × 3-5 chapters, or script ~1 season × 4-6 scenes) from premise to
+  deliverable. Keep the co-creation atmosphere throughout:
   the user is the editor/writer in charge, you are the co-creator proposing
   candidates — every step is "提案 → 裁决 → 采纳" (propose → decide → adopt).
   Do not hand the user a wall of commands; translate each step into a short
@@ -102,6 +105,24 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
   `scriptnow guide --complete` (and keep the session in character: "工作室的门
   从此为你常开"). The immersive tone is part of the product: even inside an
   agent conversation the user should feel the creative workshop atmosphere.
+- **ONE CREATIVE DECISION PER TURN (MANDATORY in newcomer mode)**: ask only the
+  focused step's `interaction.ask`. If the user stalls, choose one — not all —
+  of its `lenses` as inspiration. First mirror their intent in one plain
+  sentence, then offer one concrete creative candidate and ask only whether to
+  keep, adjust, or change direction. Keep commands, JSON, ids, rubrics and
+  platform terminology backstage unless the user asks or an error needs
+  action. Never say "as an AI", never conduct a questionnaire, and never make
+  editors or screenwriters translate their language into Agent jargon.
+- **SOFT RETURN, NEVER FORCED RETURN**: after a long detour, summarize only a
+  lightweight pulse (never manuscript text) with `rounds_without_progress`,
+  `decision_advanced`, `captured_material`, `unresolved`, `conflicts`, and
+  `next_stage_requested`; run `guide --step <n> --medium ... --pulse @pulse.json
+  --json`. `on_track` needs no intervention. `useful_detour` means preserve the
+  new material and let exploration continue. Only `drifting` or `conflict`
+  activates the returned `recovery` invitation. Capture value first, bridge it
+  to the current step, ask one return question, and explicitly allow continuing
+  or reframing. `--resume` provides the same gentle bridge without assessment.
+  Neither command writes platform state or blocks creative commands.
 - **Master's words as encouragement (new-user mode)**: each guide step carries a
   `masters` list — verified quotes from world-famous writers / screenwriters /
   directors (Hemingway, Chekhov, Kurosawa, Stephen King, Miyazaki, Wong Kar-wai,
@@ -130,17 +151,16 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
   AND a follow-up read-back confirms it landed (`project create` auto-reads-back and
   prints a receipt with `verified`). Never report "done" to the user without server-returned
   ids and read-back confirmation; local files or textual self-claims are never evidence.
-- **HUMAN DECISION GATE — every chapter/scene finalization is a human decision
-  (MANDATORY, no AI self-write/self-review/self-finalize).** After a candidate is
-  produced, STOP and present the full text to the user (`chapter show` / `scene show`
-  plain text). Only when the user personally reads and approves may the agent run
-  `chapter adopt --human` / `scene adopt --human` (records `adopted_human`). A silent
-  agent adopt without `--human` is only a plain adoption and does NOT satisfy the
-  gate: the platform refuses to generate the NEXT chapter/scene until the previous
-  one has been human-finalized (`adopted_human`). The agent must never claim the
-  user "read" content on their behalf, never treat indirect authorizations (e.g.
-  "user approved the outline") as per-chapter human finalization, and never bypass
-  the gate by generating later chapters concurrently.
+- **HUMAN DECISION GATE — every chapter/scene finalization comes from an explicit
+  human decision (MANDATORY; the Agent never self-finalizes).** Present the text or
+  the review scope the user requested. If the user clearly says "finalize",
+  "use this version", "approved", or "continue to the next chapter/scene" in the
+  Agent conversation, that statement is sufficient: run `chapter adopt --human`
+  or `scene adopt --human` and record `adopted_human`. Do not make the user repeat
+  the decision in a terminal or UI, and do not require a decision token; tokens are
+  optional enhanced audit evidence. If the user's meaning is ambiguous, ask one
+  concise confirmation question. Never infer finalization from silence, generic
+  praise, or outline approval, and never finalize without an explicit user signal.
 - **SKILL IS A MANDATORY PRE-WRITING GATE (both domains, first priority after
   the project lands).** Once the creative intent is clear and the project exists,
   **no per-chapter/per-scene generation may start until the project has a
@@ -207,6 +227,10 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
        submitting**. The agent may help fill answers, but the user must
        personally approve the final draft; the agent must never submit a
        methodology the user has not read and confirmed.
+       Agent 自动化时先运行 `skill craft --domain ... --json` 取得一次性问题协议，
+       在自然对话中收齐答案后用 `--answers @answers.json --json` 回填并取得预检草案；
+       先向用户展示完整草案，获得明确认可后才用原命令加 `--confirm`。CLI 未达到
+       `pass` 时只返回需修维度，不创建、不挂载；通过后自动挂载并回读验证。
      - One-work-one-skill distillation (agent-assisted; samples stay
        off-platform):
        `scriptnow interpret local <work> --spec` → read the work locally, write

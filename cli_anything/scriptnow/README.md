@@ -110,6 +110,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 | 组 | 用途 |
 |----|------|
+| guide | 聚焦式新手创作：--step 1..10 / --medium novel\|script / --pulse / --resume / --steps / --complete / --status |
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
@@ -120,7 +121,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / download（novel/script） |
-| skill | Skill 工坊：list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
+| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | version / self-upgrade | 版本查看与强制检查（--check）/ 自动升级（确认后执行） |
@@ -163,10 +164,24 @@ npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
 
 SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptnow/skills/SKILL.md)。
 
+- **聚焦式新手创作**：从 `scriptnow guide --step 1 --medium novel|script --json`
+  开始，只跟随当前返回的 `next_step`。每轮只问一个主问题；用户卡住时从 `lenses`
+  中只选一个启发。先复述创作意图，再提供一个具体候选，请用户决定保留、调整或换方向。
+  命令、JSON、ID 与评分术语默认留在幕后；完整路线仅在用户主动询问时用 `guide --steps` 展示。
+- **柔性回归**：多轮发散后由 Agent 把轻量摘要传给
+  `guide --step <当前幕> --pulse @pulse.json --json`。`useful_detour` 先保留素材并允许继续；
+  只有 `drifting/conflict` 才按 `recovery` 先收拢、再邀请回归。`--resume` 可直接生成温和接续。
+  两者均不写平台状态、不阻断创作命令。
+- **一次明确表达即可定稿**：用户在 Agent 对话中说“定稿”“采用这版”或“可以继续”，
+  Agent 可直接执行 `chapter adopt --human` / `scene adopt --human` 并记录
+  `adopted_human`。不要求重复操作终端/页面，不强制令牌；语义不明确时只追问一次。
+
 ## Agent 使用提示
 
 - **编排前置：Skill 支撑检查（MANDATORY）**：创作前 `skill mounts <pid>`；无方法论 Skill 时
-  先创建（interpret local 蒸馏 或 skill create）再创作。`book` 也会在缺 Skill 时提示。
+  优先用 `skill craft` 共创。Agent 先以 `--json` 获取问题协议，再以 `--answers @answers.json`
+  一次回填；向用户展示草案并获明确认可后才加 `--confirm`。CLI 创建前做健壮性预检，
+  通过后自动挂载并回读验证。也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
 - 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。
