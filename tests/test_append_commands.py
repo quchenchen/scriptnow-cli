@@ -383,6 +383,10 @@ def test_diag_sanitizes_secrets_and_detail():
     args3 = _sanitize_args(("x" * 300,))
     assert len(args3[0]) < 100 and "truncated" in args3[0]
     # detail 净化 JWT 与 token
-    d = _sanitize_detail("detail with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.abcd1234EFGH and token=supersecret12345")
+    d = _sanitize_detail("detail with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.abcd1234EFGH and token=supersecret12345 cookie=abcDEF123456")
     assert "jwt-redacted" in d
     assert "supersecret12345" not in d
+    assert "abcDEF123456" not in d
+    # 前缀必须保留（r"\1" 反向引用生效），值被替换为 <redacted>
+    assert "token=<redacted>" in d
+    assert "cookie=<redacted>" in d
