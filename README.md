@@ -137,6 +137,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 ```
 
 **交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1` → `export download -o 书.docx`。
+剧本使用 `--form working` 时 DOCX 带每场预计时长、发声数量与转场信息；内部制作契约暂不作为编剧交付文件导出。
 
 ## 命令组
 
@@ -153,7 +154,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
-| export | 导出交付：options / create / download（novel/script） |
+| export | 导出交付：options / create / download / zip；剧本 working DOCX 含每场制作信息 |
 | skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
@@ -168,6 +169,9 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 逐章/逐场定稿采用“一次明确表达”原则：用户在 Agent 对话中说“定稿”“采用这版”
 或“可以继续”，Agent 即可执行 `chapter adopt --human` / `scene adopt --human`。
 不要求用户重复操作终端或页面，也不强制授权令牌；表达不明确时只需追问一次。
+
+剧本 Skill 在用户专属规则之外自动叠加四类质量锚点：场次功能与转折、可见可听可表演、
+对白/VO/OS 时序、台词量与目标时长。系统自动派生制作信息，不增加编剧问卷或机器字段维护。
 
 ```bash
 scriptnow guide --step 1 --medium novel --json

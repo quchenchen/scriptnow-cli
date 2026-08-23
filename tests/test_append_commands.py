@@ -212,6 +212,21 @@ def test_skill_craft_assembles_structured_draft_and_requires_confirm():
         assert section in draft["instructions"]
     assert "正例" in draft["instructions"] and "反例" in draft["instructions"]
 
+    script_draft = _craft_answers_to_draft(
+        "script",
+        {
+            "work": "都市悬疑短剧",
+            "craft": "每场完成一个行动节拍",
+            "voice": "冷硬克制",
+            "continuity": "人物与道具跨场连续",
+            "evaluation": "逐场审读，不达标重写",
+            "examples": "例如以动作开场；反例是解释性对白",
+        },
+    )
+    assert "六、script-quality-anchors" in script_draft["instructions"]
+    assert "可见、声音可听、演员可表演" in script_draft["instructions"]
+    assert "编剧不维护机器字段" in script_draft["instructions"]
+
     # 2) 名称 sanitize
     assert _sanitize_skill_name("都市悬疑言情").startswith("work-methodology-")
     assert _sanitize_skill_name("!!").startswith("work-methodology-")

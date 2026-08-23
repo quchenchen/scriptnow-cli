@@ -132,7 +132,9 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 ```
 
 **Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1` →
-`export download -o book.docx`.
+`export download -o book.docx`. Script `--form working` adds per-scene production
+metadata to DOCX. The internal production contract is intentionally not exposed
+as a writer-facing export file yet.
 
 ## Command groups
 
@@ -149,7 +151,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
-| export | Delivery: options / create / download (novel/script) |
+| export | Delivery: options / create / download / zip; script working DOCX includes per-scene production metadata |
 | skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
@@ -166,6 +168,11 @@ Chapter/scene finalization follows a one-explicit-statement rule: when the user
 says finalize, use this version, or continue in the Agent conversation, the
 Agent may run `chapter adopt --human` / `scene adopt --human`. No repeated
 terminal/UI action or mandatory token is required; ask once only if ambiguous.
+
+Script Skills automatically add four system quality anchors beyond the user's
+project-specific rules: scene function and observable turn, visible/audible/
+performable action, ordered dialogue/VO/OS, and spoken-text fit against target
+duration. The platform derives production metadata without extra questions.
 
 ```bash
 scriptnow guide --step 1 --medium novel --json

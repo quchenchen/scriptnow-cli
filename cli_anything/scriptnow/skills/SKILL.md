@@ -78,7 +78,7 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
 | scene | list, show, generate, adopt, propose, batch, quality, diff — 顶层组，与 chapter 组对称（script 正文命令的新命名入口；旧 `script scene-*` 命令保留为别名） |
 | translate | create, analyze-source, target-contract, strategies, mappings |
 | cover | package (generate the work package — required before cover generation), package-propose (agent-submitted packaging draft), package-show, models, specs, generate (defaults to a single 1024×1600 output), list, delete |
-| export | options, create, download, zip (novel/script) — `zip` 下载整部作品 ZIP 包（docx+封面+manifest.json） |
+| export | options, create, download, zip (novel/script) — script `working` DOCX includes per-scene production metadata; internal screenplay contract is not a writer-facing file |
 | skill | craft (人机共建 + 创建前健壮性预检), list, detail, versions, create, update, archive, mounts, mount, upload; growth (workspace/start/decide/candidate/evaluate/preview/publish — methodology evolution); canary (list/decide — version rollout) |
 | admin | status, tenant-status, skills, skill-show, skill-update, supply (provider/model overview), provider-connect (one-step OpenAI-compatible provider), model-add, image-model-add — administrator-only (403 otherwise); token-consumption/quota/financial commands are intentionally NOT in the CLI |
 | run | status, events |
@@ -187,6 +187,13 @@ The session (cookies + CSRF) is persisted at `~/.config/scriptnow-cli/session.js
        produces on-intent work. Surface each hardening round to the user and
        get their sign-off — a Skill that merely exists is not enough; it must
        be battle-tested against the work's intent.
+     - **Script quality anchors are mandatory and system-supplied**: every
+       script Skill must cover scene function + observable turn, visible/
+       audible/performable action, ordered dialogue/VO/OS, and spoken-text fit
+       against target duration. `skill craft` appends these anchors without
+       asking more questions; robustness v2 checks them even for direct Skill
+       creation. Production metadata is derived by the platform — never ask the
+       writer to maintain machine fields.
    - **REFERENCE — a robust novel Skill (passes the gate)** — structure your
      Skill at least this concretely:
      ```

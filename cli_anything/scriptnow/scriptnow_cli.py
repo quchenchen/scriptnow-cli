@@ -573,7 +573,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
-        "Skill 健壮性参照示例：方法论至少应达到「craft / voice / continuity / evaluation / examples」五个维度都有实质内容并含正反例（小说示例见 `interpret local --spec`，剧本同理换 craft 词：镜头/对白/转场/场次时长）。你的 Skill 比示例更单薄时必然过不了平台健壮性门禁——先完善再挂载，不要带着 stub 开始创作。",
+        "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
@@ -5132,6 +5132,13 @@ def _craft_answers_to_draft(domain: str, answers: dict[str, str]) -> dict[str, s
         f"四、evaluation：{evaluation}"
         f"五、examples：{examples}"
     )
+    if domain == "script":
+        instructions += (
+            "六、script-quality-anchors：每场必须有唯一戏剧功能，并让目标、关系、信息或风险"
+            "发生可观察转折；只写镜头可见、声音可听、演员可表演的内容；对白、VO、OS 按正文"
+            "时序清楚排列，台词量必须能装入目标时长；人物、道具、伏笔与转场保持连续。"
+            "预计时长、发声轨等制作信息由系统从正文派生，编剧不维护机器字段。"
+        )
     return {"instructions": instructions, "work": work}
 
 
@@ -5916,7 +5923,7 @@ def export_options(ctx: click.Context, project_id: str, domain: str, json_output
 @click.argument("project_id")
 @click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
 @click.option("--units", required=True, help="逗号分隔的章节/场次 id（用 export options 或 chapter/scene list 查看）")
-@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=出版稿 working=带批注工作稿")
+@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=纯净稿；working=含预计时长/发声轨/转场的制作工作稿")
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
@@ -5984,7 +5991,7 @@ def export_download(
 @click.argument("project_id")
 @click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
 @click.option("--units", required=True, help="逗号分隔的章节/场次 id（用 export options 或 chapter/scene list 查看）")
-@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=出版稿 working=带批注工作稿")
+@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=纯净稿；working=含预计时长/发声轨/转场的制作工作稿")
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
