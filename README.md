@@ -154,7 +154,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 | 组 | 用途 |
 |----|------|
-| guide | 聚焦式新手创作向导：`--step 1..10 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图 |
+| guide | 聚焦式新手创作向导（outline-first 逐层深入）：`--step 1..12 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图 |
 | agent-guide | **Agent 操作契约**：连接平台唯一准则（--json 结构化输出） |
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |

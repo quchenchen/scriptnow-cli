@@ -524,7 +524,7 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
 
 @main.command()
 @click.option("--steps", is_flag=True, help="只展示完整作品向导步骤（短篇/短剧闭环）")
-@click.option("--step", type=click.IntRange(1, 10), default=None, help="只进入当前创作步骤，避免一次展示整套命令")
+@click.option("--step", type=click.IntRange(1, 12), default=None, help="只进入当前创作步骤，避免一次展示整套命令")
 @click.option("--medium", type=click.Choice(["novel", "script"]), default="novel", help="按小说或剧本显示对应创作路径")
 @click.option("--resume", is_flag=True, help="多轮发散后温和回到当前步骤（须与 --step 一起使用，不改变平台状态）")
 @click.option("--pulse", default=None, help="最近对话的轻量脉搏 JSON（@file 或内联）；判断是否需要柔性回归，不写平台状态")
@@ -736,16 +736,12 @@ _GUIDE_STEPS = [
     },
     {
         "step": 4,
-        "title": "规划梗概与故事三件套",
-        "scene": "摊开编剧的案头：先写一段全篇梗概定下走向，再立故事核心、画创作蓝图。想清楚再动笔，是编辑的基本功。",
-        "why": "先回填并采纳梗概大纲（≤500 字，全书走向），再立故事核心、画创作蓝图、排卷章结构——逐层深入、环环相扣，先想清楚再动笔。",
-        "command": (
-            "scriptnow novel outline <作品号> --text \"一句梗概\" → novel outline-adopt <作品号>（先定梗概）→ "
-            "novel propose cores @cores.json --adopt && "
-            "novel propose blueprint @blueprint.json --adopt"
-        ),
-        "verify": "梗概大纲已采纳；故事核心与蓝图已定稿。",
-        "prompt": "如果用一段话讲清全书走向，你会怎么说？你的主角最想要什么，又最怕失去什么？",
+        "title": "先写梗概，定下全书走向",
+        "scene": "在动笔前，先给整部作品写一段梗概：主角要什么、阻力是什么、最终走向哪里。梗概是旅程的第一句导航。",
+        "why": "新流程先定梗概（≤500 字）：梗概采纳后 StoryMap 才可规划。这是逐层深入的第一步，避免一开始就锁死结构。",
+        "command": "scriptnow novel outline <作品号> --text \"一句梗概\" → novel outline-adopt <作品号>（先定梗概）",
+        "verify": "梗概大纲已采纳（novel outline-status 显示已定稿）。",
+        "prompt": "如果用一段话说清全书走向，你会怎么说？主角最想要什么，又最怕失去什么？",
         "masters": [
             {
                 "name": "契诃夫",
@@ -757,40 +753,85 @@ _GUIDE_STEPS = [
                 "name": "马尔克斯",
                 "quote": "生活不是我们活过的日子，而是我们记住的日子。",
                 "source": "《活着为了讲述》",
-                "how": "故事三件套，就是在替读者挑选「值得记住的日子」——而梗概，是你为这趟旅程写下的第一句导航。",
+                "how": "梗概，是你为这趟旅程写下的第一句导航——读者会记住的，正是你从这里开始挑选的日子。",
             },
         ],
     },
     {
         "step": 5,
-        "title": "规划结构并补齐章纲",
-        "scene": "排出卷章结构，像资深编辑逐页过目；采纳前先为每一章补齐章纲（事件链与因果契约）——正文前必须环环相扣。",
-        "why": "先排卷章结构并采纳，再逐章补齐章纲/集纲（summary、active_goal、conflict、turn、state_changes、锚点）。章纲未全量补齐并采纳前，不能批量进入正文。",
-        "command": (
-            "scriptnow novel propose storymap @storymap.json（或 storymap generate）→ "
-            "novel orchestrate <作品号> --accept 采纳结构 → "
-            "chapter outline-batch <作品号> @outlines.json 批量补齐章纲（或单章 chapter outline <作品号> <章节号> @outline.json）→ "
-            "novel planning-quality <作品号> storymap @storymap.json 门禁 → storymap adopt --confirm"
-        ),
-        "verify": "结构已定稿；全书章纲/集纲已全量补齐并通过 planning-quality。",
-        "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？它的事件链清晰了吗？",
+        "title": "立故事核心与创作蓝图",
+        "scene": "摊开编剧的案头：先让三个故事方向互相竞争，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
+        "why": "故事核心定方向，创作蓝图立骨架：人物为何行动、关系如何变化、情节怎样升级、承诺如何回收。",
+        "command": "scriptnow novel propose cores @cores.json --adopt && novel propose blueprint @blueprint.json --adopt",
+        "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
+        "prompt": "这个故事里，你最想让哪一层先立起来：人物、关系、还是世界？",
         "masters": [
             {
-                "name": "王家卫",
-                "quote": "电影是时间的艺术。",
-                "source": "访谈",
-                "how": "结构就是你对时间的安排——而每章章纲，是你为每个时间单位写下的地图，动笔时不再迷路。",
+                "name": "黑泽明",
+                "quote": "你必须学习并经历各种事。",
+                "source": "《蛤蟆的油》",
+                "how": "蓝图不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。",
             },
             {
-                "name": "宫崎骏",
-                "quote": "创作就是生活本身。",
-                "source": "访谈（转述其创作理念）",
-                "how": "章纲不是枷锁，是让每一章都踏实地长在整部作品肌理里的根须。",
+                "name": "塔可夫斯基",
+                "quote": "导演工作的本质，可以定义为雕刻时光。",
+                "source": "《雕刻时光》",
+                "how": "每一次设定，都是你在雕刻将要呈现的时光——核心与蓝图定得越清晰，刻出的光影越动人。",
             },
         ],
     },
     {
         "step": 6,
+        "title": "排卷章结构（StoryMap）",
+        "scene": "把全书拆成一卷卷、一章章——像为故事画出时间的地图。采纳前一切可改，采纳后才是定稿的结构。",
+        "why": "StoryMap 规划卷、章与故事节拍；采纳后成为正文的唯一结构事实源。新流程要求先有已采纳梗概，才能规划结构。",
+        "command": "scriptnow novel propose storymap @storymap.json（或 storymap generate）→ novel orchestrate <作品号> --accept 采纳",
+        "verify": "结构已定稿，创作计划可打印（book）。",
+        "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？",
+        "masters": [
+            {
+                "name": "王家卫",
+                "quote": "电影是时间的艺术。",
+                "source": "访谈",
+                "how": "结构就是你对时间的安排——这一卷卷、一章章，是你亲手为故事量出的节奏。",
+            },
+            {
+                "name": "宫崎骏",
+                "quote": "创作就是生活本身。",
+                "source": "访谈（转述其创作理念）",
+                "how": "采纳结构的那一刻，这部作品开始真正属于你——接下来的每一章，都是你生活的一部分。",
+            },
+        ],
+    },
+    {
+        "step": 7,
+        "title": "补齐章纲，再进正文",
+        "scene": "正文前最后一道门：为每一章补齐章纲——这一章的事件链、目标、冲突、转折、状态变化。章纲未全量补齐，写作不会开放。",
+        "why": "章纲/集纲是每章写作的控制性契约（summary、active_goal、conflict、turn、state_changes、锚点）。先补齐章纲并通过 planning-quality，逐章写作才逐层开放。",
+        "command": (
+            "scriptnow chapter outline-batch <作品号> @outlines.json（批量补齐章纲）或 "
+            "chapter outline <作品号> <章节号> @outline.json（单章）→ "
+            "novel planning-quality <作品号> storymap @storymap.json 门禁"
+        ),
+        "verify": "全书章纲已全量补齐并通过 planning-quality。",
+        "prompt": "这一章最想完成什么？它的事件链清晰了吗？",
+        "masters": [
+            {
+                "name": "斯蒂芬·金",
+                "quote": "关起门来写初稿，打开门来修改。",
+                "source": "《写作这回事》",
+                "how": "章纲不是枷锁，是让每一章都踏实地长在整部作品肌理里的根须——关门写初稿时，你不必在黑暗里摸索。",
+            },
+            {
+                "name": "余华",
+                "quote": "写作的过程，就是不断发现自己内心真实想法的过程。",
+                "source": "余华谈写作（访谈）",
+                "how": "章纲帮你先想清楚这一章想抵达哪里，再动笔——每一章都更接近你心里那个真实的故事。",
+            },
+        ],
+    },
+    {
+        "step": 8,
         "title": "规划并挂载专属 Skill（门禁 · 须健壮性完善）",
         "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
         "why": "动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格、角色守则与连续性标准——多轮打磨、试写检验，直到它真正代表你的意图，然后挂载到作品上，才能开始逐章创作。",
@@ -799,7 +840,7 @@ _GUIDE_STEPS = [
         "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？",
     },
     {
-        "step": 7,
+        "step": 9,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
         "why": "创作搭档递来手稿，你可以通读、局部审阅、批注或直接表达采用。只要你在对话中明确决定定稿，Agent 就会记录这次决定并继续；不要求你重复操作命令或页面。",
@@ -826,7 +867,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 8,
+        "step": 10,
         "title": "审读与修订",
         "scene": "编辑的责任：不放过一处瑕疵。逐句逐帧以挑剔受众的目光审读——每一句是否值得停留，每一帧是否推动情绪。",
         "why": "Agent 审读必须严苛：化身资深编剧与挑剔受众，逐句引用证据、点名失败的节拍，拒绝泛泛而谈的称赞；低于标准的正文立即带反馈重新生成。",
@@ -849,7 +890,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 9,
+        "step": 11,
         "title": "包装与导出交付",
         "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
         "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
@@ -875,7 +916,7 @@ _GUIDE_STEPS = [
         ],
     },
     {
-        "step": 10,
+        "step": 12,
         "title": "标记完成",
         "scene": "合上最后一页。第一部作品完成——工作室的门从此为你常开，随时回来继续创作。",
         "why": "完成第一部作品后运行本命令，以后不再打扰；随时可重看本向导。",
@@ -919,13 +960,15 @@ _GUIDE_CREATIVE_LENSES: dict[int, list[str]] = {
     1: ["一个忘不掉的人", "一个反复出现的画面", "一个让你不甘心的问题"],
     2: ["谁正在争取什么", "什么力量阻止了他/她", "失败后会失去什么"],
     3: ["读者应感到什么", "作品坚决不成为什么", "语言与节奏更接近哪种气质"],
-    4: ["主角的欲望与代价", "不可逆的关键选择", "结尾如何回应开端"],
-    5: ["最期待的一段", "最像套路的一段", "尚未被结构回答的问题"],
-    6: ["必须始终遵守的写法", "最容易写偏的地方", "一眼就能识别的正反例"],
-    7: ["本章/场唯一任务", "人物在结束时发生的变化", "让读者继续下去的悬念"],
-    8: ["删掉也不影响故事的内容", "人物只是被剧情推着走的地方", "解释多于行动的句子"],
-    9: ["作品最适合交给谁", "一句能让目标读者停下来的介绍", "封面必须传达的第一情绪"],
-    10: ["这次最满意的判断", "下次想改进的创作习惯", "下一部作品的第一颗种子"],
+    4: ["一句话最想让读者记住什么", "最能体现故事独特性的走向", "结尾想停在哪一个画面"],
+    5: ["主角的欲望与代价", "不可逆的关键选择", "人物关系如何变化"],
+    6: ["最期待的一段", "最像套路的一段", "尚未被结构回答的问题"],
+    7: ["本章唯一任务", "人物在结束时发生的变化", "让读者继续下去的悬念"],
+    8: ["必须始终遵守的写法", "最容易写偏的地方", "一眼就能识别的正反例"],
+    9: ["这一章读者应带走的情绪", "人物最真实的一句话", "结尾的余味"],
+    10: ["删掉也不影响故事的内容", "人物只是被剧情推着走的地方", "解释多于行动的句子"],
+    11: ["作品最适合交给谁", "一句能让目标读者停下来的介绍", "封面必须传达的第一情绪"],
+    12: ["这次最满意的判断", "下次想改进的创作习惯", "下一部作品的第一颗种子"],
 }
 
 
@@ -935,18 +978,26 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
         "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。",
     },
     4: {
-        "command": "scriptnow script outline <作品号> --text \"一句梗概\" → script outline-adopt <作品号>（先定梗概）→ script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt",
-        "verify": "梗概大纲已采纳；故事核心与蓝图已定稿。",
+        "command": "scriptnow script outline <作品号> --text \"一句梗概\" → script outline-adopt <作品号>（先定梗概）",
+        "verify": "梗概大纲已采纳（script outline-status 显示已定稿）。",
     },
     5: {
-        "command": "scriptnow script propose <作品号> storymap @storymap.json → script state <作品号> --json（审阅候选结构）→ 逐集补集纲 script episode-outline <作品号> <集号> @outline.json → script planning-quality <作品号> storymap @storymap.json 门禁 → 用户明确决定后采纳",
-        "verify": "结构已采纳；全剧集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）已全量补齐并通过 planning-quality。",
+        "command": "scriptnow script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt",
+        "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
+    },
+    6: {
+        "command": "scriptnow script propose <作品号> storymap @storymap.json → script state <作品号> --json（审阅候选结构）→ 用户明确决定后采纳",
+        "verify": "季/集/场结构已采纳，成为正文唯一结构事实源。",
     },
     7: {
+        "command": "scriptnow script episode-outline <作品号> <集号> @outline.json（逐集补集纲）→ script planning-quality <作品号> storymap @storymap.json 门禁",
+        "verify": "全剧集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）已全量补齐并通过 planning-quality。",
+    },
+    9: {
         "command": "scriptnow scene list <作品号> → scene generate/propose <作品号> <场次号> → 呈现正文 → 用户明确采用后 Agent 执行 scene adopt --human",
         "verify": "当前场有来自用户明确表达的 adopted_human 版本；不要求重复终端或页面确认。",
     },
-    8: {
+    10: {
         "command": "scriptnow scene show <作品号> <场次号> --plain → scene quality <作品号> <场次号> → 按反馈修订",
         "verify": "场次功能、可拍性、潜台词与转折无阻断项；用户决定保留什么、修改什么。",
     },
@@ -992,7 +1043,7 @@ def _guide_focus(
     )
     payload: dict[str, object] = {
         "guide": "scriptnow-creative-companion",
-        "title": f"创作工作室 · 第 {step} 幕 / 10",
+        "title": f"创作工作室 · 第 {step} 幕 / {len(_GUIDE_STEPS)}",
         "mode": "focused-step",
         "medium": medium,
         "medium_label": "小说" if medium == "novel" else "剧本",

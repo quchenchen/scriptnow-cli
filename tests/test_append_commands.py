@@ -317,27 +317,28 @@ def test_guide_focuses_one_creative_decision_and_adapts_script_path():
     assert payload["medium"] == "script"
     assert payload["step"]["step"] == 4
     assert len(payload["step"]["lenses"]) == 3
-    assert "script propose" in payload["step"]["command"]
+    assert "script outline" in payload["step"]["command"]
     assert payload["step"]["next_step"]["step"] == 5
     assert "一次只处理一个决定" in payload["step"]["interaction"]["decision"]
 
     script_map = runner.invoke(main, ["guide", "--steps", "--medium", "script", "--json"])
     assert script_map.exit_code == 0
     map_payload = json.loads(script_map.output)
-    assert "script propose" in map_payload["steps"][3]["command"]
-    assert "scene quality" in map_payload["steps"][7]["command"]
+    assert "script outline" in map_payload["steps"][3]["command"]
+    assert "episode-outline" in map_payload["steps"][6]["command"]
+    assert "scene quality" in map_payload["steps"][9]["command"]
 
-    # 人类默认入口只展示第一幕，不再输出十步命令墙。
+    # 人类默认入口只展示第一幕，不再输出十二步命令墙。
     human = runner.invoke(main, ["guide", "--medium", "novel"])
     assert human.exit_code == 0, human.output
-    assert "第 1 幕 / 10" in human.output
+    assert "第 1 幕 / 12" in human.output
     assert "现在只想一件事" in human.output
-    assert "Step 10" not in human.output
+    assert "Step 12" not in human.output
 
     # Agent 无 step 的 --json 仍保留完整机器可读地图，兼容旧调用。
     full = runner.invoke(main, ["guide", "--json"])
     assert full.exit_code == 0
-    assert len(json.loads(full.output)["next"]["steps"]) == 10
+    assert len(json.loads(full.output)["next"]["steps"]) == 12
 
 
 def test_guide_pulse_preserves_useful_detours_and_softly_returns_from_drift():
