@@ -4084,6 +4084,8 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
         ("蓝图（blueprint）", state.get("blueprint") is not None, "script propose blueprint @file --adopt"),
         ("StoryMap", bool((state.get("story_map") or {}).get("episodes")), "script propose storymap @file 或 script storymap --wait"),
     ]
+    outline = _api_request(ctx, "GET", f"/script/projects/{pid}/synopsis-outline")
+    checks.append(("梗概大纲（已定稿）", bool(outline and outline.get("status") == "adopted"), 'script outline <作品号> --text "…" → script outline-adopt'))
     episodes = (state.get("story_map") or {}).get("episodes") or []
     checks.append(("集纲（全剧 Episode 平铺字段）", _all_planning_contracts(episodes, "episode_contract"), "可用 script episode-outline <pid> <episode_id> @outline.json 单集补纲；完成全量后运行 script planning-quality → propose/adopt"))
     try:
