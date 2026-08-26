@@ -3295,6 +3295,90 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     click.echo(ui.ok(f"创作前检查通过：{sum(1 for c in checks if c[1])}/{len(checks)} 项就绪" if all_ok else ui.error(f"还差 {sum(1 for c in checks if not c[1])} 项未就绪——按上面提示补齐后再开始逐章创作")), err=True)
 
 
+@novel_group.command("graph")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_graph_status(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """故事图谱同步对账（P0）：对比已采纳正文 vs 图谱已提取，报告覆盖/缺失/失败并触发缺失提取。
+
+    图谱由已采纳章节后台增量提取。追加/采纳后若图谱未跟上（如队列丢失），本命令
+    会展示缺口并触发补齐。结果只读，不创建/采纳任何创作候选。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    graph = _api_request(ctx, "GET", f"/novel/projects/{pid}/creative-graph")
+    state = _novel_state(session, pid)
+    adopted = [
+        doc for doc in (state.get("documents") or [])
+        if doc.get("status") in ("adopted", "adopted_human")
+    ]
+    graph_chapters = {
+        str(ch.get("chapter_key", "")).replace("chapter:", "")
+        for ch in (graph.get("chapters") or [])
+    }
+    missing = [doc["chapter_id"] for doc in adopted if doc["chapter_id"] not in graph_chapters]
+    extraction = graph.get("extraction_status") or graph.get("extraction")
+    if not json_output:
+        total = len(adopted)
+        synced = total - len(missing)
+        click.echo(ui.kv("已采纳正文", total))
+        click.echo(ui.kv("图谱已同步", synced))
+        if missing:
+            click.echo(ui.warn(f"图谱落后 {len(missing)} 章：{'、'.join(missing[:10])}{'…' if len(missing) > 10 else ''}"))
+            click.echo(ui.dim("已触发后台补齐（图谱由已采纳章节增量提取）。可稍后重跑本命令查看进度。"), err=True)
+        else:
+            click.echo(ui.ok("图谱与已采纳正文完全同步。"))
+        click.echo(ui.kv("提取状态", extraction or "not_built"))
+        return
+    _emit({
+        "adopted_chapters": total,
+        "synced_chapters": synced,
+        "missing_chapters": missing,
+        "extraction_status": extraction,
+    }, json_output)
+
+
+@novel_group.command("planning-status")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_planning_status(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """规划健康度对账（codex P0）：梗概 / StoryMap / 章纲 / 图谱 / 人物 各层缺口与下一步。
+
+    逐层显示而非单一健康分，让作者明确知道哪一层缺什么、怎么补。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    state = _novel_state(session, pid)
+    outline = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
+    graph = _api_request(ctx, "GET", f"/novel/projects/{pid}/creative-graph")
+    sm = state.get("story_map") or {}
+    volumes = sm.get("volumes") or []
+    chapters = [c for v in volumes for c in (v.get("chapters") or [])]
+    with_outline = [c.get("id") for c in chapters if c.get("outline")]
+    documents = state.get("documents") or []
+    adopted = [d for d in documents if d.get("status") in ("adopted", "adopted_human")]
+    graph_chapters = {
+        str(ch.get("chapter_key", "")).replace("chapter:", "")
+        for ch in (graph.get("chapters") or [])
+    }
+    graph_missing = [d["chapter_id"] for d in adopted if d["chapter_id"] not in graph_chapters]
+    if not json_output:
+        click.echo(ui.kv("梗概大纲", f"{'v' + str(outline.get('version')) if outline else '—'} {'已采纳' if outline and outline.get('status') == 'adopted' else ('待复审' if outline and outline.get('status') == 'candidate' else '缺失')}"))
+        click.echo(ui.kv("StoryMap", f"v{sm.get('version') or 1} · {len(volumes)} 卷 / {len(chapters)} 章"))
+        click.echo(ui.kv("章纲/集纲", f"{len(with_outline)}/{len(chapters)} 已采纳{'' if len(with_outline) == len(chapters) else '（缺 ' + str(len(chapters) - len(with_outline)) + '）'}"))
+        click.echo(ui.kv("故事图谱", f"{len(adopted) - len(graph_missing)}/{len(adopted)} 已同步{('，落后 ' + str(len(graph_missing))) if graph_missing else ''}"))
+        click.echo(ui.kv("建议", "章纲缺失 → chapter outline-batch；图谱落后 → novel graph status（会触发补齐）" if (len(with_outline) < len(chapters) or graph_missing) else "各层已就绪"))
+        return
+    _emit({
+        "synopsis": {"version": outline.get("version") if outline else None, "status": outline.get("status") if outline else None},
+        "story_map": {"version": sm.get("version") or 1, "volumes": len(volumes), "chapters": len(chapters)},
+        "outline": {"adopted": len(with_outline), "total": len(chapters), "missing": [c.get('id') for c in chapters if not c.get('outline')]},
+        "story_graph": {"adopted": len(adopted), "synced": len(adopted) - len(graph_missing), "missing": graph_missing},
+    }, json_output)
+
+
 
 @novel_group.command("story-cores")
 @click.argument("project_id")
