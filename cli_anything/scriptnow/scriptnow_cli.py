@@ -2388,7 +2388,9 @@ def chapter_outline_batch(
         raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
     if not isinstance(raw, dict):
         raise click.ClickException("章纲 JSON 根必须是对象")
-    outlines = raw.get("outlines") or {}
+    outlines = raw.get("outlines")
+    if outlines is None:
+        outlines = raw.get("chapters")
     if isinstance(outlines, list):  # [{"chapter_id": ..., "outline": ...}, ...]
         outlines = {
             str(item["chapter_id"]): item.get("outline")
@@ -2428,7 +2430,7 @@ def chapter_outline_batch(
     version = int((state.get("story_map") or {}).get("version") or 1)
     result = session.request(
         "POST",
-        f"/novel/projects/{project_id}/story-map/propose",
+        f"/novel/projects/{project_id}/story-map/propose?allow_legacy_chapters=true",
         json_body={
             "volumes": volumes,
             "expected_version": version,
