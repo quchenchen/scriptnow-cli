@@ -43,6 +43,35 @@ def test_request_rejects_cli_below_server_minimum() -> None:
         session.request("GET", "/projects")
 
 
+def test_refresh_survives_session_save_failure(tmp_path, monkeypatch) -> None:
+    """配置目录不可写时，refresh 旋转不应因 save() 失败而崩溃整个请求。"""
+    first = Mock(status_code=401, cookies=[], headers={})
+    second = Mock(status_code=200, cookies=[], headers={})
+    refresh_cookie = SimpleNamespace(name="sf_csrf", value="csrf-rotated")
+    refresh = Mock(status_code=200, cookies=[refresh_cookie], headers={})
+    http = Mock()
+    http.request.side_effect = [first, second]
+    http.post.return_value = refresh
+    session = Session(
+        base_url="https://example.test",
+        csrf="csrf-token",
+        cookies={"sf_refresh": "refresh-token"},
+        _http=http,
+    )
+    import cli_anything.scriptnow.utils.session as session_module
+
+    monkeypatch.setattr(session_module, "_config_path", lambda: tmp_path / "session.json")
+
+    def _broken_save(path) -> None:
+        del path
+        raise PermissionError("Operation not permitted")
+
+    monkeypatch.setattr(session, "save", _broken_save)
+    result = session.request("GET", "/projects")
+    assert result is not None
+    assert session.csrf == "csrf-rotated"
+
+
 def test_multipart_file_is_rewound_before_refresh_retry(tmp_path, monkeypatch) -> None:
     first = Mock(status_code=401, cookies=[], headers={})
     second = Mock(status_code=200, cookies=[], headers={})

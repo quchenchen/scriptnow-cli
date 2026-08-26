@@ -61,6 +61,20 @@ def _emit(value: Any, json_output: bool) -> None:
         click.echo(_human(value))
 
 
+def _novel_state(session: Session, project_id: str) -> Any:
+    """Fetch novel project state WITHOUT manuscript blocks (light payload).
+
+    章节正文按章分批读取（chapter show 走按章 documents 端点），state 只承担
+    结构/元数据：storymap、cores、blueprint、documents 摘要。响应从 ~336KB
+    降到 ~55KB，受限网络下也不再触发响应截断。
+    """
+    return session.request(
+        "GET",
+        f"/novel/projects/{project_id}/state",
+        params={"include_blocks": "false"},
+    )
+
+
 def _human(value: Any) -> str:
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
@@ -2313,7 +2327,7 @@ def chapter_group(ctx: click.Context) -> None:
 def chapter_list(ctx: click.Context, project_id: str, status: str | None, json_output: bool) -> None:
     """List chapters from the adopted StoryMap with their document state
     (adopted revision, candidate revisions, version counts)."""
-    state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(_session(ctx), project_id)
     volumes = state.get("story_map", {}).get("volumes", [])
     documents = state.get("documents", [])
     rows = []
@@ -2355,8 +2369,12 @@ def chapter_show(
     never skimming and never self-congratulating. Quote evidence for every
     verdict; fix weak lines via `chapter generate --feedback` before adopting.
     """
-    state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
-    documents = state.get("documents", [])
+    # 按章分批读取正文（每章一个小响应），不走整份 /state —— 受限网络下
+    # /state 大响应会被中间层截断，按章读取保持稳定。
+    documents = _session(ctx).request(
+        "GET",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/documents",
+    )
     docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
     if not docs:
         raise click.ClickException(f"no documents for chapter {chapter_id}")
@@ -2514,7 +2532,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
     # 避免 agent 误用版本号导致 409「候选不可用」。
     resolved_revision_id = revision_id
     try:
-        state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
+        state = _novel_state(_session(ctx), project_id)
         docs = [d for d in state.get("documents", []) if d.get("chapter_id") == chapter_id]
         target = next(
             (d for d in docs
@@ -2710,7 +2728,7 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     and adopt with `chapter adopt`. Platform quality scoring is optional; the
     review judgment belongs to the agent, not to a fixed rubric.
     """
-    state = _session(ctx).request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(_session(ctx), project_id)
     volumes = state.get("story_map", {}).get("volumes", [])
     chapters = [
         chapter
@@ -2803,7 +2821,7 @@ def storymap_group(ctx: click.Context) -> None:
 @click.pass_context
 def storymap_state(ctx: click.Context, project_id: str, json_output: bool) -> None:
     """Show the project's novel state (storymap, blueprint, documents)."""
-    _emit(_session(ctx).request("GET", f"/novel/projects/{project_id}/state"), json_output)
+    _emit(_novel_state(_session(ctx), project_id), json_output)
 
 
 @storymap_group.command("generate")
@@ -3051,7 +3069,7 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     """逐章写作前置完整性检查（强制 gate）：direction / cores / blueprint / 梗概大纲 / storymap / skill。"""
     pid = _resolve_project_id(ctx, project_id)
     session = _session(ctx)
-    state = session.request("GET", f"/novel/projects/{pid}/state")
+    state = _novel_state(session, pid)
     checks = []
     direction_ok = bool((state.get("creation_settings") or {}).get("chapter_target_words"))
     checks.append(("创作方向（direction）", direction_ok, "project direction --apply @direction.json"))
@@ -3266,7 +3284,7 @@ def novel_bootstrap(
         )
         if gen.get("run_id"):
             _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(session, project_id)
     cores = [c for c in state.get("story_cores") or [] if c.get("status") in ("candidate", "active")]
     if not cores:
         note(f"故事核心（{cores_source}）", False, "没有候选，请检查 direction 是否完整")
@@ -3318,7 +3336,7 @@ def novel_bootstrap(
         )
         if gen.get("run_id"):
             _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(session, project_id)
     bp = next((c for c in state.get("blueprint_candidates") or [] if c.get("status") == "active"), None)
     if bp is None:
         note(f"蓝图（{blueprint_source}）", False, "没有候选")
@@ -3344,7 +3362,7 @@ def novel_bootstrap(
         _check_budget(volumes, budget, "卷章结构回填", json_output)
         if not volumes:
             raise click.ClickException("storymap 回填需要至少 1 个 volume")
-        state = session.request("GET", f"/novel/projects/{project_id}/state")
+        state = _novel_state(session, project_id)
         version = int((state.get("story_map") or {}).get("version") or 1)
         session.request(
             "POST",
@@ -3368,7 +3386,7 @@ def novel_bootstrap(
         )
         if gen.get("run_id"):
             _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(session, project_id)
     sm = next((c for c in state.get("story_map_candidates") or [] if c.get("status") == "active"), None)
     if sm is None:
         note(f"StoryMap（{storymap_source}）", False, "没有候选")
@@ -3455,7 +3473,7 @@ def novel_propose(
         if not volumes:
             raise click.ClickException("storymap 需要至少 1 个 volume")
         _check_budget(volumes, budget, "卷章结构", json_output)
-        state = session.request("GET", f"/novel/projects/{project_id}/state")
+        state = _novel_state(session, project_id)
         version = int((state.get("story_map") or {}).get("version") or 1)
         body = {
             "idempotency_key": idem,
@@ -3583,7 +3601,7 @@ def novel_orchestrate(
     import json as _json
 
     session = _session(ctx)
-    state = session.request("GET", f"/novel/projects/{project_id}/state")
+    state = _novel_state(session, project_id)
     story_map = state.get("story_map") or {}
     candidates = state.get("story_map_candidates") or []
     active = [c for c in candidates if c.get("status") in ("active", "candidate")]
@@ -3667,7 +3685,7 @@ def novel_orchestrate(
             click.echo(ui.ok(f"全书结构已定稿（{_status_word(adopted.get('status'), medium='novel')}）——下面打印全书创作计划。"), err=True)
 
     # ④ 输出全书创作计划
-    fresh = session.request("GET", f"/novel/projects/{project_id}/state")
+    fresh = _novel_state(session, project_id)
     volumes = (fresh.get("story_map") or {}).get("volumes", [])
     documents = fresh.get("documents") or []
     plan = []

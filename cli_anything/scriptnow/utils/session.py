@@ -192,7 +192,12 @@ class Session:
                 self.csrf = cookie.value
                 rotated = True
         if rotated:
-            self.save(_config_path())
+            # 持久化是尽力而为：会话目录不可写时（只读配置目录/权限异常），
+            # 只影响下次启动的复用，不应让一次 refresh 崩溃整个命令。
+            try:
+                self.save(_config_path())
+            except OSError:
+                pass
         return rotated
 
     def save(self, path: Path) -> None:
