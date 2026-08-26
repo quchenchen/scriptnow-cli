@@ -149,6 +149,7 @@ as a writer-facing export file yet.
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
 | script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
+| storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / download / zip; script working DOCX includes per-scene production metadata |
@@ -156,6 +157,12 @@ as a writer-facing export file yet.
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 | version / self-upgrade | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) |
+
+Scene-board visual-agent parameters are explicit: `--layout auto|2x2|2x3|3x3|3x4|4x4` and
+`--mode annotated|seedance_sequence`. Upload uses multipart; the server returns the authoritative layout/pages/shot_ids/digest/source.
+If the image proxy rejects asset references, the platform preserves the failed Attempt and safely retries with a new no-reference Attempt.
+`reference_validation` reports accepted/rejected inputs and reasons. Re-upload rejected asset references before relying on visual consistency.
+Generated asset references and planning boards are persisted in the project workspace first. Later multi-reference requests encode local media as base64 instead of depending on temporary provider URLs; the CLI uses only stable platform media URLs.
 
 ## Focused newcomer mode
 
@@ -224,7 +231,8 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 
 ## Tips for AI agents
 
-- **MANDATORY: read the operating contract first** (`scriptnow agent-guide --json`): platform is
+- **MANDATORY: read the short runtime contract first** (`scriptnow agent-guide --json`; use
+  `--full` only for the human reference manual): the platform is
   the source of truth, planning trio is backfill-first via `propose`, generation commands run in
   the background (poll `run status`, never block with `--wait`), and StoryMap restructuring is a
   super high-risk operation that requires explicit user authorization (`--confirm`) — an agent must

@@ -152,6 +152,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | storymap | 小说卷章结构：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
 | script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
+| storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / download / zip；剧本 working DOCX 含每场制作信息 |
@@ -159,6 +160,13 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | version / self-upgrade | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版） |
+
+场次规划板的视觉代理参数显式传递给平台：`--layout auto|2x2|2x3|3x3|3x4|4x4` 与
+`--mode annotated|seedance_sequence`。上传使用 multipart，服务端返回最终 layout/pages/shot_ids/digest/source。
+图片代理拒绝资产参考图时，平台会保留失败 Attempt，并以无参考图的新 Attempt 安全重试；
+`reference_validation` 会列出 accepted/rejected 及原因。出现 rejected 时应补传资产参考图，再追求人物与场景一致性。
+平台生成的资产参考图与规划板会先持久化到项目工作区；后续多参考生图从本地媒体编码 base64，
+不依赖供应商临时 URL。CLI 仍只使用平台返回的稳定媒体地址，不读取数据库或本地路径。
 
 ## 聚焦式新手模式
 
@@ -223,7 +231,8 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 
 ## Agent 使用提示
 
-- **先读契约（MANDATORY）**：`scriptnow agent-guide` 是连接平台的唯一准则——平台是事实源、
+- **先读短运行契约（MANDATORY）**：安装入口只含执行边界；每个 Agent 首次动作前必须运行
+  `scriptnow agent-guide --json`（完整人工手册用 `--full`）——平台是事实源、
   规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
   StoryMap 修订需用户明确授权（Agent 不得代替采纳）。
 - **编排前置：Skill 是逐章/逐场创作前的必然门禁（MANDATORY，且须健壮性完善）**：

@@ -16,6 +16,7 @@ import json
 import os
 import sys
 import time
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ from cli_anything.scriptnow import __version__ as _CLIENT_VERSION
 import uuid as _uuid
 
 _INVOCATION_ID = str(_uuid.uuid4())
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", value.strip())
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 class ScriptNowError(RuntimeError):
@@ -52,15 +58,33 @@ class Session:
         path: str,
         *,
         json_body: dict[str, Any] | None = None,
+        form_data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         write: bool = False,
         timeout: int = 120,
         command: str | None = None,
         headers: dict[str, str] | None = None,
+        raw: bool = False,
     ) -> Any:
+        file_positions: list[tuple[Any, int]] = []
+        for value in (files or {}).values():
+            candidate = value
+            if isinstance(value, (tuple, list)) and len(value) > 1:
+                candidate = value[1]
+            if hasattr(candidate, "tell") and hasattr(candidate, "seek"):
+                try:
+                    file_positions.append((candidate, int(candidate.tell())))
+                except (OSError, ValueError):
+                    pass
+
         def _perform() -> requests.Response:
-            headers: dict[str, str] = {
+            for handle, position in file_positions:
+                try:
+                    handle.seek(position)
+                except (OSError, ValueError):
+                    pass
+            request_headers: dict[str, str] = {
                 # 请求元数据：让服务端能够区分 CLI 与网页/自写脚本，并审计到
                 # 具体命令与调用（client 类型 + 版本 + 命令 + 调用标识）。
                 "X-ScriptNow-Client": "scriptnow-cli",
@@ -69,16 +93,19 @@ class Session:
                 "X-ScriptNow-Invocation": _INVOCATION_ID,
             }
             if headers:
-                headers.update(headers)
+                request_headers.update(headers)
             if write:
                 if not self.csrf:
-                    raise ScriptNowError("session is missing CSRF token; run 'scriptnow login'")
-                headers["X-CSRF-Token"] = self.csrf
+                    raise ScriptNowError(
+                        "session is missing CSRF token; run 'scriptnow login'"
+                    )
+                request_headers["X-CSRF-Token"] = self.csrf
             response = self._http.request(
                 method,
                 f"{self.api_root}{path}",
-                headers=headers,
+                headers=request_headers,
                 json=json_body,
+                data=form_data,
                 params=params,
                 files=files,
                 cookies=self.cookies or None,
@@ -97,6 +124,17 @@ class Session:
             err = ScriptNowError(f"network error: {error}")
             _record(err, command)
             raise err from error
+        minimum_cli = response.headers.get("X-ScriptNow-Minimum-CLI-Version", "")
+        api_contract = response.headers.get("X-ScriptNow-API-Contract", "")
+        required = _version_tuple(minimum_cli)
+        current = _version_tuple(_CLIENT_VERSION)
+        if required is not None and current is not None and current < required:
+            err = ScriptNowError(
+                f"CLI {_CLIENT_VERSION} 与平台合同 {api_contract or 'unknown'} 不兼容；"
+                f"最低需要 {minimum_cli}，请运行 scriptnow self-upgrade"
+            )
+            _record(err, command)
+            raise err
         # Access tokens are short-lived (platform default: 60 minutes) while
         # refresh tokens last for days. A long-running agent session would
         # otherwise hit 401 mid-work and stall. On 401, rotate the persisted
@@ -117,6 +155,8 @@ class Session:
             error = ScriptNowError(f"HTTP {response.status_code}: {detail}")
             _record(error, command)
             raise error
+        if raw:
+            return response
         if response.status_code == 204:
             return None
         try:
@@ -204,7 +244,11 @@ def _config_path() -> Path:
     override = os.environ.get("SCRIPTNOW_CLI_CONFIG")
     if override:
         return Path(override)
-    return Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "scriptnow-cli" / "session.json"
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+        / "scriptnow-cli"
+        / "session.json"
+    )
 
 
 def login(base_url: str, email: str, password: str) -> Session:
@@ -216,7 +260,9 @@ def login(base_url: str, email: str, password: str) -> Session:
         timeout=60,
     )
     if response.status_code != 200:
-        raise ScriptNowError(f"login failed (HTTP {response.status_code}): {_extract_detail(response)}")
+        raise ScriptNowError(
+            f"login failed (HTTP {response.status_code}): {_extract_detail(response)}"
+        )
     for cookie in response.cookies:
         session.cookies[cookie.name] = cookie.value
         if cookie.name == "sf_csrf":

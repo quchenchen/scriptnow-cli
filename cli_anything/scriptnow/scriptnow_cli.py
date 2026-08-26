@@ -572,6 +572,8 @@ _AGENT_CONTRACT = {
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
+        "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
+        "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
@@ -589,6 +591,8 @@ _AGENT_CONTRACT = {
         "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
+        "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
+        "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
         "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 呈现正文 → 用户在对话中明确采用后，Agent 直接 chapter adopt --human <pid> <cid> <revision_id>",
         "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
@@ -597,21 +601,49 @@ _AGENT_CONTRACT = {
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
 }
 
+# The installed Skill calls `agent-guide --json` before the first action. Keep
+# that handshake executable and bounded; the historical handbook remains
+# available through `--full` for a human or a deliberate deep inspection.
+_AGENT_RUNTIME_CONTRACT = {
+    "guide": "scriptnow-agent-runtime-contract",
+    "contract_version": "2",
+    "title": "ScriptNow Agent 运行契约",
+    "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
+    "rules": [
+        "先读取平台状态和本契约；不确定命令或 JSON 结构时先运行对应 --help，不猜测。",
+        "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
+        "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
+        "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
+        "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
+        "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
+        "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
+        "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 detail 修正，不能编造替代结果。",
+        "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
+    ],
+    "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
+    "format_hint": "具体 JSON 结构只以目标 propose 命令的 --help-format / --example 为准。",
+    "next_action": "用自然语言说明当前事实和一个需要用户决定的下一步，再执行精确 CLI 命令。",
+}
+
 
 @main.command("agent-guide")
 @click.option("--json", "json_output", is_flag=True)
-def agent_guide(json_output: bool) -> None:
+@click.option("--full", "full", is_flag=True, help="输出完整人工参考手册（默认 JSON 为短运行契约）")
+def agent_guide(json_output: bool, full: bool) -> None:
     """Agent 操作契约：连接 ScriptNow 平台前必读（禁止本地自建项目、一律走 CLI）。"""
-    _emit(_AGENT_CONTRACT, json_output)
+    contract = _AGENT_CONTRACT if full or not json_output else _AGENT_RUNTIME_CONTRACT
+    _emit(contract, json_output)
     if not json_output:
-        click.echo(ui.section(f"=== {_AGENT_CONTRACT['title']} ==="), err=True)
-        click.echo(ui.paint(_AGENT_CONTRACT["audience"], ui.GOLD), err=True)
-        for idx, rule in enumerate(_AGENT_CONTRACT["rules"], 1):
+        click.echo(ui.section(f"=== {contract['title']} ==="), err=True)
+        click.echo(ui.paint(contract["audience"], ui.GOLD), err=True)
+        for idx, rule in enumerate(contract["rules"], 1):
             click.echo(ui.ok(f"{idx}. {rule}"), err=True)
-        click.echo(ui.section("常用命令速查"), err=True)
-        for command in _AGENT_CONTRACT["quickstart"]:
-            click.echo(ui.kv("", command), err=True)
-        click.echo(ui.dim(_AGENT_CONTRACT["format_hint"]), err=True)
+        if "quickstart" in contract:
+            click.echo(ui.section("常用命令速查"), err=True)
+            for command in contract["quickstart"]:
+                click.echo(ui.kv("", command), err=True)
+        if "format_hint" in contract:
+            click.echo(ui.dim(contract["format_hint"]), err=True)
 
 
 _GUIDE_STEPS = [
@@ -1542,16 +1574,13 @@ def run_events(ctx: click.Context, run_id: str, last_event_id: str | None, json_
     """Show a run's event stream (generation trace)."""
     session = _session(ctx)
     headers = {"Last-Event-ID": last_event_id} if last_event_id else {}
-    response = session._http.get(
-        f"{session.api_root}/runs/{run_id}/events",
+    response = session.request(
+        "GET",
+        f"/runs/{run_id}/events",
         headers=headers,
-        cookies=session.cookies or None,
         timeout=60,
+        raw=True,
     )
-    if response.status_code >= 400:
-        from cli_anything.scriptnow.utils.session import _extract_detail
-
-        raise click.ClickException(f"HTTP {response.status_code}: {_extract_detail(response)}")
     try:
         payload = response.json()
     except ValueError:
@@ -2073,7 +2102,9 @@ def _skill_card_for_project(session: Session, project_id: str) -> dict[str, Any]
     if match is None:
         return None
     try:
-        detail = session.request("GET", f"/skills/personal/{match['skill_id']}")
+        detail = session.request(
+            "GET", f"/skills/personal/{match['skill_id']}?include_instructions=true"
+        )
     except ScriptNowError:
         return None
     return {
@@ -5065,6 +5096,490 @@ def translate_mappings(ctx: click.Context, project_id: str, json_output: bool) -
     _emit(result, json_output)
 
 
+# -------------------------------------------------------------------- storyboard
+
+_STORYBOARD_FORMAT = """Storyboard ScriptOut JSON（顶层对象）
+必填：title, scenes[]；可选：logline, assets[]。
+assets[]: {kind: character|scene|prop, name, description, aliases[]}。
+scenes[]: {title, location, time_of_day, description, characters[], narrative_purpose, shots[]}。
+shots[]: {shot_no, shot_size, camera_angle, camera_move, visual_description,
+          dialogue:[{speaker,text}], sound, duration_ms}。
+只提交分镜事实，不提交 Skill 手册、安装命令或解释性正文。字幕/音乐/音效遵从 storyboard state 中的项目策略。"""
+
+_STORYBOARD_EXAMPLE = """{
+  "title": "示例分镜",
+  "assets": [{"kind":"character","name":"刘大宝","description":"项目角色身份","aliases":[]}],
+  "scenes": [{
+    "title":"购买洗衣机","location":"潘家园二手市场","time_of_day":"日",
+    "description":"刘大宝查看旧洗衣机","characters":["刘大宝"],"narrative_purpose":"建立人物处境",
+    "shots":[{
+      "shot_no":"1","shot_size":"CU","camera_angle":"平视","camera_move":"缓推",
+      "visual_description":"@刘大宝 查看洗衣机正面掉漆处",
+      "dialogue":[],"sound":"市场环境声、手指擦过金属声","duration_ms":4000
+    }]
+  }]
+}"""
+
+
+@main.group("storyboard")
+@click.pass_context
+def storyboard_group(ctx: click.Context) -> None:
+    """分镜回填工作流：读取事实、本地创作、候选回填、人工采纳与导出。"""
+
+
+def _storyboard_json(value: str) -> dict[str, Any]:
+    raw = Path(value[1:] if value.startswith("@") else value).read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise click.ClickException(f"分镜 JSON 无法解析：{error}") from error
+    if not isinstance(payload, dict):
+        raise click.ClickException("分镜 JSON 顶层必须是对象")
+    return payload
+
+
+def _storyboard_source_text(path: Path) -> str:
+    if path.suffix.lower() in {".txt", ".md"}:
+        return path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".docx":
+        import zipfile
+        from xml.etree import ElementTree
+
+        try:
+            with zipfile.ZipFile(path) as archive:
+                root = ElementTree.fromstring(archive.read("word/document.xml"))
+        except (OSError, KeyError, zipfile.BadZipFile, ElementTree.ParseError) as error:
+            raise click.ClickException(f"DOCX 正文无法提取：{error}") from error
+        namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        paragraphs = []
+        for paragraph in root.iter(f"{namespace}p"):
+            text = "".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
+            if text.strip():
+                paragraphs.append(text.strip())
+        return "\n\n".join(paragraphs)
+    raise click.ClickException("source-import 仅支持 TXT、Markdown 与 DOCX")
+
+
+def _storyboard_source_units(text: str) -> list[int]:
+    import re as _re
+
+    return [int(value) for value in _re.findall(r"(?m)^第\s*(\d+)\s*[章集]", text)]
+
+
+def _storyboard_slice_units(text: str, start: int | None, end: int | None) -> str:
+    if start is None and end is None:
+        return text
+    if start is None or end is None or end < start:
+        raise click.ClickException("切分范围必须同时提供，且结束值不能小于起始值")
+    import re as _re
+
+    matches = list(_re.finditer(r"(?m)^第\s*(\d+)\s*[章集].*$", text))
+    selected = []
+    for index, match in enumerate(matches):
+        unit = int(match.group(1))
+        if start <= unit <= end:
+            boundary = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            selected.append(text[match.start():boundary].strip())
+    if not selected:
+        raise click.ClickException(f"正文中未找到第 {start}–{end} 章/集")
+    return "\n\n".join(selected)
+
+
+@storyboard_group.group("scene-board")
+@click.pass_context
+def storyboard_scene_board_group(ctx: click.Context) -> None:
+    """场次规划板：上传、单场生成、查看与删除；不改镜头帧。"""
+
+
+def _scene_board_state(state: dict[str, Any], scene_id: str | None = None) -> Any:
+    scenes = state.get("scenes") or []
+    shots_by_scene: dict[str, list[str]] = {}
+    for shot in state.get("shots") or []:
+        shots_by_scene.setdefault(str(shot.get("scene_id")), []).append(str(shot.get("id")))
+
+    def scene_payload(scene: dict[str, Any]) -> dict[str, Any]:
+        current_shots = shots_by_scene.get(str(scene.get("id")), [])
+        boards = []
+        for board in scene.get("planning_boards") or []:
+            item = dict(board)
+            item["layout_key"] = item.get("layout_key") or "auto"
+            item["board_mode"] = item.get("board_mode") or "annotated"
+            item["stale"] = list(item.get("shot_ids") or []) != current_shots
+            boards.append(item)
+        return {
+            "scene_id": scene.get("id"),
+            "scene_no": scene.get("scene_no"),
+            "title": scene.get("title"),
+            "shot_count": len(current_shots),
+            "planning_boards": boards,
+        }
+
+    if scene_id is None:
+        return [scene_payload(scene) for scene in scenes]
+    scene = next((item for item in scenes if str(item.get("id")) == scene_id), None)
+    if scene is None:
+        raise click.ClickException(f"找不到场次：{scene_id}")
+    return scene_payload(scene)
+
+
+@storyboard_scene_board_group.command("upload")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--layout", "layout_key", type=click.Choice(["auto", "2x2", "2x3", "3x3", "3x4", "4x4"]), default="auto", show_default=True, help="规划板网格布局")
+@click.option("--mode", "board_mode", type=click.Choice(["annotated", "seedance_sequence"]), default="annotated", show_default=True, help="视觉代理模式")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_scene_board_upload(
+    ctx: click.Context, project_id: str, scene_id: str, file_path: str,
+    layout_key: str, board_mode: str, json_output: bool,
+) -> None:
+    """上传本地 PNG/JPEG/WebP 规划板；布局与 shot_ids 由平台派生。"""
+    path = Path(file_path)
+    session = _session(ctx)
+    with path.open("rb") as handle:
+        result = session.request(
+            "POST",
+            f"/storyboard/projects/{project_id}/scenes/{scene_id}/planning-boards",
+            files={"file": (path.name, handle, "application/octet-stream")},
+            form_data={"layout_key": layout_key, "board_mode": board_mode},
+            write=True,
+            command="storyboard scene-board upload",
+        )
+    _emit(result, json_output)
+
+
+@storyboard_scene_board_group.command("generate")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--layout", "layout_key", type=click.Choice(["auto", "2x2", "2x3", "3x3", "3x4", "4x4"]), default="auto", show_default=True, help="规划板网格布局")
+@click.option("--mode", "board_mode", type=click.Choice(["annotated", "seedance_sequence"]), default="annotated", show_default=True, help="视觉代理模式")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_scene_board_generate(
+    ctx: click.Context, project_id: str, scene_id: str, layout_key: str, board_mode: str, json_output: bool
+) -> None:
+    """显式生成单场规划板；不会批量调用，也不会写 shot.frame_refs。"""
+    result = _session(ctx).request(
+        "POST",
+        f"/storyboard/projects/{project_id}/scenes/{scene_id}/planning-boards/generate",
+        json_body={"layout_key": layout_key, "board_mode": board_mode},
+        write=True,
+        timeout=900,
+        command="storyboard scene-board generate",
+    )
+    _emit(result, json_output)
+
+
+@storyboard_scene_board_group.command("delete")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.argument("board_id")
+@click.option("--confirm", is_flag=True, help="确认删除该场次的规划板记录与本地文件")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_scene_board_delete(
+    ctx: click.Context,
+    project_id: str,
+    scene_id: str,
+    board_id: str,
+    confirm: bool,
+    json_output: bool,
+) -> None:
+    """删除指定规划板；必须显式确认，镜头帧不受影响。"""
+    if not confirm:
+        raise click.ClickException("删除规划板需要 --confirm")
+    result = _session(ctx).request(
+        "DELETE",
+        f"/storyboard/projects/{project_id}/scenes/{scene_id}/planning-boards/{board_id}",
+        write=True,
+        command="storyboard scene-board delete",
+    )
+    _emit({"deleted": board_id, "result": result}, json_output)
+
+
+@storyboard_scene_board_group.command("list")
+@click.argument("project_id")
+@click.option("--scene", "scene_id", default=None, help="只查看一个场次")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_scene_board_list(
+    ctx: click.Context, project_id: str, scene_id: str | None, json_output: bool
+) -> None:
+    """查看平台事实中的场次规划板清单与派生布局。"""
+    state = _session(ctx).request(
+        "GET", f"/storyboard/projects/{project_id}/state", command="storyboard scene-board list"
+    )
+    _emit(_scene_board_state(state, scene_id), json_output)
+
+
+@storyboard_scene_board_group.command("inspect")
+@click.argument("project_id")
+@click.argument("scene_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_scene_board_inspect(
+    ctx: click.Context, project_id: str, scene_id: str, json_output: bool
+) -> None:
+    """查看一个场次的规划板完整 manifest、来源与 lineage。"""
+    state = _session(ctx).request(
+        "GET", f"/storyboard/projects/{project_id}/state", command="storyboard scene-board inspect"
+    )
+    _emit(_scene_board_state(state, scene_id), json_output)
+
+
+@storyboard_group.command("state")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_state(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """读取平台分镜事实，供 Agent 在本地规划与续写。"""
+    _emit(_session(ctx).request("GET", f"/storyboard/projects/{project_id}/state"), json_output)
+
+
+@storyboard_group.command("source-import")
+@click.argument("project_id")
+@click.argument("file_path")
+@click.option("--source-kind", type=click.Choice(["novel", "script", "upload"]), default="upload")
+@click.option("--name", default=None, help="来源名称；默认使用文件名")
+@click.option("--append", is_flag=True, help="作为下一制作批次追加，不覆盖既有批次")
+@click.option("--episode-start", type=click.IntRange(min=1), default=None)
+@click.option("--episode-end", type=click.IntRange(min=1), default=None)
+@click.option("--slice-unit-start", type=click.IntRange(min=1), default=None, help="只提取 DOCX/TXT 中指定起始章/集")
+@click.option("--slice-unit-end", type=click.IntRange(min=1), default=None, help="只提取 DOCX/TXT 中指定结束章/集")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_source_import(ctx: click.Context, project_id: str, file_path: str, source_kind: str, name: str | None, append: bool, episode_start: int | None, episode_end: int | None, slice_unit_start: int | None, slice_unit_end: int | None, json_output: bool) -> None:
+    """登记本地小说/剧本文本来源；不调用平台 Agent。"""
+    path = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    if episode_start is not None and episode_end is not None and episode_end < episode_start:
+        raise click.ClickException("--episode-end 不能小于 --episode-start")
+    source_text = _storyboard_slice_units(
+        _storyboard_source_text(path), slice_unit_start, slice_unit_end
+    )
+    if append and (episode_start is None or episode_end is None):
+        raise click.ClickException("追加批次必须明确提供 --episode-start 与 --episode-end")
+    if (episode_start is None) != (episode_end is None):
+        raise click.ClickException("集数范围必须同时提供 --episode-start 与 --episode-end")
+    if episode_start is not None and episode_end is not None:
+        units = _storyboard_source_units(source_text)
+        expected_units = set(range(episode_start, episode_end + 1))
+        outside = [unit for unit in units if unit < episode_start or unit > episode_end]
+        missing = sorted(expected_units - set(units))
+        if not units:
+            raise click.ClickException("追加正文未识别到『第 N 章/集』边界，不能确认范围")
+        if outside:
+            raise click.ClickException(
+                f"正文仍包含范围外章/集 {outside}；请用 --slice-unit-start/--slice-unit-end 精确切分"
+            )
+        if missing:
+            raise click.ClickException(f"正文缺少请求范围内章/集 {missing}，不能标记为完整批次")
+    result = _session(ctx).request(
+        "POST", f"/storyboard/projects/{project_id}/import",
+        json_body={"source_kind": source_kind, "source_name": name or path.name, "source_text": source_text, "import_mode": "append" if append else "initial", "episode_start": episode_start, "episode_end": episode_end},
+        write=True,
+    )
+    _emit(result, json_output)
+
+
+@storyboard_group.command("source-preflight")
+@click.argument("project_id")
+@click.argument("file_path")
+@click.option("--episode-start", type=click.IntRange(min=1), required=True)
+@click.option("--episode-end", type=click.IntRange(min=1), required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_source_preflight(ctx: click.Context, project_id: str, file_path: str, episode_start: int, episode_end: int, json_output: bool) -> None:
+    """只读检查文档边界、未知批次和集数重叠；不写平台。"""
+    if episode_end < episode_start:
+        raise click.ClickException("--episode-end 不能小于 --episode-start")
+    path = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    text = _storyboard_source_text(path)
+    units = _storyboard_source_units(text)
+    state = _session(ctx).request("GET", f"/storyboard/projects/{project_id}/state")
+    active = [item for item in state.get("source_batches", []) if item.get("parse_status") != "revoked"]
+    unknown = [item["batch_no"] for item in active if item.get("episode_start") is None or item.get("episode_end") is None]
+    overlaps = [item["batch_no"] for item in active if item.get("episode_start") is not None and episode_start <= item["episode_end"] and episode_end >= item["episode_start"]]
+    reasons = []
+    if unknown:
+        reasons.append(f"有效批次 {unknown} 未登记集数范围")
+    if overlaps:
+        reasons.append(f"请求范围与有效批次 {overlaps} 重叠")
+    if not units:
+        reasons.append("文档未识别到『第 N 章/集』边界")
+    outside = [unit for unit in units if unit < episode_start or unit > episode_end]
+    missing = sorted(set(range(episode_start, episode_end + 1)) - set(units))
+    if outside:
+        reasons.append(f"文档包含请求范围外章/集 {outside}，必须先精确切分")
+    if missing:
+        reasons.append(f"文档缺少请求范围内章/集 {missing}")
+    payload = {
+        "pass": not reasons,
+        "document_units": units,
+        "requested_range": [episode_start, episode_end],
+        "unknown_range_batches": unknown,
+        "overlap_batches": overlaps,
+        "outside_requested_units": outside,
+        "missing_requested_units": missing,
+        "reasons": reasons,
+        "suggested_non_overlapping_start": max([item.get("episode_end") or 0 for item in active], default=0) + 1,
+    }
+    _emit(payload, json_output)
+    if reasons and not json_output:
+        raise click.ClickException("；".join(reasons))
+
+
+@storyboard_group.command("source-range")
+@click.argument("project_id")
+@click.argument("source_id")
+@click.option("--episode-start", type=click.IntRange(min=1), required=True)
+@click.option("--episode-end", type=click.IntRange(min=1), required=True)
+@click.option("--reason", required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_source_range(ctx: click.Context, project_id: str, source_id: str, episode_start: int, episode_end: int, reason: str, json_output: bool) -> None:
+    result = _session(ctx).request("PUT", f"/storyboard/projects/{project_id}/sources/{source_id}/range", json_body={"episode_start": episode_start, "episode_end": episode_end, "reason": reason}, write=True)
+    state = _session(ctx).request("GET", f"/storyboard/projects/{project_id}/state")
+    _emit({"result": result, "source_batches": state.get("source_batches", [])}, json_output)
+
+
+@storyboard_group.command("source-revoke")
+@click.argument("project_id")
+@click.argument("source_id")
+@click.option("--reason", required=True)
+@click.option("--confirm", is_flag=True, help="确认撤销最新且未消费的追加批次")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_source_revoke(ctx: click.Context, project_id: str, source_id: str, reason: str, confirm: bool, json_output: bool) -> None:
+    if not confirm:
+        raise click.ClickException("撤销来源批次需要 --confirm")
+    session = _session(ctx)
+    result = session.request("POST", f"/storyboard/projects/{project_id}/sources/{source_id}/revoke", json_body={"reason": reason}, write=True)
+    state = session.request("GET", f"/storyboard/projects/{project_id}/state")
+    _emit({"result": result, "current_source": state.get("source"), "source_batches": state.get("source_batches", []), "scene_count": len(state.get("scenes", [])), "shot_count": len(state.get("shots", []))}, json_output)
+
+
+@storyboard_group.command("propose")
+@click.argument("project_id", required=False)
+@click.argument("file_path", required=False)
+@click.option("--source-id", default=None, help="source-import 返回的来源 ID")
+@click.option("--adopt", is_flag=True, help="仅在用户明确采用后提交人工采纳")
+@click.option("--help-format", is_flag=True, help="按需显示精简 ScriptOut 字段契约")
+@click.option("--example", is_flag=True, help="按需显示最小分镜示例")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_propose(ctx: click.Context, project_id: str | None, file_path: str | None, source_id: str | None, adopt: bool, help_format: bool, example: bool, json_output: bool) -> None:
+    """回填 Agent 在本地完成的 ScriptOut 分镜候选；平台只校验和版本化。"""
+    if help_format:
+        click.echo(_STORYBOARD_FORMAT)
+        return
+    if example:
+        click.echo(_STORYBOARD_EXAMPLE)
+        return
+    if not project_id or not file_path or not source_id:
+        raise click.ClickException("需要 PROJECT_ID、FILE_PATH 与 --source-id；格式见 storyboard propose --help-format")
+    payload = _storyboard_json(file_path)
+    script = payload.get("script") if isinstance(payload.get("script"), dict) else payload
+    import hashlib as _hashlib
+
+    proposal_identity = _hashlib.sha256(
+        json.dumps(
+            {"project_id": project_id, "source_id": source_id, "script": script},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:40]
+    session = _session(ctx)
+    contract = session.request(
+        "GET", f"/storyboard/projects/{project_id}/proposal-contract"
+    )
+    run = session.request(
+        "POST", f"/storyboard/projects/{project_id}/propose",
+        json_body={"source_id": source_id, "script": script, "skill_snapshots": contract["skill_snapshots"], "idempotency_key": f"cli-storyboard-propose-{proposal_identity}"},
+        write=True,
+    )
+    result: dict[str, Any] = {"strategy_run": run, "adopted": False}
+    if adopt:
+        existing = next(
+            (
+                item for item in reversed(run.get("decisions", []))
+                if item.get("decision") in {"adopted", "modified"}
+            ),
+            None,
+        )
+        decision = existing or session.request(
+            "POST", f"/storyboard/projects/{project_id}/strategy-runs/{run['id']}/decisions",
+            json_body={"decision": "adopted", "selected_candidate_key": "agent-proposal", "modification": {}, "reason": "用户明确采用 Agent 本地分镜候选", "final_payload": {}}, write=True,
+        )
+        result.update({"adopted": True, "decision": decision})
+    _emit(result, json_output)
+
+
+@storyboard_group.command("assets")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_assets(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """读取项目资产身份、版本、参考图和镜头绑定。"""
+    _emit(_session(ctx).request("GET", f"/storyboard/projects/{project_id}/asset-hub"), json_output)
+
+
+@storyboard_group.command("asset-add")
+@click.argument("project_id")
+@click.argument("shot_id")
+@click.option("--name", required=True)
+@click.option("--kind", type=click.Choice(["character", "scene", "prop"]), required=True)
+@click.option("--description", default="")
+@click.option("--scope", type=click.Choice(["shot_only", "project_continuity"]), default="shot_only")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_asset_add(ctx: click.Context, project_id: str, shot_id: str, name: str, kind: str, description: str, scope: str, json_output: bool) -> None:
+    """补充项目资产并绑定当前镜头或当前及后续镜头。"""
+    _emit(_session(ctx).request(
+        "POST", f"/storyboard/projects/{project_id}/shots/{shot_id}/quick-assets",
+        json_body={"name": name, "kind": kind, "description": description, "scope": scope}, write=True,
+    ), json_output)
+
+
+@storyboard_group.command("continuity")
+@click.argument("project_id")
+@click.argument("from_shot_id")
+@click.argument("to_shot_id")
+@click.option("--dimension", "dimensions", type=click.Choice(["edit", "visual", "sound", "narrative"]), multiple=True)
+@click.option("--intent", required=True, help="导演明确选择的衔接意图")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_continuity(ctx: click.Context, project_id: str, from_shot_id: str, to_shot_id: str, dimensions: tuple[str, ...], intent: str, json_output: bool) -> None:
+    """记录人工导演衔接策略；不生成 AI 建议。"""
+    _emit(_session(ctx).request(
+        "POST", f"/storyboard/projects/{project_id}/shot-links/{from_shot_id}/{to_shot_id}/manual-decision",
+        json_body={"idempotency_key": f"cli-storyboard-continuity-{__import__('time').time_ns()}", "dimensions": {key: "导演自主选择" for key in dimensions}, "rationale": intent}, write=True,
+    ), json_output)
+
+
+@storyboard_group.command("readiness")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_readiness(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """检查正式交付前的镜头、资产、任务与 QA 门禁。"""
+    _emit(_session(ctx).request("GET", f"/storyboard/projects/{project_id}/readiness"), json_output)
+
+
+@storyboard_group.command("export")
+@click.argument("project_id")
+@click.option("--kind", type=click.Choice(["csv", "prompts", "json", "pdf", "production-pdf"]), default="production-pdf")
+@click.option("--output", required=True, type=click.Path(dir_okay=False))
+@click.pass_context
+def storyboard_export(ctx: click.Context, project_id: str, kind: str, output: str) -> None:
+    """下载分镜表、提示词、JSON 或制作稿，不调用平台 Agent。"""
+    endpoints = {"csv": "export.csv", "prompts": "export/prompts", "json": "export.json", "pdf": "export.pdf", "production-pdf": "export/production.pdf"}
+    response = _session(ctx).request("GET", f"/storyboard/projects/{project_id}/{endpoints[kind]}", raw=True)
+    Path(output).write_bytes(response.content)
+    click.echo(ui.ok(f"已下载：{output}"), err=True)
+
+
 # ------------------------------------------------------------------------- skills
 
 
@@ -5333,11 +5848,15 @@ def skill_list(ctx: click.Context, json_output: bool) -> None:
 
 @skill_group.command("detail")
 @click.argument("skill_id")
+@click.option("--include-instructions", is_flag=True, help="显式读取完整私有方法论；默认仅返回安全摘要")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def skill_detail(ctx: click.Context, skill_id: str, json_output: bool) -> None:
-    """Show a personal skill's full instructions."""
-    _emit(_session(ctx).request("GET", f"/skills/personal/{skill_id}"), json_output)
+def skill_detail(
+    ctx: click.Context, skill_id: str, include_instructions: bool, json_output: bool
+) -> None:
+    """Show a personal Skill summary; full instructions require an explicit opt-in."""
+    suffix = "?include_instructions=true" if include_instructions else ""
+    _emit(_session(ctx).request("GET", f"/skills/personal/{skill_id}{suffix}"), json_output)
 
 
 @skill_group.command("mounts")
@@ -5972,15 +6491,12 @@ def export_download(
     """下载导出文件到本地（如 .epub / .docx / 打包 zip）。"""
     session = _session(ctx)
     prefix = "/novel" if domain == "novel" else "/script"
-    response = session._http.get(
-        f"{session.api_root}{prefix}/projects/{project_id}/exports/{manifest_id}/download",
-        cookies=session.cookies or None,
+    response = session.request(
+        "GET",
+        f"{prefix}/projects/{project_id}/exports/{manifest_id}/download",
         timeout=300,
+        raw=True,
     )
-    if response.status_code >= 400:
-        from cli_anything.scriptnow.utils.session import _extract_detail
-
-        raise click.ClickException(f"HTTP {response.status_code}: {_extract_detail(response)}")
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(response.content)
@@ -6023,17 +6539,14 @@ def export_zip(
     }
     if target_language:
         body["target_language"] = target_language
-    response = session._http.post(
-        f"{session.api_root}{prefix}/projects/{project_id}/exports/zip",
-        json=body,
-        headers={"X-CSRF-Token": session.csrf} if session.csrf else {},
-        cookies=session.cookies or None,
+    response = session.request(
+        "POST",
+        f"{prefix}/projects/{project_id}/exports/zip",
+        json_body=body,
+        write=True,
         timeout=600,
+        raw=True,
     )
-    if response.status_code >= 400:
-        from cli_anything.scriptnow.utils.session import _extract_detail
-
-        raise click.ClickException(f"HTTP {response.status_code}: {_extract_detail(response)}")
     if not response.content.startswith(b"PK"):
         raise click.ClickException("响应不是有效的 zip 文件")
     out = output
