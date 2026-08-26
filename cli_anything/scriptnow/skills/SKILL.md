@@ -54,13 +54,17 @@ completion. Explain the missing prerequisite and wait.
   multi-reference generation. Agents must use returned platform URLs and never inspect workspace paths directly.
 - Never adopt a chapter, scene, or StoryMap without the user's explicit current
   decision. StoryMap replacement also needs its CLI confirmation path.
-- Legacy projects remain readable/exportable, but a missing chapter outline must
-  be backfilled before new prose. Use `chapter outline PROJECT CHAPTER
-  @outline.json` for one Novel chapter, or `chapter outline-batch PROJECT
+- Creative flow is outline-first and layer-by-layer: adopt a synopsis outline
+  (`novel outline`/`script outline` + `outline-adopt`) before StoryMap planning;
+  adopt the StoryMap; then backfill complete chapter/episode outlines before new
+  prose. Each gate is enforced by the backend.
+- Legacy projects remain readable/exportable, but a missing chapter/episode
+  outline must be backfilled before new prose. Use `chapter outline PROJECT
+  CHAPTER @outline.json` for one Novel chapter, `chapter outline-batch PROJECT
   @outlines.json` to backfill many chapters at once (synthesised into one
-  structure candidate); Script currently has no single-episode
-  backfill endpoint, so submit a complete StoryMap with `script propose`,
-  preserving existing ids and structure, then run `script planning-quality`.
+  structure candidate), or `script episode-outline PROJECT EPISODE
+  @outline.json` for one Script episode; then run `planning-quality` across the
+  full map before adoption.
 - Background generation returns a `run_id`; poll `scriptnow run status` instead
   of long blocking waits.
 - Follow each command's returned error detail exactly. Do not substitute an

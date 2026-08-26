@@ -144,7 +144,7 @@ as a writer-facing export file yet.
 
 | Group | Purpose |
 |-------|---------|
-| guide | Focused newcomer flow: `--step 1..10 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map |
+| guide | Focused newcomer flow (outline-first, layer by layer): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map |
 | project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
@@ -152,7 +152,7 @@ as a writer-facing export file yet.
 | storymap | Novel volumes×chapters: state / generate / **planning-quality (chapter-outline gate)** / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**) |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
-| script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / **planning-quality (episode-outline gate)** / storymap / blueprint / story-cores / propose / adopt-* |
+| script | Script chain: **outline (synopsis) / outline-adopt / outline-status** / **episode-outline (episode-outline backfill)** / state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / **planning-quality (episode-outline gate)** / storymap / blueprint / story-cores / propose / adopt-* |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
