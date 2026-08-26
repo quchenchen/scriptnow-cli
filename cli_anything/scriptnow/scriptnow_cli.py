@@ -736,51 +736,56 @@ _GUIDE_STEPS = [
     },
     {
         "step": 4,
-        "title": "规划故事三件套",
-        "scene": "摊开编剧的案头：故事核心、蓝图、卷章结构。先想清楚再动笔，是编辑的基本功。",
-        "why": "先立故事核心，再画创作蓝图，最后排出全书章节结构——先想清楚再动笔，是编辑的基本功。",
+        "title": "规划梗概与故事三件套",
+        "scene": "摊开编剧的案头：先写一段全篇梗概定下走向，再立故事核心、画创作蓝图。想清楚再动笔，是编辑的基本功。",
+        "why": "先回填并采纳梗概大纲（≤500 字，全书走向），再立故事核心、画创作蓝图、排卷章结构——逐层深入、环环相扣，先想清楚再动笔。",
         "command": (
-            "scriptnow novel propose cores @cores.json --adopt && "
-            "scriptnow novel propose blueprint @blueprint.json --adopt && "
-            "scriptnow novel propose storymap @storymap.json（或 novel orchestrate --accept 采纳）"
+            "scriptnow novel outline <作品号> --text \"一句梗概\" → novel outline-adopt <作品号>（先定梗概）→ "
+            "novel propose cores @cores.json --adopt && "
+            "novel propose blueprint @blueprint.json --adopt"
         ),
-        "verify": "全书结构已定稿，创作计划可打印（book）。",
-        "prompt": "你的主角最想要什么，又最怕失去什么？",
+        "verify": "梗概大纲已采纳；故事核心与蓝图已定稿。",
+        "prompt": "如果用一段话讲清全书走向，你会怎么说？你的主角最想要什么，又最怕失去什么？",
         "masters": [
             {
                 "name": "契诃夫",
                 "quote": "简洁是天才的姐妹。",
                 "source": "契诃夫书信",
-                "how": "规划的意义就在于此：把千头万绪收拢成清晰的结构，落笔时才能干净、准确、有力。",
+                "how": "梗概的意义就在于此：把千头万绪收拢成一段话、一个走向，落笔时才能干净、准确、有力。",
             },
             {
                 "name": "马尔克斯",
                 "quote": "生活不是我们活过的日子，而是我们记住的日子。",
                 "source": "《活着为了讲述》",
-                "how": "故事三件套，就是在替读者挑选「值得记住的日子」——你来决定哪些瞬间进入这本书。",
+                "how": "故事三件套，就是在替读者挑选「值得记住的日子」——而梗概，是你为这趟旅程写下的第一句导航。",
             },
         ],
     },
     {
         "step": 5,
-        "title": "审阅并采纳结构",
-        "scene": "把候选结构摊在桌上，像资深编辑逐页过目：接受、调整、或打回重写——采纳前一切可改。",
-        "why": "先把候选结构摊开给你裁决：接受、调整、或让 Agent 重写——采纳前一切可改。",
-        "command": "scriptnow novel orchestrate <作品号> --accept",
-        "verify": "输出全书创作计划（各章状态为「待创作」）。",
-        "prompt": "这个结构里，哪一章让你最期待动笔？",
+        "title": "规划结构并补齐章纲",
+        "scene": "排出卷章结构，像资深编辑逐页过目；采纳前先为每一章补齐章纲（事件链与因果契约）——正文前必须环环相扣。",
+        "why": "先排卷章结构并采纳，再逐章补齐章纲/集纲（summary、active_goal、conflict、turn、state_changes、锚点）。章纲未全量补齐并采纳前，不能批量进入正文。",
+        "command": (
+            "scriptnow novel propose storymap @storymap.json（或 storymap generate）→ "
+            "novel orchestrate <作品号> --accept 采纳结构 → "
+            "chapter outline-batch <作品号> @outlines.json 批量补齐章纲（或单章 chapter outline <作品号> <章节号> @outline.json）→ "
+            "novel planning-quality <作品号> storymap @storymap.json 门禁 → storymap adopt --confirm"
+        ),
+        "verify": "结构已定稿；全书章纲/集纲已全量补齐并通过 planning-quality。",
+        "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？它的事件链清晰了吗？",
         "masters": [
             {
                 "name": "王家卫",
                 "quote": "电影是时间的艺术。",
                 "source": "访谈",
-                "how": "结构就是你对时间的安排——这一卷卷、一章章，是你亲手为故事量出的节奏。",
+                "how": "结构就是你对时间的安排——而每章章纲，是你为每个时间单位写下的地图，动笔时不再迷路。",
             },
             {
                 "name": "宫崎骏",
                 "quote": "创作就是生活本身。",
                 "source": "访谈（转述其创作理念）",
-                "how": "采纳结构的那一刻，这部作品开始真正属于你——接下来的每一章，都是你生活的一部分。",
+                "how": "章纲不是枷锁，是让每一章都踏实地长在整部作品肌理里的根须。",
             },
         ],
     },
@@ -930,12 +935,12 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
         "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。",
     },
     4: {
-        "command": "scriptnow script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt → storymap @storymap.json",
-        "verify": "故事核心与蓝图已采纳，季/集/场结构成为可审阅候选。",
+        "command": "scriptnow script outline <作品号> --text \"一句梗概\" → script outline-adopt <作品号>（先定梗概）→ script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt",
+        "verify": "梗概大纲已采纳；故事核心与蓝图已定稿。",
     },
     5: {
-        "command": "scriptnow script state <作品号> --json（展示候选结构；调整后再由用户决定是否采纳）",
-        "verify": "用户能复述每集推进与关键场功能，并明确接受或指出调整。",
+        "command": "scriptnow script propose <作品号> storymap @storymap.json → script state <作品号> --json（审阅候选结构）→ 逐集补集纲 script episode-outline <作品号> <集号> @outline.json → script planning-quality <作品号> storymap @storymap.json 门禁 → 用户明确决定后采纳",
+        "verify": "结构已采纳；全剧集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）已全量补齐并通过 planning-quality。",
     },
     7: {
         "command": "scriptnow scene list <作品号> → scene generate/propose <作品号> <场次号> → 呈现正文 → 用户明确采用后 Agent 执行 scene adopt --human",
