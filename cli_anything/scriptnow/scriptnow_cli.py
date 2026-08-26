@@ -4164,6 +4164,70 @@ def script_state(ctx: click.Context, project_id: str, json_output: bool) -> None
     _emit(_session(ctx).request("GET", f"/script/projects/{project_id}/state"), json_output)
 
 
+@script_group.command("outline")
+@click.argument("project_id", required=False)
+@click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
+@click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_outline(
+    ctx: click.Context, project_id: str | None, text: str | None, file: str | None, json_output: bool
+) -> None:
+    """回填剧本梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 采纳后 StoryMap 才可规划。"""
+    pid = _resolve_project_id(ctx, project_id)
+    if not text and not file:
+        raise click.ClickException("需要 --text 或 --file（梗概 ≤500 字）")
+    if file:
+        text = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
+    if len((text or "").strip()) > 500:
+        raise click.ClickException("梗概大纲需在 500 字以内")
+    result = _api_request(
+        ctx,
+        "POST",
+        f"/script/projects/{pid}/synopsis-outline/propose",
+        json_body={"content": (text or "").strip(), "idempotency_key": f"cli-script-outline-{__import__('time').time_ns()}"},
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{_status_word(result.get('status'), medium='script')}）"))
+        click.echo(ui.dim("  满意就采纳：scriptnow script outline-adopt <作品号>；采纳后即可规划剧集结构。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("outline-adopt")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_outline_adopt(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """采纳剧本梗概大纲（StoryMap 规划的前置条件）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "POST", f"/script/projects/{pid}/synopsis-outline/adopt", write=True)
+    if not json_output:
+        click.echo(ui.ok(f"梗概大纲已定稿（v{result.get('version')}）——接下来规划剧集结构（storymap）。"))
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("outline-status")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_outline_status(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """查看剧本梗概大纲状态与内容。"""
+    pid = _resolve_project_id(ctx, project_id)
+    outline = _api_request(ctx, "GET", f"/script/projects/{pid}/synopsis-outline")
+    if not json_output:
+        if not outline:
+            click.echo(ui.warn("尚未回填梗概大纲。scriptnow script outline <作品号> --text '…'"))
+            return
+        click.echo(ui.kv("状态", _status_word(outline.get("status"), medium="script")))
+        click.echo(ui.kv("版本", outline.get("version")))
+        click.echo(outline.get("content") or "")
+        return
+    _emit(outline, json_output)
+
+
 @script_group.command("scene-list")
 @click.argument("project_id")
 @click.option("--json", "json_output", is_flag=True)
