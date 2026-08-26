@@ -585,7 +585,7 @@ _AGENT_CONTRACT = {
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
-        "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。",
+        "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲未全量通过 planning-quality 并采纳前，不得批量进入正文；兼容读取旧项目，但生成新正文前必须按缺口补纲。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
@@ -609,7 +609,7 @@ _AGENT_CONTRACT = {
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
         "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 呈现正文 → 用户在对话中明确采用后，Agent 直接 chapter adopt --human <pid> <cid> <revision_id>",
-        "新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
+        "集纲/章纲回填：剧本在 storymap JSON 的每个 episode 上填写平铺的 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说在每个 chapter 的 outline 中填写 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。先运行 scriptnow script/novel planning-quality <pid> storymap @storymap.json，再 propose；只在用户明确决定后 adopt。旧项目可用 script episode-outline <pid> <episode_id> @outline.json 或 chapter outline <pid> <chapter_id> @outline.json 单集/单章补纲；补纲候选仍须 planning-quality 与 StoryMap 采纳。新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
@@ -627,6 +627,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "先读取平台状态和本契约；不确定命令或 JSON 结构时先运行对应 --help，不猜测。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
+        "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；旧项目可读，但补纲前不得批量生成正文。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
@@ -1419,7 +1420,7 @@ def project_create(
 
 @project_group.command("upload")
 @click.argument("project_id")
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def project_upload(ctx: click.Context, project_id: str, file_path: str, json_output: bool) -> None:
@@ -1904,7 +1905,7 @@ def interpret_group(ctx: click.Context) -> None:
 
 
 @interpret_group.command("go")
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--project-id", default=None, help="Existing project to interpret into; defaults to auto-create named after the file")
 @click.option("--project-name", default=None, help="Project name (defaults to the file's basename)")
 @click.option("--language", default="zh-CN")
@@ -2317,6 +2318,133 @@ def interpret_local(
 @click.pass_context
 def chapter_group(ctx: click.Context) -> None:
     """小说章节：列表 / 阅读 / 生成 / 质量 / 采纳。"""
+
+
+@chapter_group.command("outline")
+@click.argument("project_id")
+@click.argument("chapter_id")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def chapter_outline(
+    ctx: click.Context, project_id: str, chapter_id: str, file_path: str, json_output: bool
+) -> None:
+    """回填单章 outline（旧项目补纲入口；保存为 StoryMap 结构候选）。
+
+    FILE_PATH is a JSON object containing ``outline`` or the outline fields
+    directly. The candidate must still be reviewed and adopted through the
+    normal StoryMap decision path.
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("章纲 JSON 根必须是对象")
+    outline = dict(raw.get("outline")) if isinstance(raw.get("outline"), dict) else dict(raw)
+    outline.pop("expected_version", None)
+    outline.pop("idempotency_key", None)
+    outline.pop("outline", None)
+    result = _session(ctx).request(
+        "POST",
+        f"/novel/projects/{project_id}/chapters/{chapter_id}/outline/propose",
+        json_body={"outline": outline, "idempotency_key": f"cli-chapter-outline-{__import__('time').time_ns()}"},
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"第 {chapter_id} 章章纲已形成结构候选（{result.get('id')}）"))
+        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后采纳。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@chapter_group.command("outline-batch")
+@click.argument("project_id")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def chapter_outline_batch(
+    ctx: click.Context, project_id: str, file_path: str, json_output: bool
+) -> None:
+    """批量回填多章 outline（已成型作品后补章纲入口）。
+
+    正常流程是「先出章纲，再细化逐章写作」；对已经成型但缺章纲的作品，
+    用本命令批量补纲。每章 outline 走标准 StoryMap 候选流程（逐章提交、
+    累积进同一结构候选），仍需 planning-quality 与采纳。
+
+    FILE_PATH is JSON in either shape:
+      {"outlines": {"chapter-3-1": {outline...}, "chapter-3-2": {...}}}
+      {"chapters": [{"chapter_id": "...", "outline": {...}}, ...]}
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("章纲 JSON 根必须是对象")
+    outlines = raw.get("outlines") or {}
+    if isinstance(outlines, list):  # [{"chapter_id": ..., "outline": ...}, ...]
+        outlines = {
+            str(item["chapter_id"]): item.get("outline")
+            for item in outlines
+            if isinstance(item, dict) and item.get("chapter_id")
+        }
+    if not isinstance(outlines, dict) or not outlines:
+        raise click.ClickException("章纲 JSON 需包含 outlines（chapter_id → outline 对象）")
+    session = _session(ctx)
+    # 读取已采纳 StoryMap，把全部章纲一次性应用并合成单个结构候选，
+    # 避免逐章提案生成互不累积的多个候选。
+    state = _novel_state(session, project_id)
+    volumes = [dict(volume) for volume in (state.get("story_map") or {}).get("volumes") or []]
+    if not volumes:
+        raise click.ClickException("当前项目没有已采纳的 StoryMap 卷章结构，无法补纲")
+    applied: list[str] = []
+    not_found: list[str] = []
+    for volume in volumes:
+        chapters = [dict(chapter) for chapter in volume.get("chapters") or []]
+        for chapter in chapters:
+            outline = outlines.get(str(chapter.get("id")))
+            if outline is None:
+                continue
+            if not isinstance(outline, dict):
+                raise click.ClickException(f"章节 {chapter.get('id')} 的 outline 必须是对象")
+            payload = dict(outline)
+            for key in ("expected_version", "idempotency_key", "outline"):
+                payload.pop(key, None)
+            chapter["outline"] = payload
+            applied.append(str(chapter.get("id")))
+        volume["chapters"] = chapters
+    for chapter_id in outlines:
+        if chapter_id not in applied:
+            not_found.append(str(chapter_id))
+    if not applied:
+        raise click.ClickException("outlines 中的章节 ID 都不存在于已采纳 StoryMap 中")
+    version = int((state.get("story_map") or {}).get("version") or 1)
+    result = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/story-map/propose",
+        json_body={
+            "volumes": volumes,
+            "expected_version": version,
+            "idempotency_key": f"cli-ch-outline-batch-{__import__('time').time_ns()}",
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"已合成单候选并提交 {len(applied)} 章章纲（候选 {result.get('id')}）"))
+        for chapter_id in applied:
+            click.echo(ui.dim(f"  · {chapter_id}"))
+        if not_found:
+            click.echo(ui.warn(f"以下章节不在已采纳 StoryMap 中，已忽略：{'、'.join(not_found)}"), err=True)
+        click.echo(ui.dim("请运行 planning-quality，并在用户明确决定后采纳 StoryMap。"), err=True)
+        return
+    _emit({"candidate_id": result.get("id"), "applied": applied, "ignored_not_found": not_found}, json_output)
 
 
 @chapter_group.command("list")
@@ -3080,6 +3208,13 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     checks.append(("梗概大纲（已定稿）", bool(outline and outline.get("status") == "adopted"), 'novel outline <作品号> --text "…" → outline-adopt'))
     sm = state.get("story_map") or {}
     checks.append(("StoryMap（全书结构）", bool(sm.get("volumes")), "novel propose storymap @file 或 storymap generate --wait"))
+    chapters = [
+        chapter
+        for volume in (sm.get("volumes") or [])
+        if isinstance(volume, dict)
+        for chapter in (volume.get("chapters") or [])
+    ]
+    checks.append(("章纲（全书 chapter.outline）", _all_planning_contracts(chapters, "chapter_contract"), "在每个 chapter 的 outline 填写章纲 → chapter outline <pid> <chapter_id> @outline.json（单章补纲）→ planning-quality → propose"))
     try:
         mounted = session.request("GET", f"/projects/{pid}/skills")
         skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
@@ -3885,12 +4020,61 @@ def scene_diff(
     script_scene_diff.callback(scene_id, project_id, from_rev, to_rev, json_output)
 
 
+def _planning_contract_complete(unit: object, key: str) -> bool:
+    """Return whether a unit carries the causal planning minimum.
+
+    Keep this read-only check tolerant of transitional payloads. The server is
+    still the final validator; this command only gives agents an actionable
+    preflight before they start a generation run.
+    """
+    if not isinstance(unit, dict):
+        return False
+    # Script episodes expose the outline fields at the episode level. Novel
+    # chapters embed them under ``outline``. ``key`` is retained in the call
+    # sites as a domain-readable label, not as a wire-field assumption.
+    contract = unit if key == "episode_contract" else unit.get("outline")
+    if not isinstance(contract, dict):
+        return False
+    if key == "chapter_contract":
+        if not str(contract.get("summary") or contract.get("logline") or "").strip():
+            return False
+    else:
+        if not str(contract.get("logline") or "").strip():
+            return False
+    for field in ("active_goal", "conflict", "turn"):
+        if not str(contract.get(field) or "").strip():
+            return False
+    state_changes = contract.get("state_changes")
+    if isinstance(state_changes, dict):
+        if not any(str(k).strip() and str(v).strip() for k, v in state_changes.items()):
+            return False
+    elif not isinstance(state_changes, list) or not state_changes:
+        return False
+    anchors = contract.get("anchor_ids")
+    if not anchors and key == "chapter_contract":
+        anchors = [
+            anchor
+            for beat in (unit.get("beats") or [])
+            if isinstance(beat, dict)
+            for anchor in (beat.get("anchor_ids") or [])
+        ]
+    if not isinstance(anchors, list) or not anchors:
+        return False
+    return True
+
+
+def _all_planning_contracts(units: object, key: str) -> bool:
+    return isinstance(units, list) and bool(units) and all(
+        _planning_contract_complete(unit, key) for unit in units
+    )
+
+
 @script_group.command("ready-check")
 @click.argument("project_id", required=False)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_ready_check(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
-    """剧本逐场写作前置完整性检查（强制 gate）：direction / cores / blueprint / storymap / skill。"""
+    """剧本逐场写作前置完整性检查（强制 gate）：方向 / 核心 / 蓝图 / 集纲 / StoryMap / Skill。"""
     pid = _resolve_project_id(ctx, project_id)
     session = _session(ctx)
     state = session.request("GET", f"/script/projects/{pid}/state")
@@ -3900,6 +4084,8 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
         ("蓝图（blueprint）", state.get("blueprint") is not None, "script propose blueprint @file --adopt"),
         ("StoryMap", bool((state.get("story_map") or {}).get("episodes")), "script propose storymap @file 或 script storymap --wait"),
     ]
+    episodes = (state.get("story_map") or {}).get("episodes") or []
+    checks.append(("集纲（全剧 Episode 平铺字段）", _all_planning_contracts(episodes, "episode_contract"), "可用 script episode-outline <pid> <episode_id> @outline.json 单集补纲；完成全量后运行 script planning-quality → propose/adopt"))
     try:
         mounted = session.request("GET", f"/projects/{pid}/skills")
         skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
@@ -3920,6 +4106,53 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
     click.echo(ui.ok(f"创作前检查通过：{sum(1 for c in checks if c[1])}/{len(checks)} 项就绪" if all_ok else ui.error(f"还差 {sum(1 for c in checks if not c[1])} 项未就绪——按上面提示补齐")), err=True)
 
 
+
+
+@script_group.command("episode-outline")
+@click.argument("project_id")
+@click.argument("episode_id")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_episode_outline(
+    ctx: click.Context, project_id: str, episode_id: str, file_path: str, json_output: bool
+) -> None:
+    """回填单集纲（旧项目补纲入口；保存为 StoryMap 结构候选）。
+
+    FILE_PATH is a JSON object containing the episode outline fields or an
+    ``outline`` wrapper. Existing episodes/scenes are preserved by the server;
+    the candidate still requires normal StoryMap review and adoption.
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"集纲 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("集纲 JSON 根必须是对象")
+    outline = dict(raw.get("outline")) if isinstance(raw.get("outline"), dict) else dict(raw)
+    outline.pop("expected_version", None)
+    outline.pop("idempotency_key", None)
+    outline.pop("outline", None)
+    state = _session(ctx).request("GET", f"/script/projects/{project_id}/state")
+    expected_version = int((state.get("story_map") or {}).get("version") or 0)
+    result = _session(ctx).request(
+        "POST",
+        f"/script/projects/{project_id}/story-map/episodes/{episode_id}/outline/propose",
+        json_body={
+            "expected_version": expected_version,
+            "idempotency_key": f"cli-episode-outline-{__import__('time').time_ns()}",
+            **outline,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"第 {episode_id} 集集纲已形成结构候选（{result.get('id')}）"))
+        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后采纳。"), err=True)
+        return
+    _emit(result, json_output)
 
 
 @script_group.command("state")

@@ -32,6 +32,12 @@
   规划三件套回填优先、生成命令后台轮询、StoryMap 修订需用户明确授权。
 - **新增卷章 = 纯追加**：`storymap append-volume` / `storymap append-chapters` 只尾部新增，已有卷章
   id/序号/标题/字数完全不动；被替换的旧结构自动归档，平台「结构历史」可查看导出。
+- **集纲 / 章纲先于正文**：StoryMap 不能只提供 episode/scene 或 volume/chapter 容器。剧本每个
+  `episode` 需填写平铺字段 `logline`、`active_goal`、`conflict`、`turn`、`state_changes`、`anchor_ids`；可用
+  `script episode-outline <pid> <episode_id> @outline.json` 补单集；
+  小说每个 `chapter` 需填写嵌入的 `outline`（`summary`/`logline`、`active_goal`、`conflict`、`turn`、
+  `state_changes`，锚点可来自 outline 或 beat）；先运行
+  `script/novel planning-quality`，全量通过并经作者采纳后才可批量写正文。旧项目可读，但补纲前不得生成新正文。
 
 ## 安装
 
@@ -105,12 +111,15 @@ scriptnow project direction <pid> --apply @direction.json     # Agent 主动梳�
 scriptnow novel propose <pid> cores @cores.json --adopt
 scriptnow novel propose <pid> blueprint @blueprint.json --adopt
 scriptnow novel propose <pid> storymap @storymap.json
+scriptnow novel planning-quality <pid> storymap @storymap.json  # 章纲全量质量门禁
 scriptnow novel orchestrate <pid> --accept                    # 审阅 → 采纳 → 全书计划
 # 新增卷/章（纯追加，不动已有卷章；新章 beats 引用蓝图锚点须已存在）
 scriptnow storymap append-volume <pid> @new-volumes.json --adopt
 scriptnow storymap append-chapters <pid> volume-1 @new-chapters.json --adopt
 # 创作循环（Agent 审读驱动；生成默认后台，用 run status 轮询）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
+scriptnow chapter outline <pid> chapter-1-1 @outline.json       # 旧项目单章补纲
+scriptnow chapter outline-batch <pid> @outlines.json            # 批量后补多章章纲（合成单候选）
 scriptnow chapter show <pid> chapter-1-1 --plain
 scriptnow chapter generate <pid> chapter-1-1 --feedback "你的意见"   # 后台，返回 run_id
 scriptnow run status <run_id>                                 # 轮询到 succeeded/failed（交互终端可用 --wait）
@@ -127,6 +136,8 @@ scriptnow project direction <pid> --apply @direction.json
 scriptnow script propose <pid> cores @cores.json --adopt
 scriptnow script propose <pid> blueprint @blueprint.json --adopt
 scriptnow script propose <pid> storymap @storymap.json
+# 每个 chapter/episode 都要有对应章纲/集纲字段；先质量门禁再采纳
+scriptnow script planning-quality <pid> storymap @storymap.json
 # 创作循环（生成默认后台）
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
@@ -148,10 +159,10 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
-| chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
+| chapter | 小说章节：**outline（单章补纲）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
+| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
-| script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
+| script | 剧本创作链：state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |

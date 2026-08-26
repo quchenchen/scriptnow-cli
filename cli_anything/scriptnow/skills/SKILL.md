@@ -28,6 +28,12 @@ completion. Explain the missing prerequisite and wait.
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
+- A StoryMap container is not a completed outline: every Script episode must
+  carry flat `logline`, `active_goal`, `conflict`, `turn`, `state_changes`, and
+  `anchor_ids`; every Novel chapter must carry `outline` with `summary` or
+  `logline`, `active_goal`, `conflict`, `turn`, and `state_changes` (anchors may
+  come from `outline.anchor_ids` or beats). Run `planning-quality` across the
+  full map before adoption or batch prose generation.
 - Structural growth is append-only: add volumes/chapters only via
   `storymap append-volume` / `storymap append-chapters` (existing ids, titles,
   and ordering never change). StoryMap replacement is a high-risk override that
@@ -48,6 +54,13 @@ completion. Explain the missing prerequisite and wait.
   multi-reference generation. Agents must use returned platform URLs and never inspect workspace paths directly.
 - Never adopt a chapter, scene, or StoryMap without the user's explicit current
   decision. StoryMap replacement also needs its CLI confirmation path.
+- Legacy projects remain readable/exportable, but a missing chapter outline must
+  be backfilled before new prose. Use `chapter outline PROJECT CHAPTER
+  @outline.json` for one Novel chapter, or `chapter outline-batch PROJECT
+  @outlines.json` to backfill many chapters at once (synthesised into one
+  structure candidate); Script currently has no single-episode
+  backfill endpoint, so submit a complete StoryMap with `script propose`,
+  preserving existing ids and structure, then run `script planning-quality`.
 - Background generation returns a `run_id`; poll `scriptnow run status` instead
   of long blocking waits.
 - Follow each command's returned error detail exactly. Do not substitute an

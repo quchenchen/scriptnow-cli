@@ -34,8 +34,9 @@ covering **two creation domains (dual-domain): novels and scripts**. Every comma
 - **Auto-renewing session**: one `login` lasts 30 days — access tokens refresh automatically,
   so agent sessions never die mid-work.
 - **Agent operating contract**: `scriptnow agent-guide` (--json) — platform is the single source of
-  truth, the planning trio is backfill-first, generation runs in the background (poll `run status`),
-  and StoryMap restructuring requires explicit user authorization.
+  truth, the planning trio is backfill-first, episode/chapter outline completeness is gated before
+  prose, generation runs in the background (poll `run status`), and StoryMap restructuring requires
+  explicit user authorization.
 - **Append-only structure growth**: `storymap append-volume` / `append-chapters` add volumes/chapters
   without touching existing ones; replaced structures are archived and reviewable.
 - **Review is the agent's own judgment**: no fixed platform rubric — read the text, judge, and
@@ -105,9 +106,11 @@ scriptnow project direction <pid> --apply @direction.json     # agent curates th
 scriptnow novel propose <pid> cores @cores.json --adopt
 scriptnow novel propose <pid> blueprint @blueprint.json --adopt
 scriptnow novel propose <pid> storymap @storymap.json
+scriptnow novel planning-quality <pid> storymap @storymap.json  # full chapter-outline gate
 scriptnow novel orchestrate <pid> --accept                    # review → adopt → full plan
 # Writing loop (agent-driven review)
 scriptnow book <pid>                                          # hosted plan: adopted/needs-generation/pending
+scriptnow chapter outline <pid> chapter-1-1 @outline.json       # backfill one legacy chapter
 scriptnow chapter show <pid> chapter-1-1 --plain
 scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "your notes"
 scriptnow chapter adopt <pid> chapter-1-1 <rev>
@@ -123,6 +126,7 @@ scriptnow project direction <pid> --apply @direction.json
 scriptnow script propose <pid> cores @cores.json --adopt
 scriptnow script propose <pid> blueprint @blueprint.json --adopt
 scriptnow script propose <pid> storymap @storymap.json
+scriptnow script planning-quality <pid> storymap @storymap.json  # full episode-outline gate
 # Writing loop
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
@@ -144,11 +148,11 @@ as a writer-facing export file yet.
 | project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
-| chapter | Novel chapters: list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
-| storymap | Novel volumes×chapters: state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**) |
-| agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
+| chapter | Novel chapters: **outline (backfill one chapter)** / list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
+| storymap | Novel volumes×chapters: state / generate / **planning-quality (chapter-outline gate)** / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**) |
+| agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate |
-| script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / storymap / blueprint / story-cores / propose / adopt-* |
+| script | Script chain: state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / **planning-quality (episode-outline gate)** / storymap / blueprint / story-cores / propose / adopt-* |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
@@ -246,6 +250,12 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.
+- **Episode/chapter outline is mandatory before prose** — Script episodes use flat
+  `logline`/`active_goal`/`conflict`/`turn`/`state_changes`/`anchor_ids`; Novel chapters embed
+  `outline` with `summary` or `logline`, `active_goal`, `conflict`, `turn`, and `state_changes`
+  (anchors may come from the outline or beats). Run full-map `planning-quality` before adoption.
+  Backfill one unit with `script episode-outline <pid> <episode_id> @outline.json` or
+  `chapter outline <pid> <chapter_id> @outline.json`; each remains a reviewable StoryMap candidate.
 - Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`).
 - Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent
   candidates are not part of the baseline.
