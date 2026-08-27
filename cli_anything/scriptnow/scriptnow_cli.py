@@ -2766,7 +2766,23 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
                 _emit({"ok": True, "already_adopted": True, "revision_id": target.get("id")}, json_output)
                 return
             if target.get("status") == "superseded":
-                click.echo(ui.warn("该版本已过期（superseded）——请用 chapter list 查看最新候选，采纳最新版本。"), err=True) if not json_output else _emit({"ok": False, "superseded": True}, json_output)
+                # Distinguish "old candidate, chapter already adopted" (nothing to
+                # regenerate) from "old candidate, a newer candidate exists" (adopt
+                # the newer one). Prevents the agent from needlessly regenerating
+                # a chapter that already has a finalized revision.
+                adopted = next((d for d in docs if d.get("status") in ("adopted", "adopted_human")), None)
+                if adopted is not None:
+                    msg = (
+                        f"该版本已过期（superseded）。注意：本章已有定稿版（rev{adopted.get('revision_number')}，"
+                        f"{_status_word(adopted.get('status'), medium='novel')}）。请用 `scriptnow chapter show "
+                        f"{project_id} {chapter_id} --plain` 查看定稿版；无需重新生成。"
+                    )
+                else:
+                    msg = "该版本已过期（superseded）——请用 chapter list 查看最新候选，采纳最新版本。"
+                if not json_output:
+                    click.echo(ui.warn(msg), err=True)
+                else:
+                    _emit({"ok": False, "superseded": True, "adopted_revision": adopted.get("revision_number") if adopted else None}, json_output)
                 return
     except ScriptNowError:
         pass  # 前置检查失败不阻塞，交给平台权威校验
