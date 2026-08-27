@@ -38,6 +38,10 @@ completion. Explain the missing prerequisite and wait.
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
+- Character bibles must be substantive at creation: profile with at least
+  desire/fear/weakness/goal/inner_need, plus background/traits/arc/key_relationship/
+  secret/wound where possible. planning-quality REVISEs profiles <200 chars or
+  missing required keys; `script bible-example` shows the structure.
 - Beats and episode/chapter outlines must be CONCRETE plot content (who does what,
   to whom, with which object, where). Generic meta-writing like "推进矛盾 / 留下钩子 /
   本场目标" is rejected by planning-quality (REVISE) and flagged by `storymap propose`

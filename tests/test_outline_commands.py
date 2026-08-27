@@ -284,3 +284,13 @@ def test_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
     assert body["phase_key"] == "act1"
     assert body["plan_digest"] == "dig123"
     assert body["expected_story_map_version"] == 1
+
+
+def test_script_bible_example_lists_rich_keys():
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["script", "bible-example"])
+    assert result.exit_code == 0, result.output
+    for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
+        assert key in result.output, key

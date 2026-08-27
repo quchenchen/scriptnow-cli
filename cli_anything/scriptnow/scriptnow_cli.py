@@ -616,6 +616,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前可用 storymap propose 的预检提示自查。",
+        "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
@@ -2694,6 +2695,35 @@ def _meta_objective_hits(episodes: object) -> list[str]:
                 if any(token in objective for token in _META_OBJECTIVE_TOKENS):
                     hits.append(objective[:40])
     return hits
+
+
+_BIBLE_REQUIRED_KEYS = ("desire", "fear", "weakness", "goal", "inner_need")
+
+
+def _thin_bible_profiles(bibles: object) -> list[str]:
+    """Detect thin character-bible profiles for the propose preflight (guidance).
+
+    planning-quality 会对 profile <200 字或缺 desire/fear/weakness/goal/inner_need
+    判 REVISE；这里在提交前先提醒，引导 Agent 把初始设定做充实。
+    """
+    thin: list[str] = []
+    if not isinstance(bibles, list):
+        return thin
+    import json as _json
+
+    for bible in bibles:
+        if not isinstance(bible, dict):
+            continue
+        name = str(bible.get("display_name") or bible.get("character_key") or "<未命名>")
+        profile = bible.get("profile")
+        if not isinstance(profile, dict) or not profile:
+            thin.append(f"{name}（profile 为空）")
+            continue
+        missing = [k for k in _BIBLE_REQUIRED_KEYS if not str(profile.get(k) or "").strip()]
+        length = len(_json.dumps(profile, ensure_ascii=False))
+        if length < 200 or missing:
+            thin.append(f"{name}（{length}字，缺 {missing or '无'}）")
+    return thin
 
 
 def _maybe_hint_synopsis_refresh(json_output: bool) -> None:
@@ -4954,6 +4984,44 @@ def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, js
     )
 
 
+@script_group.command("bible-example")
+@click.option("--json", "json_output", is_flag=True)
+def script_bible_example(json_output: bool) -> None:
+    """打印人物圣经（bibles）的充实初始设定示范，作为创建对照模板。
+
+    profile 至少包含 desire/fear/weakness/goal/inner_need，建议再补
+    background/traits/arc/key_relationship/secret/wound，避免单薄。
+    """
+    example = {
+        "character_key": "character:example",
+        "display_name": "示例人物",
+        "source_note": "来源说明",
+        "profile": {
+            "desire": "人物最想达成的事（具体到对象与方式）",
+            "fear": "人物最深层的恐惧",
+            "weakness": "人物结构性弱点（会制造冲突的那种）",
+            "goal": "在当前故事阶段的具体目标",
+            "inner_need": "内心真正需要却被自己否认的东西",
+            "background": "身世与处境（支撑其行为逻辑）",
+            "traits": "可见特质与习惯（可被观察的）",
+            "arc": "从故事开始到结束的变化轨迹",
+            "key_relationship": "与关键人物的关系与张力",
+            "secret": "不为人知的秘密（可作伏笔）",
+            "wound": "过去的创伤（驱动动机的根源）",
+        },
+    }
+    if json_output:
+        _emit(example, json_output)
+        return
+    click.echo(ui.section("人物圣经·充实初始设定示范"))
+    click.echo(ui.dim("profile 至少含 desire/fear/weakness/goal/inner_need（planning-quality 门禁），"), err=False)
+    click.echo(ui.dim("建议补 background/traits/arc/key_relationship/secret/wound 让设定立得住。"), err=False)
+    click.echo(ui.kv("character_key", example["character_key"]))
+    click.echo(ui.kv("display_name", example["display_name"]))
+    for key, label in example["profile"].items():
+        click.echo(ui.kv(f"  {key}", label))
+
+
 @script_group.command("planning-quality")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
@@ -5051,7 +5119,7 @@ def script_propose(
         result = session.request(
             "POST", f"/script/projects/{project_id}/blueprints/propose", json_body=body, write=True
         )
-    else:  # storymap
+    elif kind == "storymap":  # storymap
         episodes = data.get("episodes") or []
         if not episodes:
             raise click.ClickException("storymap 需要至少 1 个 episode")
@@ -5077,11 +5145,22 @@ def script_propose(
         result = session.request(
             "POST", f"/script/projects/{project_id}/story-map/propose", json_body=body, write=True
         )
-    if kind == "bibles":
+    elif kind == "bibles":
         # 人物圣经是逐条采纳（PUT），不是 propose→adopt；--adopt 参数在此无意义。
         bibles = data.get("bibles") or []
         if not bibles:
             raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        thin = _thin_bible_profiles(bibles)
+        if thin:
+            click.echo(
+                ui.warn(
+                    f"发现 {len(thin)} 条单薄的人物圣经：{thin[0]}…"
+                    "初始设定请充实：至少 desire/fear/weakness/goal/inner_need，"
+                    "建议补 background/traits/arc/key_relationship/secret/wound。"
+                    "可参考 script bible-example 结构示范。"
+                ),
+                err=True,
+            )
         adopted = []
         for bible in bibles:
             if not bible.get("character_key") or not bible.get("display_name"):
