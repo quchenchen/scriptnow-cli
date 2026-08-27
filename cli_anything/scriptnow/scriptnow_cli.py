@@ -3302,7 +3302,8 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
 def novel_graph_status(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
     """故事图谱同步对账（P0）：对比已采纳正文 vs 图谱已提取，报告覆盖/缺失/失败并触发缺失提取。
 
-    图谱由已采纳章节后台增量提取。追加/采纳后若图谱未跟上（如队列丢失），本命令
+    图谱由已采纳章节后台增量提取，提取任务持久化存储、失败自动退避重试。
+    追加/采纳后若图谱未跟上（提取进行中、重试中或已达重试上限），本命令
     会展示缺口并触发补齐。结果只读，不创建/采纳任何创作候选。
     """
     pid = _resolve_project_id(ctx, project_id)
@@ -3314,14 +3315,14 @@ def novel_graph_status(ctx: click.Context, project_id: str | None, json_output: 
         if doc.get("status") in ("adopted", "adopted_human")
     ]
     graph_chapters = {
-        str(ch.get("chapter_key", "")).replace("chapter:", "")
+        str(ch.get("id") or ch.get("chapter_key") or "").replace("chapter:", "")
         for ch in (graph.get("chapters") or [])
     }
     missing = [doc["chapter_id"] for doc in adopted if doc["chapter_id"] not in graph_chapters]
     extraction = graph.get("extraction_status") or graph.get("extraction")
+    total = len(adopted)
+    synced = total - len(missing)
     if not json_output:
-        total = len(adopted)
-        synced = total - len(missing)
         click.echo(ui.kv("已采纳正文", total))
         click.echo(ui.kv("图谱已同步", synced))
         if missing:
@@ -3360,7 +3361,7 @@ def novel_planning_status(ctx: click.Context, project_id: str | None, json_outpu
     documents = state.get("documents") or []
     adopted = [d for d in documents if d.get("status") in ("adopted", "adopted_human")]
     graph_chapters = {
-        str(ch.get("chapter_key", "")).replace("chapter:", "")
+        str(ch.get("id") or ch.get("chapter_key") or "").replace("chapter:", "")
         for ch in (graph.get("chapters") or [])
     }
     graph_missing = [d["chapter_id"] for d in adopted if d["chapter_id"] not in graph_chapters]
