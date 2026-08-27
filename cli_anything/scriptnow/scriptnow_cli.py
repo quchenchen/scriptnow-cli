@@ -614,7 +614,7 @@ _AGENT_CONTRACT = {
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
-        "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲未全量通过 planning-quality 并采纳前，不得批量进入正文；兼容读取旧项目，但生成新正文前必须按缺口补纲。",
+        "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
@@ -656,7 +656,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "先读取平台状态和本契约；不确定命令或 JSON 结构时先运行对应 --help，不猜测。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
-        "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；旧项目可读，但补纲前不得批量生成正文。",
+        "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
@@ -696,6 +696,7 @@ _GUIDE_STEPS = [
         "title": "登录平台",
         "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
         "why": "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。",
+        "downstream": "登录后所有写操作自动带身份，是后续一切创作命令的身份基础。",
         "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "verify": "输出 登录成功：https://sn.igeewa.com（<邮箱>）",
         "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
@@ -719,6 +720,7 @@ _GUIDE_STEPS = [
         "title": "创建作品项目",
         "scene": "在空白稿纸上写下第一行：作品名、体裁、一句话前提——故事从这里开始呼吸。",
         "why": "先为你的故事建一个家：定下体裁（小说/剧本）与一句话前提，之后的创作都围绕它展开。",
+        "downstream": "项目拿到唯一平台编号（project_id），后续规划、正文、导出都挂在这个 id 上。",
         "command": (
             "scriptnow project create --name <作品名> --medium novel --premise <一句话前提> "
             "--genre <类型> --tone <文风> --chapter-target-words 1200"
@@ -745,6 +747,7 @@ _GUIDE_STEPS = [
         "title": "补齐创作方向",
         "scene": "像主编定下基调：风格、类型、语言、篇幅。方向立住，整部作品才不会走调。",
         "why": "风格、类型、写作语言、篇幅结构必须明确——Agent 依此保持全书一致。",
+        "downstream": "方向立住后，蓝图与正文生成才有统一基调，避免走调返工。",
         "command": "scriptnow project direction --apply @direction.json（Agent 生成方向文件后回填）",
         "verify": "direction 字段齐全；也可用 --inspire 让平台按前提生成草稿。",
         "prompt": "你希望读者合上最后一页时，心里留下什么？",
@@ -768,6 +771,7 @@ _GUIDE_STEPS = [
         "title": "先写梗概，定下全书走向",
         "scene": "在动笔前，先给整部作品写一段梗概：主角要什么、阻力是什么、最终走向哪里。梗概是旅程的第一句导航。",
         "why": "新流程先定梗概（≤500 字）：梗概采纳后 StoryMap 才可规划。这是逐层深入的第一步，避免一开始就锁死结构。",
+        "downstream": "梗概是 StoryMap 结构规划的前置门槛——先定「一句话故事」，卷章结构才有的放矢。",
         "command": "scriptnow novel outline <作品号> --text \"一句梗概\" → novel outline-adopt <作品号>（先定梗概）",
         "verify": "梗概大纲已采纳（novel outline-status 显示已定稿）。",
         "prompt": "如果用一段话说清全书走向，你会怎么说？主角最想要什么，又最怕失去什么？",
@@ -791,6 +795,7 @@ _GUIDE_STEPS = [
         "title": "立故事核心与创作蓝图",
         "scene": "摊开编剧的案头：先让三个故事方向互相竞争，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
         "why": "故事核心定方向，创作蓝图立骨架：人物为何行动、关系如何变化、情节怎样升级、承诺如何回收。",
+        "downstream": "cores 定人物/世界观根因、blueprint 定锚点；后续 StoryMap 的 beats 与每章章纲的 anchor_ids 都引用这些锚点，因果才不会断。",
         "command": "scriptnow novel propose cores @cores.json --adopt && novel propose blueprint @blueprint.json --adopt",
         "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
         "prompt": "这个故事里，你最想让哪一层先立起来：人物、关系、还是世界？",
@@ -814,6 +819,7 @@ _GUIDE_STEPS = [
         "title": "排卷章结构（StoryMap）",
         "scene": "把全书拆成一卷卷、一章章——像为故事画出时间的地图。采纳前一切可改，采纳后才是定稿的结构。",
         "why": "StoryMap 规划卷、章与故事节拍；采纳后成为正文的唯一结构事实源。新流程要求先有已采纳梗概，才能规划结构。",
+        "downstream": "采纳后成为全书唯一结构事实源；逐章写作、导出、故事图谱都基于它。",
         "command": "scriptnow novel propose storymap @storymap.json（或 storymap generate）→ novel orchestrate <作品号> --accept 采纳",
         "verify": "结构已定稿，创作计划可打印（book）。",
         "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？",
@@ -834,15 +840,16 @@ _GUIDE_STEPS = [
     },
     {
         "step": 7,
-        "title": "补齐章纲，再进正文",
-        "scene": "正文前最后一道门：为每一章补齐章纲——这一章的事件链、目标、冲突、转折、状态变化。章纲未全量补齐，写作不会开放。",
-        "why": "章纲/集纲是每章写作的控制性契约（summary、active_goal、conflict、turn、state_changes、锚点）。先补齐章纲并通过 planning-quality，逐章写作才逐层开放。",
+        "title": "章纲随 StoryMap 交付，逐章写作",
+        "scene": "新章节随 StoryMap 一体交付完整章纲——这一章的事件链、目标、冲突、转折、状态变化。新章未带完整章纲不能进入写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响。",
+        "why": "章纲/集纲是每章写作的控制性契约（summary、active_goal、conflict、turn、state_changes、锚点）。新章带完整章纲并通过 planning-quality 后，逐章写作才逐层开放。",
+        "downstream": "新章带完整章纲并通过 planning-quality 后，逐章写作才开放；历史章（已有正文）可读可写不受阻。",
         "command": (
             "scriptnow chapter outline-batch <作品号> @outlines.json（批量补齐章纲）或 "
             "chapter outline <作品号> <章节号> @outline.json（单章）→ "
             "novel planning-quality <作品号> storymap @storymap.json 门禁"
         ),
-        "verify": "全书章纲已全量补齐并通过 planning-quality。",
+        "verify": "新章节均带完整章纲并通过 planning-quality；历史章节保持可读可写。",
         "prompt": "这一章最想完成什么？它的事件链清晰了吗？",
         "masters": [
             {
@@ -864,6 +871,7 @@ _GUIDE_STEPS = [
         "title": "规划并挂载专属 Skill（门禁 · 须健壮性完善）",
         "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
         "why": "动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格、角色守则与连续性标准——多轮打磨、试写检验，直到它真正代表你的意图，然后挂载到作品上，才能开始逐章创作。",
+        "downstream": "方法论 Skill 挂载并验证后，逐章/逐场正文才有统一风格与连续性，是写作前的必然门禁。",
         "command": "scriptnow skill mounts <作品号>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照方法论规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <作品号>（或 skill create + skill mount）",
         "verify": "scriptnow skill mounts <作品号> 显示该方法论已挂载，且经样本试写验证规则有效。",
         "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？",
@@ -873,6 +881,7 @@ _GUIDE_STEPS = [
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
         "why": "创作搭档递来手稿，你可以通读、局部审阅、批注或直接表达采用。只要你在对话中明确决定定稿，Agent 就会记录这次决定并继续；不要求你重复操作命令或页面。",
+        "downstream": "正文成为候选，经审读与修订后由你明确定稿（adopted_human），是后续质量审读与导出的素材。",
         "command": (
             "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
             "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
@@ -900,6 +909,7 @@ _GUIDE_STEPS = [
         "title": "审读与修订",
         "scene": "编辑的责任：不放过一处瑕疵。逐句逐帧以挑剔受众的目光审读——每一句是否值得停留，每一帧是否推动情绪。",
         "why": "Agent 审读必须严苛：化身资深编剧与挑剔受众，逐句引用证据、点名失败的节拍，拒绝泛泛而谈的称赞；低于标准的正文立即带反馈重新生成。",
+        "downstream": "审读报告驱动修订：不达标即带反馈重写，达标才进入定稿与交付，守住成书质量。",
         "command": "scriptnow chapter show <作品号> <章节号> --plain（通读全文后裁决；不满意即 chapter generate --feedback 迭代）",
         "verify": "每一句都经得起挑剔读者的审视；质量报告无阻断项。",
         "prompt": "如果只能删掉一段，你会删哪一段？删掉之后，故事会不会更有力？",
@@ -923,6 +933,7 @@ _GUIDE_STEPS = [
         "title": "包装与导出交付",
         "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
         "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
+        "downstream": "封面与包装让作品可交付、可分享，是成书前的外观定型。",
         "command": (
             "scriptnow cover package <作品号> && scriptnow cover generate <作品号> --image-model-id <生图模型> && "
             "scriptnow export options <作品号> && scriptnow export create <作品号>"
@@ -949,6 +960,7 @@ _GUIDE_STEPS = [
         "title": "标记完成",
         "scene": "合上最后一页。第一部作品完成——工作室的门从此为你常开，随时回来继续创作。",
         "why": "完成第一部作品后运行本命令，以后不再打扰；随时可重看本向导。",
+        "downstream": "导出成品文档/打包，作品闭环完成，可发布。",
         "command": "scriptnow guide --complete",
         "verify": "输出 新手模式已标记完成。",
         "prompt": "下一部作品，你想写什么？",
@@ -1021,6 +1033,7 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
     7: {
         "command": "scriptnow script episode-outline <作品号> <集号> @outline.json（逐集补集纲）→ script planning-quality <作品号> storymap @storymap.json 门禁",
         "verify": "全剧集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）已全量补齐并通过 planning-quality。",
+        "downstream": "新集带完整集纲并通过 planning-quality 后，逐场写作才开放；历史集（已有正文）可读可写不受阻。",
     },
     9: {
         "command": "scriptnow scene list <作品号> → scene generate/propose <作品号> <场次号> → 呈现正文 → 用户明确采用后 Agent 执行 scene adopt --human",
@@ -1241,6 +1254,8 @@ def _echo_guide(payload: dict[str, object]) -> None:
         click.echo(ui.dim("◆ 幕后操作（由 Agent 执行，你不需要记）"), err=True)
         click.echo(f"  {item['command']}", err=True)
         click.echo(ui.dim(f"  完成标志：{item['completion']}"), err=True)
+        if item.get("downstream"):
+            click.echo(ui.dim(f"  后续意义：{item['downstream']}"), err=True)
         next_step = item.get("next_step")
         if next_step:
             click.echo(ui.ok(f"完成后进入第 {next_step['step']} 幕：{next_step['command']}"), err=True)
@@ -1269,6 +1284,8 @@ def _echo_guide(payload: dict[str, object]) -> None:
         if item.get("scene"):
             click.echo(ui.dim(f"    {item['scene']}"), err=True)
         click.echo(f"    为什么：{item['why']}", err=True)
+        if item.get("downstream"):
+            click.echo(ui.dim(f"    后续：  {item['downstream']}"), err=True)
         click.echo(f"    命令：  {item['command']}", err=True)
         click.echo(f"    验证：  {item['verify']}", err=True)
         if item.get("prompt"):
@@ -2433,6 +2450,12 @@ def chapter_outline(
     outline.pop("expected_version", None)
     outline.pop("idempotency_key", None)
     outline.pop("outline", None)
+    issues = _chapter_outline_issues(outline, beats=raw.get("beats"))
+    if issues:
+        raise click.ClickException(
+            "章纲自查未通过，缺：" + "、".join(issues)
+            + "。可用 chapter outline-check @file 预检，或 chapter outline-example 对照结构示范。"
+        )
     result = _session(ctx).request(
         "POST",
         f"/novel/projects/{project_id}/chapters/{chapter_id}/outline/propose",
@@ -2493,6 +2516,7 @@ def chapter_outline_batch(
         raise click.ClickException("当前项目没有已采纳的 StoryMap 卷章结构，无法补纲")
     applied: list[str] = []
     not_found: list[str] = []
+    invalid: list[str] = []
     for volume in volumes:
         chapters = [dict(chapter) for chapter in volume.get("chapters") or []]
         for chapter in chapters:
@@ -2504,9 +2528,18 @@ def chapter_outline_batch(
             payload = dict(outline)
             for key in ("expected_version", "idempotency_key", "outline"):
                 payload.pop(key, None)
+            issues = _chapter_outline_issues(payload, beats=chapter.get("beats"))
+            if issues:
+                invalid.append(f"{chapter.get('id')}（缺 {'、'.join(issues)}）")
+                continue
             chapter["outline"] = payload
             applied.append(str(chapter.get("id")))
         volume["chapters"] = chapters
+    if invalid:
+        raise click.ClickException(
+            "批量章纲自查未通过：\n  " + "\n  ".join(invalid)
+            + "\n可用 chapter outline-check @file 单份预检，或 chapter outline-example 对照结构示范。"
+        )
     for chapter_id in outlines:
         if chapter_id not in applied:
             not_found.append(str(chapter_id))
@@ -2532,6 +2565,186 @@ def chapter_outline_batch(
         click.echo(ui.dim("请运行 planning-quality，并在用户明确决定后采纳 StoryMap。"), err=True)
         return
     _emit({"candidate_id": result.get("id"), "applied": applied, "ignored_not_found": not_found}, json_output)
+
+
+def _chapter_outline_issues(outline: object, beats: object | None = None) -> list[str]:
+    """Structural + generation-semantics self-check for one chapter outline.
+
+    Mirrors the server's ``NovelChapterOutline`` causal minimum so the CLI can
+    preflight a file before proposing. Returns a list of Chinese labels for the
+    missing / invalid fields (empty when the outline is submittable).
+    """
+    if not isinstance(outline, dict):
+        return ["outline 必须是 JSON 对象"]
+    issues: list[str] = []
+    if not str(outline.get("summary") or outline.get("logline") or "").strip():
+        issues.append("章节事件概述（summary 或 logline）")
+    for field, label in (
+        ("active_goal", "行动者目标"),
+        ("conflict", "阻力与对抗"),
+        ("turn", "不可逆转折"),
+    ):
+        if not str(outline.get(field) or "").strip():
+            issues.append(label)
+    state_changes = outline.get("state_changes")
+    if isinstance(state_changes, dict):
+        if not any(str(k).strip() and str(v).strip() for k, v in state_changes.items()):
+            issues.append("状态变化")
+    elif not isinstance(state_changes, list) or not state_changes:
+        issues.append("状态变化")
+    anchors = outline.get("anchor_ids")
+    beat_anchors = [
+        anchor
+        for beat in (beats or [])
+        if isinstance(beat, dict)
+        for anchor in (beat.get("anchor_ids") or [])
+    ]
+    # Anchor parity with the server: outline.anchor_ids OR beat anchor_ids. When
+    # beats are unknown (None), defer anchor validation to the server rather than
+    # falsely rejecting a beat-anchored legacy chapter.
+    if beats is not None and not (isinstance(anchors, list) and anchors) and not beat_anchors:
+        issues.append("蓝图锚点（anchor_ids，或经 beat.anchor_ids 提供）")
+    return issues
+
+
+def _validate_appended_outlines(
+    items: list[dict[str, object]], *, key: str
+) -> None:
+    """Preflight the outlines of appended volumes/chapters before submit.
+
+    Ongoing append-chapter creation must ship each new chapter with a complete
+    outline (latest contract) and surface gaps here instead of a server 409.
+    """
+    chapters: list[dict[str, object]] = []
+    if key == "chapters":
+        chapters = items
+    else:
+        for volume in items:
+            chapters.extend(
+                chapter for chapter in (volume.get("chapters") or [])
+                if isinstance(chapter, dict)
+            )
+    invalid: list[str] = []
+    for chapter in chapters:
+        outline = chapter.get("outline")
+        issues = _chapter_outline_issues(
+            outline if isinstance(outline, dict) else {},
+            beats=chapter.get("beats"),
+        )
+        if issues:
+            invalid.append(
+                f"{chapter.get('id') or chapter.get('title') or '<未命名>'}"
+                f"（缺 {'、'.join(issues)}）"
+            )
+    if invalid:
+        raise click.ClickException(
+            "新增卷/章章纲自查未通过（新章必须带完整章纲）：\n  "
+            + "\n  ".join(invalid[:8])
+            + "\n可用 chapter outline-check @file 单份预检，或 chapter outline-example 对照结构示范。"
+        )
+
+
+def _maybe_hint_synopsis_refresh(json_output: bool) -> None:
+    """After appending chapters/volumes, nudge the author to refresh the synopsis
+    outline as a new version so it reflects the expanded story."""
+    if json_output:
+        return
+    click.echo(
+        ui.dim(
+            "追加内容后，建议把梗概大纲刷新为新版本（scriptnow novel outline <作品号> --text …），"
+            "以覆盖扩展后的内容，再采纳。"
+        ),
+        err=True,
+    )
+
+
+@chapter_group.command("outline-check")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+def chapter_outline_check(file_path: str, json_output: bool) -> None:
+    """自查一份章纲 JSON 的结构与生成语义（提交前预检）。
+
+    FILE_PATH 是章纲 JSON（根为 outline 对象，或含 outline 字段的对象）。
+    校验因果最小契约：事件概述/目标/阻力/转折/状态变化/蓝图锚点；缺失或空
+    字段会列出。通过则 exit 0，否则 exit 1（可用 --json 输出结构化结果）。
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("章纲 JSON 根必须是对象")
+    outline = dict(raw.get("outline")) if isinstance(raw.get("outline"), dict) else dict(raw)
+    outline.pop("expected_version", None)
+    outline.pop("idempotency_key", None)
+    outline.pop("outline", None)
+    beats = raw.get("beats")
+    issues = _chapter_outline_issues(outline, beats=beats)
+    if json_output:
+        _emit({"valid": not issues, "issues": issues, "outline": outline}, json_output)
+        if issues:
+            raise SystemExit(1)
+        return
+    if issues:
+        click.echo(ui.error(f"章纲自查未通过：缺 {'、'.join(issues)}"), err=True)
+        click.echo(ui.dim("对照结构示范：chapter outline-example，或用 --json 查看细节。"), err=True)
+        raise SystemExit(1)
+    click.echo(ui.ok("章纲自查通过：结构与生成语义契约完整。"))
+    click.echo(ui.dim("提交候选前仍建议经 planning-quality 门禁。"), err=True)
+
+
+@chapter_group.command("outline-example")
+@click.argument("project_id", required=False)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def chapter_outline_example(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+    """打印平台给出的章纲结构示范（可作为自审查对模板）。
+
+    传入 project_id 时从平台拉取权威示范；否则打印 CLI 内置模板。
+    """
+    import json as _json
+
+    example = None
+    if project_id:
+        pid = _resolve_project_id(ctx, project_id)
+        # Propagate platform errors; do not silently substitute a stale fallback.
+        example = _api_request(ctx, "GET", f"/novel/projects/{pid}/chapter-outline/example")
+        example = dict(example)
+        example["source"] = "platform"
+    else:
+        example = {
+            "fields": {
+                "summary": "本章事件概述（与 logline 至少提供一个）",
+                "active_goal": "行动者目标",
+                "conflict": "阻力与对抗",
+                "turn": "不可逆转折",
+                "state_changes": "状态变化（非空数组或对象）",
+                "anchor_ids": "关联蓝图锚点（非空数组；亦可来自 beat.anchor_ids）",
+            },
+            "example": {
+                "summary": "主角为拿回药方踏入被封锁的旧仓库",
+                "active_goal": "拿回药方",
+                "conflict": "对手封锁证据并在仓库设伏",
+                "turn": "发现药方已被调包",
+                "state_changes": {"信息": "未知 → 已知"},
+                "anchor_ids": ["character:liu-dabao", "event:medicine"],
+            },
+        }
+        example["source"] = "cli-fallback"
+    if json_output:
+        _emit(example, json_output)
+        return
+    click.echo(ui.section("章纲结构示范（平台契约）"))
+    click.echo(ui.dim("字段说明："), err=False)
+    for field, label in (example.get("fields") or {}).items():
+        click.echo(f"  {ui.kv(field, label)}")
+    click.echo(ui.dim("示例："), err=False)
+    click.echo(_json.dumps(example.get("example"), ensure_ascii=False, indent=2))
+    click.echo(ui.dim("自查：chapter outline-check @outline.json", ), err=False)
+
 
 
 @chapter_group.command("list")
@@ -3151,6 +3364,7 @@ def storymap_append_volume(
     故事图谱与人物圣经随章节采纳自动跟进，无需手动更新。
     """
     volumes = _read_append_json(file_path, "volumes")
+    _validate_appended_outlines(volumes, key="volumes")
     session = _session(ctx)
     body = {
         "idempotency_key": f"cli-append-vol-{__import__('time').time_ns()}",
@@ -3170,6 +3384,7 @@ def storymap_append_volume(
         )
         _emit({"candidate_id": result["id"], "adopted": adopted.get("status")}, json_output)
         return
+    _maybe_hint_synopsis_refresh(json_output)
     _emit(result, json_output)
 
 
@@ -3196,6 +3411,7 @@ def storymap_append_chapters(
     蓝图更新会校验不破坏已采纳结构引用；故事图谱/人物圣经随采纳自动跟进。
     """
     chapters = _read_append_json(file_path, "chapters")
+    _validate_appended_outlines(chapters, key="chapters")
     session = _session(ctx)
     body = {
         "idempotency_key": f"cli-append-ch-{__import__('time').time_ns()}",
@@ -3216,6 +3432,7 @@ def storymap_append_chapters(
         )
         _emit({"candidate_id": result["id"], "adopted": adopted.get("status")}, json_output)
         return
+    _maybe_hint_synopsis_refresh(json_output)
     _emit(result, json_output)
 
 
@@ -3237,7 +3454,11 @@ def novel_group(ctx: click.Context) -> None:
 def novel_outline(
     ctx: click.Context, project_id: str | None, text: str | None, file: str | None, json_output: bool
 ) -> None:
-    """回填梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 用户审阅 → outline 采纳后 storymap 才可规划。"""
+    """回填梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 用户审阅 → outline 采纳后 storymap 才可规划。
+
+    内容发生变化时自动生成新版本（v 递增并回到候选）——适合在追加新章节/内容后刷新梗概，
+    用 novel outline-status 查看当前版本，novel outline-adopt 采纳新版本。
+    """
     pid = _resolve_project_id(ctx, project_id)
     if not text and not file:
         raise click.ClickException("需要 --text 或 --file（梗概 ≤500 字）")

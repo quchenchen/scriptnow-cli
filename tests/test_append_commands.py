@@ -49,7 +49,7 @@ def test_append_volume_object_input_payload(fake_session, runner, tmp_path):
     file_arg = _write(
         tmp_path,
         "vols.json",
-        '{"volumes": [{"id": "volume-2", "ordinal": 1, "title": "第二卷", "chapters": [{"id": "chapter-2-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": []}]}]}',
+        '{"volumes": [{"id": "volume-2", "ordinal": 1, "title": "第二卷", "chapters": [{"id": "chapter-2-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": [], "outline": {"summary": "主角踏入旧仓库", "active_goal": "找回药方", "conflict": "仓库被封锁", "turn": "药方被调包", "state_changes": {"information": "未知变为已知"}, "anchor_ids": ["event:medicine"]}}]}]}',
     )
     result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
     assert result.exit_code == 0
@@ -78,7 +78,7 @@ def test_append_chapters_requires_volume_id(fake_session, runner, tmp_path):
     file_arg = _write(
         tmp_path,
         "chs.json",
-        '[{"id": "chapter-9-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": []}]',
+        '[{"id": "chapter-9-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": [], "outline": {"summary": "主角踏入旧仓库", "active_goal": "找回药方", "conflict": "仓库被封锁", "turn": "药方被调包", "state_changes": {"information": "未知变为已知"}, "anchor_ids": ["event:medicine"]}}]',
     )
     result = runner.invoke(main, ["storymap", "append-chapters", "pid-1", "volume-1", file_arg])
     assert result.exit_code == 0

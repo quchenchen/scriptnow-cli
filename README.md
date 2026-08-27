@@ -37,7 +37,7 @@
   `script episode-outline <pid> <episode_id> @outline.json` 补单集；
   小说每个 `chapter` 需填写嵌入的 `outline`（`summary`/`logline`、`active_goal`、`conflict`、`turn`、
   `state_changes`，锚点可来自 outline 或 beat）；先运行
-  `script/novel planning-quality`，全量通过并经作者采纳后才可批量写正文。旧项目可读，但补纲前不得生成新正文。
+  `script/novel planning-quality`，全量通过并经作者采纳后才可写正文。历史章节（已有正文）可读可写，不受章纲字段缺失影响；新章节必须带完整章纲（提交前可用 `chapter outline-check` 自查、`chapter outline-example` 看结构示范）。
 
 ## 安装
 

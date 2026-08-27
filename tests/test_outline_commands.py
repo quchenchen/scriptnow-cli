@@ -58,7 +58,7 @@ def test_chapter_outline_backfill_accepts_outline_wrapper(monkeypatch, tmp_path)
             "conflict": "仓库已经封锁",
             "turn": "发现药方被调包",
             "state_changes": {"information": "未知变为已知"},
-            "anchor_ids": [],
+            "anchor_ids": ["event:medicine"],
         },
     })
     result = CliRunner().invoke(main, ["chapter", "outline", "p1", "chapter-1", file_arg, "--json"])
@@ -72,4 +72,65 @@ def test_outline_commands_are_listed_in_help():
     runner = CliRunner()
     assert "episode-outline" in runner.invoke(main, ["script", "--help"]).output
     assert "outline" in runner.invoke(main, ["chapter", "--help"]).output
+
+
+def test_outline_check_valid_and_invalid(tmp_path):
+    runner = CliRunner()
+    valid = _write(tmp_path, "ok.json", {
+        "summary": "主角踏入旧仓库",
+        "active_goal": "找回药方",
+        "conflict": "仓库被封锁",
+        "turn": "药方被调包",
+        "state_changes": {"information": "未知变为已知"},
+        "anchor_ids": ["event:medicine"],
+    })
+    r_ok = runner.invoke(main, ["chapter", "outline-check", valid])
+    assert r_ok.exit_code == 0
+    assert "自查通过" in r_ok.output
+
+    bad = _write(tmp_path, "bad.json", {"summary": "只有概述"})
+    r_bad = runner.invoke(main, ["chapter", "outline-check", bad])
+    assert r_bad.exit_code != 0
+    assert "行动者目标" in r_bad.output
+
+
+def test_outline_example_lists_fields():
+    runner = CliRunner()
+    result = runner.invoke(main, ["chapter", "outline-example"])
+    assert result.exit_code == 0
+    assert "active_goal" in result.output
+    assert "anchor_ids" in result.output
+
+
+def test_outline_check_accepts_beat_anchors(tmp_path):
+    """Server parity: empty outline.anchor_ids is OK when beats carry anchors."""
+    runner = CliRunner()
+    f = _write(tmp_path, "beat.json", {
+        "summary": "主角踏入旧仓库",
+        "active_goal": "找回药方",
+        "conflict": "仓库被封锁",
+        "turn": "药方被调包",
+        "state_changes": {"information": "未知变为已知"},
+        "anchor_ids": [],
+        "beats": [{"id": "b1", "objective": "x", "anchor_ids": ["event:medicine"]}],
+    })
+    r = runner.invoke(main, ["chapter", "outline-check", f])
+    assert r.exit_code == 0, r.output
+
+
+def test_outline_check_json_invalid_exits_1(tmp_path):
+    """--json mode must still exit non-zero when the outline is invalid."""
+    runner = CliRunner()
+    f = _write(tmp_path, "bad.json", {"summary": "只有概述"})
+    r = runner.invoke(main, ["chapter", "outline-check", f, "--json"])
+    assert r.exit_code == 1
+    assert '"valid": false' in r.output or '"valid":false' in r.output
+
+
+def test_outline_example_no_project_uses_cli_fallback():
+    runner = CliRunner()
+    result = runner.invoke(main, ["chapter", "outline-example", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["source"] == "cli-fallback"
 
