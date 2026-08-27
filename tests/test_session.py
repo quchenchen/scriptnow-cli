@@ -107,3 +107,18 @@ def test_multipart_file_is_rewound_before_refresh_retry(tmp_path, monkeypatch) -
     )
     assert result is not None
     assert sent_contents == [b"planning-board-bytes", b"planning-board-bytes"]
+def test_gateway_placeholder_header_does_not_fail_contract() -> None:
+    """非 API 响应只带 Minimum-CLI-Version（如网关默认 9.0.0）而无 API-Contract
+    时，不应误触发合同校验（避免把网关占位头当成真实后端要求）。"""
+    response = Mock(
+        status_code=200,
+        cookies=[],
+        headers={"X-ScriptNow-Minimum-CLI-Version": "9.0.0"},  # 无 API-Contract
+    )
+    http = Mock()
+    http.request.return_value = response
+    session = Session(base_url="https://example.test", _http=http)
+
+    # 不应抛合同错误；非 JSON 响应按 text 返回（此处为 Mock 的 text）。
+    result = session.request("GET", "/projects")
+    assert result is not None

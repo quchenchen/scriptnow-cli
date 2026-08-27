@@ -128,7 +128,11 @@ class Session:
         api_contract = response.headers.get("X-ScriptNow-API-Contract", "")
         required = _version_tuple(minimum_cli)
         current = _version_tuple(_CLIENT_VERSION)
-        if required is not None and current is not None and current < required:
+        # Only enforce the contract when this is a genuine ScriptNow API response
+        # (both contract headers present). Non-API endpoints / gateway error
+        # pages may inject unrelated headers and would otherwise spuriously fail
+        # the check (e.g. a placeholder minimum of "9.0.0").
+        if api_contract and minimum_cli and required is not None and current is not None and current < required:
             err = ScriptNowError(
                 f"CLI {_CLIENT_VERSION} 与平台合同 {api_contract or 'unknown'} 不兼容；"
                 f"最低需要 {minimum_cli}，请运行 scriptnow self-upgrade"
