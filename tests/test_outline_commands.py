@@ -134,3 +134,68 @@ def test_outline_example_no_project_uses_cli_fallback():
     payload = json.loads(result.output)
     assert payload["source"] == "cli-fallback"
 
+
+
+def test_chapter_outline_adopt_flag_issues_confirm_request(monkeypatch, tmp_path):
+    """chapter outline --adopt 回填后自动采纳，无需复制候选 ID。"""
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"id": "cand-outline-1", "status": "active"},  # propose
+        {"version": 2, "impact": {"added_units": 0, "removed_units": 0, "retained_units": 30}, "status": "adopted"},  # adopt
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "chapter.json", {
+        "outline": {
+            "summary": "主角走进旧仓库",
+            "active_goal": "找回药方",
+            "conflict": "仓库已经封锁",
+            "turn": "发现药方被调包",
+            "state_changes": {"information": "未知变为已知"},
+            "anchor_ids": ["event:medicine"],
+        },
+    })
+    runner = CliRunner()
+    result = runner.invoke(main, ["chapter", "outline", "p1", "chapter-1", file_arg, "--adopt", "--json"])
+    assert result.exit_code == 0, result.output
+    paths = [call.args[1] for call in session.request.call_args_list]
+    assert paths[0] == "/novel/projects/p1/chapters/chapter-1/outline/propose"
+    assert paths[1] == "/novel/projects/p1/story-map/cand-outline-1/adopt?confirm=true"
+
+
+def test_storymap_adopt_latest_resolves_active_candidate(monkeypatch):
+    """storymap adopt --latest 自动采用最新 active 候选（仍需 --confirm）。"""
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"story_map_candidates": [
+            {"id": "cand-9", "status": "active"},
+            {"id": "cand-8", "status": "adopted"},
+        ], "story_map": {"version": 1}},
+        {"status": "adopted", "version": 2},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+    result = runner.invoke(main, ["storymap", "adopt", "p1", "--latest", "--confirm", "--json"])
+    assert result.exit_code == 0, result.output
+    paths = [call.args[1] for call in session.request.call_args_list]
+    assert "/state" in paths[0]
+    assert "cand-9" in paths[1]
+
+
+def test_chapter_generate_help_lists_preview():
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    out = runner.invoke(main, ["chapter", "generate", "--help"]).output
+    assert "--preview" in out

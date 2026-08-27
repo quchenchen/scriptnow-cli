@@ -2426,16 +2426,18 @@ def chapter_group(ctx: click.Context) -> None:
 @click.argument("project_id")
 @click.argument("chapter_id")
 @click.argument("file_path", type=str)
+@click.option("--adopt", is_flag=True, help="回填后自动采纳该章纲（视为你的显式授权）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_outline(
-    ctx: click.Context, project_id: str, chapter_id: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, chapter_id: str, file_path: str, adopt: bool, json_output: bool
 ) -> None:
-    """回填单章 outline（旧项目补纲入口；保存为 StoryMap 结构候选）。
+    """回填单章 outline（保存为 StoryMap 结构候选；--adopt 时自动采纳）。
 
     FILE_PATH is a JSON object containing ``outline`` or the outline fields
-    directly. The candidate must still be reviewed and adopted through the
-    normal StoryMap decision path.
+    directly. Without --adopt the candidate must still be reviewed and adopted
+    through the normal StoryMap decision path. Passing --adopt is your explicit
+    authorization to adopt the resulting structure candidate immediately.
     """
     import json as _json
 
@@ -2462,9 +2464,24 @@ def chapter_outline(
         json_body={"outline": outline, "idempotency_key": f"cli-chapter-outline-{__import__('time').time_ns()}"},
         write=True,
     )
+    candidate_id = result.get("id")
+    if adopt and candidate_id:
+        adopted = _session(ctx).request(
+            "POST",
+            f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt?confirm=true",
+            write=True,
+        )
+        impact = (adopted or {}).get("impact") or {}
+        if not json_output:
+            click.echo(ui.ok(f"第 {chapter_id} 章章纲已回填并自动采纳（候选 {candidate_id}，StoryMap v{(adopted or {}).get('version')}）"))
+            click.echo(ui.dim(
+                f"  影响：新增 {impact.get('added_units') or 0} · 删除 {impact.get('removed_units') or 0} · 保留 {impact.get('retained_units') or 0}。"
+            ), err=True)
+        _emit({"candidate_id": candidate_id, "adopted": (adopted or {}).get("status")}, json_output)
+        return
     if not json_output:
-        click.echo(ui.ok(f"第 {chapter_id} 章章纲已形成结构候选（{result.get('id')}）"))
-        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后采纳。"), err=True)
+        click.echo(ui.ok(f"第 {chapter_id} 章章纲已形成结构候选（{candidate_id}）"))
+        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后采纳（或用 --adopt 自动采纳）。"), err=True)
         return
     _emit(result, json_output)
 
@@ -2878,6 +2895,7 @@ def chapter_show(
 @click.option("--feedback", default=None)
 @click.option("--model", "model_id", default=None, help="指定本项目中该章节写作使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
 @click.option("--wait", is_flag=True, help="Poll until the background run finishes")
+@click.option("--preview", is_flag=True, help="生成完成后自动显示正文（需配合 --wait）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_generate(
@@ -2887,6 +2905,7 @@ def chapter_generate(
     feedback: str | None,
     model_id: str | None,
     wait: bool,
+    preview: bool,
     json_output: bool,
 ) -> None:
     """Generate a chapter candidate (background by default)."""
@@ -2911,6 +2930,9 @@ def chapter_generate(
         raise
     if wait and result.get("run_id"):
         _wait_for_run(session, project_id, str(result["run_id"]), json_output)
+        if preview and not json_output:
+            click.echo(ui.section("生成结果预览"), err=True)
+            chapter_show(ctx, project_id, chapter_id, None, True, json_output)
         return
     _emit(result, json_output)
 
@@ -3294,22 +3316,39 @@ def storymap_generate(
 
 @storymap_group.command("adopt")
 @click.argument("project_id")
-@click.argument("candidate_id")
+@click.argument("candidate_id", required=False)
+@click.option("--latest", is_flag=True, help="自动采用最新 active 结构候选（仍需 --confirm，免去复制候选 ID）")
 @click.option("--confirm", is_flag=True, help="高危操作：明确授权采纳此结构修订（覆盖当前 StoryMap 并影响已采纳正文；旧结构将自动归档）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str, confirm: bool, json_output: bool) -> None:
+def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str | None, latest: bool, confirm: bool, json_output: bool) -> None:
     """Adopt a StoryMap structure candidate (HIGH-RISK, requires --confirm).
 
     StoryMap 修订是高危操作：采纳会覆盖当前结构、改变保留章节的标题/字数，
     并影响已采纳正文的匹配关系。必须由主编/作者明确授权（--confirm）后才会执行；
     被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。
+
+    用 --latest 时自动采用最新 active 候选，无需复制候选 ID；仍然必须 --confirm。
     """
     if not confirm:
         raise click.ClickException(
             "StoryMap 修订是高危操作：需要 --confirm 明确授权。"
             "请先核对影响（新增/移除/保留章节、已采纳正文），确认由主编/作者本人授权后再执行。"
         )
+    if not candidate_id:
+        if not latest:
+            raise click.ClickException("需要 candidate_id，或用 --latest 自动采用最新 active 候选（仍需 --confirm）")
+        state = _novel_state(_session(ctx), project_id)
+        active_candidates = [
+            str(item["id"])
+            for item in (state.get("story_map_candidates") or [])
+            if item.get("status") == "active"
+        ]
+        if not active_candidates:
+            raise click.ClickException("当前没有 active 结构候选可采纳")
+        candidate_id = active_candidates[0]
+        if not json_output:
+            click.echo(ui.dim(f"采用最新 active 候选：{candidate_id}"), err=True)
     _emit(
         _session(ctx).request(
             "POST",
