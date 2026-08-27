@@ -247,3 +247,40 @@ def test_storymap_phases_outputs_phase_plan(monkeypatch):
     assert human.exit_code == 0, human.output
     assert "三幕式" in human.output
     assert "第 1–3 章" in human.output
+
+
+def test_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
+    """storymap append-phase 提交下一未完成阶段，带 digest/version/章纲预检。"""
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"story_map": {"version": 1}},  # _novel_state
+        {"phases": [
+            {"key": "act1", "title_zh": "第一幕·建置", "start_chapter": 1, "end_chapter": 2, "chapter_count": 2},
+            {"key": "act2", "title_zh": "第二幕·对抗", "start_chapter": 3, "end_chapter": 4, "chapter_count": 2},
+        ], "plan_digest": "dig123"},  # GET phases
+        {"id": "cand-phase-1", "status": "active"},  # POST phase-append
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    chapters = [{
+        "id": "a1", "ordinal": 1, "title": "A1", "target_words": 1000,
+        "outline": {"summary": "s", "active_goal": "g", "conflict": "c", "turn": "t",
+                    "state_changes": {"k": "v"}, "anchor_ids": ["thread:letter"]},
+    }]
+    file_arg = _write(tmp_path, "chs.json", {"chapters": chapters})
+    runner = CliRunner()
+    result = runner.invoke(main, ["storymap", "append-phase", "p1", "act1", file_arg, "--json"])
+    assert result.exit_code == 0, result.output
+    paths = [call.args[1] for call in session.request.call_args_list]
+    assert paths[-1].endswith("story-map/phase-append-propose")
+    body = session.request.call_args_list[-1].kwargs["json_body"]
+    assert body["phase_key"] == "act1"
+    assert body["plan_digest"] == "dig123"
+    assert body["expected_story_map_version"] == 1

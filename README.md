@@ -133,6 +133,22 @@ scriptnow novel orchestrate <pid> --accept                    # 审阅 → 采�
 # 新增卷/章（纯追加，不动已有卷章；新章 beats 引用蓝图锚点须已存在）
 scriptnow storymap append-volume <pid> @new-volumes.json --adopt
 scriptnow storymap append-chapters <pid> volume-1 @new-chapters.json --adopt
+
+
+### 按叙事结构分阶段创作（Phase 1/2）
+
+叙事结构（`direction.structure`：`three_act` / `hero_journey` / `kishotenketsu` / `linear` / `custom`）被解析为可计算的幕/阶段模型。分阶段模式下**每个叙事阶段 = 一个卷**（阶段卷）；`volume_count × chapters_per_volume` 决定总章数目标，阶段按比例分配章并各自成卷。
+
+```bash
+# 预览阶段计划（只读：阶段/目的/全局章序/入口出口）
+scriptnow storymap phases <pid>
+
+# 提交下一个未完成阶段（阶段=卷；采纳仍走 storymap adopt）
+scriptnow storymap append-phase <pid> <phase-key> @chapters.json
+scriptnow storymap adopt <pid> --latest --confirm
+```
+
+阶段只约束跨章的宏观走向（入口/出口、跨阶段线程），**不干预单章内的节奏、伏笔与钩子**。
 # 创作循环（Agent 审读驱动；生成默认后台，用 run status 轮询）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
 scriptnow chapter outline <pid> chapter-1-1 @outline.json       # 旧项目单章补纲
@@ -177,7 +193,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：**outline（单章补纲）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** |
+| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
 | script | 剧本创作链：**outline（梗概大纲）** / outline-adopt / outline-status / **episode-outline（单集集纲补纲）** / state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |

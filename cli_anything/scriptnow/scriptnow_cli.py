@@ -3297,7 +3297,7 @@ def storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> N
         return
     click.echo(ui.section(f"阶段计划 · {result['structure_title_zh']}（{result['structure_key']} v{result['structure_version']}）"))
     click.echo(ui.dim(
-        f"规模：{result['total_volumes']} 卷 × {result['chapters_per_volume']} 章 = {result['total_chapters']} 章 · 分配策略 {result['allocation_policy']}"
+        f"阶段卷：{result['total_volumes']} 个（每个叙事阶段=一卷）· 目标每卷 {result['chapters_per_volume']} 章 · 总 {result['total_chapters']} 章 · 分配 {result['allocation_policy']}"
     ), err=False)
     for phase in result["phases"]:
         click.echo(ui.ok(f"阶段{phase['ordinal']} · {phase['title_zh']}（{phase['title_en']}）"))
@@ -3308,6 +3308,61 @@ def storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> N
         if phase.get("exit_requirement"):
             click.echo(ui.dim(f"  出口：{phase['exit_requirement']}"))
     click.echo(ui.dim("阶段只约束跨章的宏观走向，不干预单章内的节奏、伏笔与钩子。"), err=True)
+
+
+@storymap_group.command("append-phase")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_append_phase(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+) -> None:
+    """按叙事阶段追加章节（提交下一个未完成阶段；复用 append 采纳路径）。
+
+    FILE_PATH 是 chapters 数组（每个 chapter 带完整章纲）。提交前自动章纲预检。
+    采纳仍走 storymap adopt <pid> <candidate_id> --confirm（或 --latest），不自动采纳。
+    """
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    state = _novel_state(session, pid)
+    version = int((state.get("story_map") or {}).get("version") or 1)
+    plan = _api_request(ctx, "GET", f"/novel/projects/{pid}/story-map/phases")
+    phase = next((p for p in plan["phases"] if p["key"] == phase_key), None)
+    if phase is None:
+        raise click.ClickException(
+            f"阶段 {phase_key} 不在阶段计划中。可选：{'、'.join(p['key'] for p in plan['phases'])}"
+        )
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章节 JSON 解析失败：{error}") from error
+    chapters = raw.get("chapters") if isinstance(raw, dict) else raw
+    if not isinstance(chapters, list) or not chapters:
+        raise click.ClickException("chapters 必须是数组")
+    _validate_appended_outlines([c for c in chapters if isinstance(c, dict)], key="chapters")
+    result = session.request(
+        "POST",
+        f"/novel/projects/{pid}/story-map/phase-append-propose",
+        json_body={
+            "phase_key": phase_key,
+            "plan_digest": plan["plan_digest"],
+            "expected_story_map_version": version,
+            "chapters": chapters,
+            "idempotency_key": f"cli-phase-{phase_key}-{__import__('time').time_ns()}",
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
+        click.echo(ui.dim(f"  全局章序：第 {phase['start_chapter']}–{phase['end_chapter']} 章（共 {phase['chapter_count']} 章）"))
+        click.echo(ui.dim("请审阅影响并在用户明确决定后采纳：storymap adopt <作品号> <候选ID> --confirm，或 --latest。"), err=True)
+        return
+    _emit(result, json_output)
 
 
 @storymap_group.command("state")
