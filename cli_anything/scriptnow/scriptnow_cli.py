@@ -2629,6 +2629,34 @@ def _chapter_outline_issues(outline: object, beats: object | None = None) -> lis
     return issues
 
 
+def _episode_outline_issues(episode: object) -> list[str]:
+    """Structural + generation-semantics self-check for one script episode outline.
+
+    Mirrors the server Episode contract (flat logline/active_goal/conflict/turn/
+    state_changes/anchor_ids). Returns Chinese labels of missing fields.
+    """
+    if not isinstance(episode, dict):
+        return ["集纲必须是对象"]
+    issues: list[str] = []
+    for field, label in (
+        ("logline", "logline（事件链）"),
+        ("active_goal", "行动者目标"),
+        ("conflict", "阻力与对抗"),
+        ("turn", "不可逆转折"),
+    ):
+        if not str(episode.get(field) or "").strip():
+            issues.append(label)
+    state_changes = episode.get("state_changes")
+    if not isinstance(state_changes, list) or not state_changes or not any(
+        str(item).strip() for item in state_changes
+    ):
+        issues.append("状态变化")
+    anchors = episode.get("anchor_ids")
+    if not isinstance(anchors, list) or not anchors:
+        issues.append("蓝图锚点（anchor_ids）")
+    return issues
+
+
 def _validate_appended_outlines(
     items: list[dict[str, object]], *, key: str
 ) -> None:
@@ -5057,6 +5085,41 @@ def script_episode_outline_example(json_output: bool) -> None:
     click.echo(ui.dim("beat 必须具体到人物动作与物件；planning-quality 对套话判 REVISE。"), err=True)
 
 
+@script_group.command("episode-outline-check")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+def script_episode_outline_check(file_path: str, json_output: bool) -> None:
+    """自查一份剧本集纲 JSON 的结构与生成语义（提交前预检）。
+
+    FILE_PATH 是集纲对象（或含 episode 字段的对象）。缺失/空字段会列出；
+    通过 exit 0，否则 exit 1（--json 输出结构化结果）。
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"集纲 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("集纲 JSON 根必须是对象")
+    episode = dict(raw.get("episode")) if isinstance(raw.get("episode"), dict) else dict(raw)
+    episode.pop("expected_version", None)
+    episode.pop("idempotency_key", None)
+    issues = _episode_outline_issues(episode)
+    if json_output:
+        _emit({"valid": not issues, "issues": issues, "episode": episode}, json_output)
+        if issues:
+            raise SystemExit(1)
+        return
+    if issues:
+        click.echo(ui.error(f"集纲自查未通过：缺 {'、'.join(issues)}"), err=True)
+        click.echo(ui.dim("对照结构示范：script episode-outline-example，或用 --json 查看细节。"), err=True)
+        raise SystemExit(1)
+    click.echo(ui.ok("集纲自查通过：结构与生成语义契约完整。"))
+    click.echo(ui.dim("beat 需具体到人物动作与物件，提交前可用 planning-quality 门禁。"), err=True)
+
+
 @script_group.command("bible-example")
 @click.option("--json", "json_output", is_flag=True)
 def script_bible_example(json_output: bool) -> None:
@@ -5326,6 +5389,95 @@ def script_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: st
         ),
         json_output,
     )
+
+
+@script_group.command("storymap-phases")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """预览剧本由叙事结构推导的阶段计划（只读；阶段只约束跨集宏观走向）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/script/projects/{pid}/story-map/phases")
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.section(f"阶段计划 · {result['structure_title_zh']}（{result['structure_key']} v{result['structure_version']}）"))
+    click.echo(ui.dim(
+        f"总 {result['total_chapters']} 集 · 分配 {result['allocation_policy']}"
+    ), err=False)
+    for phase in result["phases"]:
+        click.echo(ui.ok(f"阶段{phase['ordinal']} · {phase['title_zh']}（{phase['title_en']}）"))
+        click.echo(ui.dim(f"  叙事目的：{phase['purpose']}"))
+        click.echo(ui.dim(f"  集序：第 {phase['start_chapter']}–{phase['end_chapter']} 集（共 {phase['chapter_count']} 集）"))
+        if phase.get("entry_requirement"):
+            click.echo(ui.dim(f"  入口：{phase['entry_requirement']}"))
+        if phase.get("exit_requirement"):
+            click.echo(ui.dim(f"  出口：{phase['exit_requirement']}"))
+    click.echo(ui.dim("分阶段模式 = 多轮连贯性创作：每阶段一轮，轮轮以已采纳前缀相接；阶段不干预单集内的节奏、伏笔与钩子。"), err=True)
+
+
+@script_group.command("storymap-append-phase")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_append_phase(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+) -> None:
+    """按叙事阶段提交剧本的下一未完成阶段（阶段=集区间；采纳仍走 adopt-storymap）。
+
+    FILE_PATH 是 episodes 数组（每集带完整集纲）。提交前自动集纲自查。
+    """
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    state = session.request("GET", f"/script/projects/{pid}/state")
+    version = int((state.get("story_map") or {}).get("version") or 1)
+    plan = _api_request(ctx, "GET", f"/script/projects/{pid}/story-map/phases")
+    phase = next((p for p in plan["phases"] if p["key"] == phase_key), None)
+    if phase is None:
+        raise click.ClickException(
+            f"阶段 {phase_key} 不在阶段计划中。可选：{'、'.join(p['key'] for p in plan['phases'])}"
+        )
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"集纲 JSON 解析失败：{error}") from error
+    episodes = raw.get("episodes") if isinstance(raw, dict) else raw
+    if not isinstance(episodes, list) or not episodes:
+        raise click.ClickException("episodes 必须是数组")
+    invalid = [
+        f"{e.get('id') or e.get('title') or '<未命名>'}"
+        for e in episodes if isinstance(e, dict) and _episode_outline_issues(e)
+    ]
+    if invalid:
+        raise click.ClickException(
+            "集纲自查未通过（每集需 logline/active_goal/conflict/turn/state_changes/anchor_ids）：\n  "
+            + "\n  ".join(invalid[:8])
+            + "\n可用 script episode-outline-check @file 预检。"
+        )
+    result = session.request(
+        "POST",
+        f"/script/projects/{pid}/story-map/phase-append-propose",
+        json_body={
+            "phase_key": phase_key,
+            "plan_digest": plan["plan_digest"],
+            "expected_story_map_version": version,
+            "episodes": episodes,
+            "idempotency_key": f"cli-script-phase-{phase_key}-{__import__('time').time_ns()}",
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
+        click.echo(ui.dim(f"  集序：第 {phase['start_chapter']}–{phase['end_chapter']} 集（共 {phase['chapter_count']} 集）"))
+        click.echo(ui.dim("请审阅影响并在用户明确决定后采纳：script adopt-storymap <作品号> <候选ID>，或 script storymap-adopt --latest。"), err=True)
+        return
+    _emit(result, json_output)
 
 
 @script_group.command("storymap")

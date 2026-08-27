@@ -315,3 +315,73 @@ def test_novel_bible_example_lists_rich_keys():
     assert result.exit_code == 0, result.output
     for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
         assert key in result.output, key
+
+
+def test_script_episode_outline_check_valid_and_invalid(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    ok = _write(tmp_path, "ok.json", {"episode": {
+        "id": "e1", "logline": "阿澄把录音机放在柜台按下播放键", "active_goal": "g",
+        "conflict": "c", "turn": "t", "state_changes": ["s"], "anchor_ids": ["character:shen-achen"]}})
+    r_ok = CliRunner().invoke(main, ["script", "episode-outline-check", ok])
+    assert r_ok.exit_code == 0, r_ok.output
+    bad = _write(tmp_path, "bad.json", {"episode": {"id": "e2", "title": "缺字段"}})
+    r_bad = CliRunner().invoke(main, ["script", "episode-outline-check", bad])
+    assert r_bad.exit_code != 0
+
+
+def test_script_storymap_phases_outputs_plan(monkeypatch):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {
+        "structure_key": "three_act", "structure_title_zh": "三幕式", "structure_version": "1",
+        "total_chapters": 81, "allocation_policy": "chapter_span",
+        "phases": [{"ordinal": 1, "key": "act1", "title_zh": "第一幕·建置", "title_en": "Setup",
+                    "purpose": "setup", "chapter_count": 20, "start_chapter": 1, "end_chapter": 20,
+                    "entry_requirement": "", "exit_requirement": ""}],
+        "plan_digest": "d" * 16,
+    }
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, ["script", "storymap-phases", "p1", "--json"])
+    assert result.exit_code == 0, result.output
+    assert _json.loads(result.output)["structure_key"] == "three_act"
+
+
+def test_script_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"story_map": {"version": 1}},  # state
+        {"phases": [{"key": "act1", "title_zh": "第一幕·建置", "start_chapter": 1, "end_chapter": 20,
+                     "chapter_count": 20}], "plan_digest": "d" * 16},  # phases
+        {"id": "cand-1", "status": "active"},  # phase-append
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    episodes = [{"id": f"ep-{i}", "ordinal": i, "title": f"第{i}集",
+                 "logline": f"阿澄在第{i}集推进物证查证", "active_goal": "g", "conflict": "c", "turn": "t",
+                 "state_changes": ["s"], "anchor_ids": ["character:shen-achen"],
+                 "scenes": [{"id": f"s{i}-1", "ordinal": 1, "title": "场", "duration_seconds_target": 45,
+                             "beats": [{"id": f"b{i}-1-{k}", "objective": "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止" if k == 0 else "村医老周的手指在药瓶上停住，说听不出这是谁的声音", "anchor_ids": ["character:shen-achen"]} for k in range(3)]}]}
+                for i in range(1, 4)]
+    file_arg = _write(tmp_path, "eps.json", {"episodes": episodes})
+    result = CliRunner().invoke(main, ["script", "storymap-append-phase", "p1", "act1", file_arg, "--json"])
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args_list[-1].kwargs["json_body"]
+    assert body["phase_key"] == "act1"
+    assert body["plan_digest"] == "d" * 16
