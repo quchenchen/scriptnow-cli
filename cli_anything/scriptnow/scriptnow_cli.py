@@ -3417,8 +3417,9 @@ def storymap_group(ctx: click.Context) -> None:
 
 @storymap_group.command("structures")
 @click.option("--json", "json_output", is_flag=True)
-def storymap_structures(json_output: bool) -> None:
-    """列出可用的叙事结构（双域共享；含用户自定义 JSON 对象用法）。"""
+@click.pass_context
+def storymap_structures(ctx: click.Context, json_output: bool) -> None:
+    """列出可用的叙事结构（内置双域共享 + 结构库已存模板）。"""
     structures = [
         {"key": "three_act", "zh": "三幕式（建置/对抗/解决）"},
         {"key": "hero_journey", "zh": "英雄之旅（启程/考验/归来）"},
@@ -3430,13 +3431,77 @@ def storymap_structures(json_output: bool) -> None:
         {"key": "linear", "zh": "线性（全书单阶段）"},
         {"key": "custom", "zh": "自定义（单阶段兜底）"},
     ]
+    saved = []
+    try:
+        saved = _api_request(ctx, "GET", "/narrative-structures")
+    except Exception:
+        saved = []
+    for item in saved or []:
+        structures.append({"key": item.get("key"), "zh": f"{item.get('title_zh')}（已存结构库）"})
     if json_output:
-        _emit({"structures": structures, "user_defined": "project direction --set structure='{\"key\":\"my\",\"phases\":[...]}'"}, json_output)
+        _emit({"structures": structures, "saved_templates": saved,
+               "user_defined": "structure-save 存库后按 key 复用；或 project direction --set structure='{...phases...}'"}, json_output)
         return
     click.echo(ui.section("可用叙事结构（小说/剧本双域共享）"))
     for item in structures:
         click.echo(ui.kv(item["key"], item["zh"]))
-    click.echo(ui.dim("自定义多阶段结构：用 JSON 对象设入 direction（如 --set structure='{\"key\":\"my-structure\",\"phases\":[{\"key\":\"a\",\"ratio\":\"0.5\"},{\"key\":\"b\",\"ratio\":\"0.5\"}]}'），比例和须为 1。"), err=True)
+    if saved:
+        click.echo(ui.dim("已存结构库模板可跨项目复用：project create --structure <key> 或 storymap phases 自动解析。"), err=True)
+    click.echo(ui.dim("存库：storymap structure-save <key> @structure.json；删除：storymap structure-delete <key>。"), err=True)
+
+
+@storymap_group.command("structure-save")
+@click.argument("key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_structure_save(ctx: click.Context, key: str, file_path: str, json_output: bool) -> None:
+    """保存一个命名叙事结构到结构库（跨项目复用；双域可用）。
+
+    FILE_PATH 是结构 JSON：{"title_zh","title_en","phases":[{"key","title_zh",
+    "purpose","ratio",["entry_requirement"],["exit_requirement"]}]}，比例和须为 1。
+    """
+    import json as _json
+
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"结构 JSON 解析失败：{error}") from error
+    if not isinstance(raw, dict):
+        raise click.ClickException("结构 JSON 根必须是对象")
+    phases = raw.get("phases") or []
+    if not isinstance(phases, list) or not phases:
+        raise click.ClickException("phases 至少 1 个阶段")
+    result = _session(ctx).request(
+        "POST",
+        "/narrative-structures",
+        json_body={
+            "key": key,
+            "title_zh": str(raw.get("title_zh") or key),
+            "title_en": str(raw.get("title_en") or ""),
+            "phases": phases,
+        },
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"叙事结构「{key}」已存入结构库（{result.get('phase_count')} 阶段）。"))
+        click.echo(ui.dim("跨项目复用：project create --structure <key>，或设入 direction 后 storymap phases 自动解析。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@storymap_group.command("structure-delete")
+@click.argument("key")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_structure_delete(ctx: click.Context, key: str, json_output: bool) -> None:
+    """从结构库删除一个命名叙事结构模板。"""
+    result = _session(ctx).request("DELETE", f"/narrative-structures/{key}", write=True)
+    if not json_output:
+        click.echo(ui.ok(f"叙事结构「{key}」已从结构库删除。"))
+        return
+    _emit(result, json_output)
 
 
 @storymap_group.command("phases")
