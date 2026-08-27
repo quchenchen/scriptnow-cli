@@ -463,6 +463,7 @@ def test_self_upgrade_uses_codeload_and_falls_back_to_git():
     mp = pytest.MonkeyPatch()
     mp.setattr(subprocess, "run", fake_run)
     mp.setattr(up_mod, "_install_command", lambda: ("pip", ["install", "https://codeload.github.com/x", "--force-reinstall"]))
+    mp.setattr(up_mod, "latest_version", lambda: None)
 
     assert up_mod.upgrade(quiet=True) is True
     assert len(calls) == 1
@@ -482,6 +483,7 @@ def test_self_upgrade_uses_codeload_and_falls_back_to_git():
     mp2.setattr(subprocess, "run", fake_run_mixed)
     mp2.setattr(up_mod, "_install_command", lambda: ("pip", ["install", "https://codeload.github.com/x"]))
     mp2.setattr(up_mod, "_upgrade_fallback", lambda: ["pip", "install", "git+https://x"])
+    mp2.setattr(up_mod, "latest_version", lambda: None)
     calls.clear()
     assert up_mod.upgrade(quiet=True) is True
     assert len(calls) == 2

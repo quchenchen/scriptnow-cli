@@ -44,21 +44,37 @@
 要求 Python 3.10+。macOS/Linux 系统 Python（Homebrew、python.org）受 PEP 668 保护时，
 请先在虚拟环境中安装：
 
+> ⚠️ **CLI 不在 PyPI**：`pip install scriptnow-cli` 会报 "No matching distribution"。
+> 安装/升级优先走**生产分发源**（sn.igeewa.com，wheel 直装、不依赖 git）；GitHub
+> codeload / git+https 仅作兜底。`scriptnow self-upgrade` / `config on` 后台自动升级
+> 同样优先生产源。
+
+**生产源直装（推荐）——从平台分发域名下载 wheel，最稳定**：
+
 ```bash
-# 从源码（editable，推荐开发使用）
+# 固定版本
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.50-py3-none-any.whl
+# 源码包（zip）
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.50.zip
+```
+
+**GitHub 兜底（生产源不可达时）**：
+
+```bash
+# 从源码（editable，开发推荐）
 git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
-# 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
-
-> ⚠️ **CLI 不在 PyPI**：`pip install scriptnow-cli` 会报 "No matching distribution"。
-> 安装/升级一律走 GitHub 源（上方 codeload 或 git+https）。
-> 已有安装的用户可用 `scriptnow self-upgrade` 自动升级（内部同样走 codeload，
-> 失败自动回退 git+https）；也可用 `scriptnow config on` 开启「有新版本时
-> 后台自动升级 + 通知」。
+# codeload tar.gz 直连（无需 clone，不依赖 git 协议）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
+
+# 固定 tag 版本
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.50"
 ```
+
+已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
+或 `scriptnow config on` 开启「有新版本时后台自动升级 + 通知」。
 
 ## 登录
 

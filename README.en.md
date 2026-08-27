@@ -52,10 +52,16 @@ PEP 668, install inside a virtual environment first:
 git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
-# Or straight from the latest GitHub code (codeload direct, no clone needed)
+# Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.50-py3-none-any.whl
+
+# Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 ```
+
+`scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
+wheel host and fall back to codeload → git+https.
 
 ## Login
 

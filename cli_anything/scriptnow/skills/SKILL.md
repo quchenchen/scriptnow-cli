@@ -8,6 +8,11 @@ description: Operate ScriptNow as a governed creative-production client. Use for
 This is a runtime entrypoint, not a product manual. Do not expand it into a
 workflow from memory and do not treat local files as ScriptNow projects.
 
+> **CLI 安装 / 升级（生产源优先）**：CLI 不在 PyPI。安装/升级优先从平台分发域名
+> `https://sn.igeewa.com/downloads/scriptnow-cli/` 直装 wheel（不依赖 git），GitHub
+> codeload / git+https 仅兜底。已安装用户用 `scriptnow self-upgrade`（自动按
+> 「生产源 → codeload → git+https」尝试），或 `scriptnow config on` 开启后台自动升级。
+
 ## Mandatory bootstrap — before any ScriptNow action
 
 1. Run `scriptnow agent-guide --json`.
