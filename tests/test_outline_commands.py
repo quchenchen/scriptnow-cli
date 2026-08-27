@@ -199,3 +199,51 @@ def test_chapter_generate_help_lists_preview():
     runner = CliRunner()
     out = runner.invoke(main, ["chapter", "generate", "--help"]).output
     assert "--preview" in out
+
+
+def test_storymap_phases_outputs_phase_plan(monkeypatch):
+    """storymap phases 只读预览叙事结构推导的阶段计划。"""
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {
+        "schema_version": "novel-phase-plan.v1",
+        "structure_key": "three_act",
+        "structure_version": "1",
+        "structure_title_zh": "三幕式",
+        "allocation_policy": "chapter_span",
+        "total_volumes": 1,
+        "chapters_per_volume": 12,
+        "total_chapters": 12,
+        "phases": [
+            {"ordinal": 1, "key": "act1", "title_zh": "第一幕·建置", "title_en": "Act I · Setup",
+             "purpose": "setup", "chapter_count": 3, "start_chapter": 1, "end_chapter": 3,
+             "entry_requirement": "引入主角", "exit_requirement": "入场决定"},
+            {"ordinal": 2, "key": "act2", "title_zh": "第二幕·对抗", "title_en": "Act II · Confrontation",
+             "purpose": "confrontation", "chapter_count": 6, "start_chapter": 4, "end_chapter": 9,
+             "entry_requirement": "", "exit_requirement": ""},
+            {"ordinal": 3, "key": "act3", "title_zh": "第三幕·解决", "title_en": "Act III · Resolution",
+             "purpose": "resolution", "chapter_count": 3, "start_chapter": 10, "end_chapter": 12,
+             "entry_requirement": "", "exit_requirement": "落地"},
+        ],
+        "plan_digest": "abc123",
+    }
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+    result = runner.invoke(main, ["storymap", "phases", "p1", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.output)
+    assert payload["structure_key"] == "three_act"
+    assert len(payload["phases"]) == 3
+    assert payload["phases"][0]["start_chapter"] == 1
+
+    human = runner.invoke(main, ["storymap", "phases", "p1"])
+    assert human.exit_code == 0, human.output
+    assert "三幕式" in human.output
+    assert "第 1–3 章" in human.output

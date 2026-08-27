@@ -1415,7 +1415,7 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--world-setting", default="", help="世界观设定")
 @click.option("--language", default="zh-CN")
 @click.option("--styles", default=None, help="文风标签（逗号分隔），如 heroic-epic")
-@click.option("--structure", default="", help="叙事结构，如 hero_journey / three_act / custom")
+@click.option("--structure", default="", help="叙事结构（novel：three_act / hero_journey / kishotenketsu / linear / custom；script：three_act 等），未知值按 custom 处理")
 @click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
 @click.option("--volume-one", default="1", help="卷数（novel）或季数（script）")
 @click.option("--volume-two", default="15", help="每卷章数（novel）或每季场次（script），可写区间如 20-30")
@@ -1464,6 +1464,9 @@ def project_create(
         "chapter_target_words": chapter_target_words,
         "creative_variance": creative_variance,
     }
+    known_novel = {"three_act", "hero_journey", "kishotenketsu", "linear", "custom"}
+    if medium == "novel" and structure.strip() and structure.strip() not in known_novel:
+        click.echo(ui.warn(f"未知叙事结构「{structure}」，将按 custom（自由结构）处理。可选：{'、'.join(sorted(known_novel))}"), err=True)
     if styles:
         direction["styles"] = [item.strip() for item in styles.split(",") if item.strip()]
     if medium == "script":
@@ -3279,6 +3282,32 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
 @click.pass_context
 def storymap_group(ctx: click.Context) -> None:
     """小说卷章结构：查看状态 / 生成候选 / 采纳（全书规划）。"""
+
+
+@storymap_group.command("phases")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """预览由叙事结构推导的阶段计划（只读；不干预单章内的节奏/伏笔/钩子）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/story-map/phases")
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.section(f"阶段计划 · {result['structure_title_zh']}（{result['structure_key']} v{result['structure_version']}）"))
+    click.echo(ui.dim(
+        f"规模：{result['total_volumes']} 卷 × {result['chapters_per_volume']} 章 = {result['total_chapters']} 章 · 分配策略 {result['allocation_policy']}"
+    ), err=False)
+    for phase in result["phases"]:
+        click.echo(ui.ok(f"阶段{phase['ordinal']} · {phase['title_zh']}（{phase['title_en']}）"))
+        click.echo(ui.dim(f"  叙事目的：{phase['purpose']}"))
+        click.echo(ui.dim(f"  全局章序：第 {phase['start_chapter']}–{phase['end_chapter']} 章（共 {phase['chapter_count']} 章）"))
+        if phase.get("entry_requirement"):
+            click.echo(ui.dim(f"  入口：{phase['entry_requirement']}"))
+        if phase.get("exit_requirement"):
+            click.echo(ui.dim(f"  出口：{phase['exit_requirement']}"))
+    click.echo(ui.dim("阶段只约束跨章的宏观走向，不干预单章内的节奏、伏笔与钩子。"), err=True)
 
 
 @storymap_group.command("state")

@@ -177,7 +177,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：**outline（单章补纲）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） |
+| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
 | script | 剧本创作链：**outline（梗概大纲）** / outline-adopt / outline-status / **episode-outline（单集集纲补纲）** / state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
