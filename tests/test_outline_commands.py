@@ -294,3 +294,24 @@ def test_script_bible_example_lists_rich_keys():
     assert result.exit_code == 0, result.output
     for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
         assert key in result.output, key
+
+
+def test_script_episode_outline_example_lists_fields_and_beat_contrast():
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["script", "episode-outline-example"])
+    assert result.exit_code == 0, result.output
+    for key in ("logline", "active_goal", "conflict", "turn", "state_changes", "anchor_ids"):
+        assert key in result.output, key
+    assert "正确示范" in result.output and "错误示范" in result.output
+
+
+def test_novel_bible_example_lists_rich_keys():
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["chapter", "bible-example"])
+    assert result.exit_code == 0, result.output
+    for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
+        assert key in result.output, key

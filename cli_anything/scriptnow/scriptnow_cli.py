@@ -2778,6 +2778,43 @@ def chapter_outline_check(file_path: str, json_output: bool) -> None:
     click.echo(ui.dim("提交候选前仍建议经 planning-quality 门禁。"), err=True)
 
 
+@chapter_group.command("bible-example")
+@click.option("--json", "json_output", is_flag=True)
+def chapter_bible_example(json_output: bool) -> None:
+    """打印小说人物圣经（bibles）的充实初始设定示范，作为创建对照模板。
+
+    profile 至少包含 desire/fear/weakness/goal/inner_need，建议再补
+    background/traits/arc/key_relationship/secret/wound，避免单薄。
+    """
+    example = {
+        "character_key": "character:example",
+        "display_name": "示例人物",
+        "source_note": "来源说明",
+        "profile": {
+            "desire": "人物最想达成的事（具体到对象与方式）",
+            "fear": "人物最深层的恐惧",
+            "weakness": "人物结构性弱点（会制造冲突的那种）",
+            "goal": "在当前故事阶段的具体目标",
+            "inner_need": "内心真正需要却被自己否认的东西",
+            "background": "身世与处境（支撑其行为逻辑）",
+            "traits": "可见特质与习惯（可被观察的）",
+            "arc": "从故事开始到结束的变化轨迹",
+            "key_relationship": "与关键人物的关系与张力",
+            "secret": "不为人知的秘密（可作伏笔）",
+            "wound": "过去的创伤（驱动动机的根源）",
+        },
+    }
+    if json_output:
+        _emit(example, json_output)
+        return
+    click.echo(ui.section("人物圣经·充实初始设定示范"))
+    click.echo(ui.kv("character_key", example["character_key"]))
+    click.echo(ui.kv("display_name", example["display_name"]))
+    for key, label in example["profile"].items():
+        click.echo(ui.kv(f"  {key}", label))
+    click.echo(ui.dim("planning-quality 对 profile <200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。"), err=True)
+
+
 @chapter_group.command("outline-example")
 @click.argument("project_id", required=False)
 @click.option("--json", "json_output", is_flag=True)
@@ -4982,6 +5019,42 @@ def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, js
         ),
         json_output,
     )
+
+
+@script_group.command("episode-outline-example")
+@click.option("--json", "json_output", is_flag=True)
+def script_episode_outline_example(json_output: bool) -> None:
+    """打印剧本集纲（episode outline）的完整结构示范，含具体 beat 写法对照。
+
+    每集必须提供平铺的 logline/active_goal/conflict/turn/state_changes/anchor_ids；
+    每个 scene 的 beat objective 要具体到人物动作与物件（谁/做什么/对谁/拿什么），
+    禁止『推进矛盾/留钩子』类套话（planning-quality 判 REVISE）。
+    """
+    example = {
+        "episode": {
+            "id": "ep-1", "ordinal": 1, "title": "第一集·示例",
+            "logline": "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止",
+            "active_goal": "让录音里的声音被第一个岛民听进心里",
+            "conflict": "村医老周反复说听不出是谁的声音，手指却在药瓶上停住",
+            "turn": "阿澄发现老周认得这声音却不敢认",
+            "state_changes": ["信息由无人听见变为有人回避"],
+            "anchor_ids": ["character:shen-achen", "character:doc-zhou", "plot:recording-evidence"],
+        },
+        "scene_beat_正确示范": "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止",
+        "scene_beat_错误示范": "围绕本场目标推进矛盾，为下一场留下可回收的钩子",
+    }
+    if json_output:
+        _emit(example, json_output)
+        return
+    click.echo(ui.section("剧本集纲·完整结构示范"))
+    for key, value in example.items():
+        if isinstance(value, dict):
+            click.echo(ui.kv(key, ""))
+            for k, v in value.items():
+                click.echo(ui.kv(f"  {k}", str(v)))
+        else:
+            click.echo(ui.kv(key, str(value)))
+    click.echo(ui.dim("beat 必须具体到人物动作与物件；planning-quality 对套话判 REVISE。"), err=True)
 
 
 @script_group.command("bible-example")
