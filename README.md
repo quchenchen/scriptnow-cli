@@ -148,7 +148,7 @@ scriptnow storymap append-phase <pid> <phase-key> @chapters.json
 scriptnow storymap adopt <pid> --latest --confirm
 ```
 
-阶段只约束跨章的宏观走向（入口/出口、跨阶段线程），**不干预单章内的节奏、伏笔与钩子**。
+**分阶段模式 = 多轮连贯性创作**：每阶段是一轮，轮轮以已采纳前缀相接（阶段间伏笔/线程跨轮延续），合起来是一部完整、自洽的作品——不是各写各的碎片。阶段只约束跨章的宏观走向（入口/出口、跨阶段线程），**不干预单章内的节奏、伏笔与钩子**。
 # 创作循环（Agent 审读驱动；生成默认后台，用 run status 轮询）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
 scriptnow chapter outline <pid> chapter-1-1 @outline.json       # 旧项目单章补纲

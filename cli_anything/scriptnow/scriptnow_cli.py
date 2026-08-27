@@ -3307,7 +3307,7 @@ def storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> N
             click.echo(ui.dim(f"  入口：{phase['entry_requirement']}"))
         if phase.get("exit_requirement"):
             click.echo(ui.dim(f"  出口：{phase['exit_requirement']}"))
-    click.echo(ui.dim("阶段只约束跨章的宏观走向，不干预单章内的节奏、伏笔与钩子。"), err=True)
+    click.echo(ui.dim("分阶段模式 = 多轮连贯性创作：每阶段一轮，轮轮以已采纳前缀相接，合起来是一部完整连贯的作品；阶段只约束跨章的宏观走向，不干预单章内的节奏、伏笔与钩子。"), err=True)
 
 
 @storymap_group.command("append-phase")
@@ -3360,7 +3360,7 @@ def storymap_append_phase(
     if not json_output:
         click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
         click.echo(ui.dim(f"  全局章序：第 {phase['start_chapter']}–{phase['end_chapter']} 章（共 {phase['chapter_count']} 章）"))
-        click.echo(ui.dim("请审阅影响并在用户明确决定后采纳：storymap adopt <作品号> <候选ID> --confirm，或 --latest。"), err=True)
+        click.echo(ui.dim("本阶段以已采纳结构为前缀、轮轮相接；采纳后进入下一阶段。请审阅影响并在用户明确决定后采纳：storymap adopt <作品号> <候选ID> --confirm，或 --latest。"), err=True)
         return
     _emit(result, json_output)
 

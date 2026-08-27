@@ -13,6 +13,11 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > codeload / git+https 仅兜底。已安装用户用 `scriptnow self-upgrade`（自动按
 > 「生产源 → codeload → git+https」尝试），或 `scriptnow config on` 开启后台自动升级。
 
+> **分阶段创作（novel）**：`storymap phases` 预览叙事结构（three_act/hero_journey/
+> kishotenketsu/linear/custom）推导的阶段计划；`storymap append-phase` 提交下一个
+> 未完成阶段（一阶段一卷，轮轮以已采纳前缀相接，合起来是一部完整连贯的作品）。阶段只
+> 约束跨章宏观走向，不干预单章内的节奏、伏笔与钩子。
+
 ## Mandatory bootstrap — before any ScriptNow action
 
 1. Run `scriptnow agent-guide --json`.
