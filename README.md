@@ -54,7 +54,8 @@ cd scriptnow-cli && pip install -e .
 > ⚠️ **CLI 不在 PyPI**：`pip install scriptnow-cli` 会报 "No matching distribution"。
 > 安装/升级一律走 GitHub 源（上方 codeload 或 git+https）。
 > 已有安装的用户可用 `scriptnow self-upgrade` 自动升级（内部同样走 codeload，
-> 失败自动回退 git+https）。
+> 失败自动回退 git+https）；也可用 `scriptnow config on` 开启「有新版本时
+> 后台自动升级 + 通知」。
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 ```
@@ -170,7 +171,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
-| version / self-upgrade | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版） |
+| version / self-upgrade / config | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版）/ `config on|off` 开启或关闭「有新版本时自动升级」（默认关闭；开启后后台自动升级并在升级前后通知，不阻塞命令） |
 
 场次规划板的视觉代理参数显式传递给平台：`--layout auto|2x2|2x3|3x3|3x4|4x4` 与
 `--mode annotated|seedance_sequence`。上传使用 multipart，服务端返回最终 layout/pages/shot_ids/digest/source。

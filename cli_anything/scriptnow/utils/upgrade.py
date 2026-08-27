@@ -34,6 +34,42 @@ def _state_path() -> Path:
     return root / "version-check.json"
 
 
+def _config_path() -> Path:
+    override = os.environ.get("SCRIPTNOW_CLI_CONFIG")
+    root = Path(override).parent if override else Path(
+        os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+    ) / "scriptnow-cli"
+    return root / "config.json"
+
+
+def load_config() -> dict[str, object]:
+    """Read the CLI config file. Missing/corrupt → defaults."""
+    try:
+        data = json.loads(_config_path().read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def set_config(**updates: object) -> dict[str, object]:
+    """Persist config, preserving unknown keys."""
+    config = load_config()
+    config.update(updates)
+    try:
+        path = _config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+    except OSError:
+        raise
+    return config
+
+
+def auto_upgrade_enabled() -> bool:
+    return bool(load_config().get("autoUpgrade", False))
+
+
 def latest_version(timeout: int = 8) -> str | None:
     """Query the GitHub release mirror for the newest __version__.
 
@@ -152,17 +188,53 @@ def upgrade(quiet: bool = False) -> bool:
 
 
 def maybe_warn_in_background() -> None:
-    """Spawn a non-blocking background check that prints a one-line hint."""
+    """Spawn a non-blocking background version check.
+
+    Default behaviour: print a one-line hint when a newer version exists.
+
+    When the user has opted into ``autoUpgrade`` (``scriptnow config
+    auto-upgrade on``), the background check instead attempts the upgrade
+    automatically and notifies the user before/after — never blocking the
+    main command. Editable/dev installs are never auto-upgraded.
+    """
+    import sys
 
     def _run() -> None:
         try:
             latest = check_for_update()
-            if latest:
+            if not latest:
+                return
+            if auto_upgrade_enabled():
+                if _install_command() is None:
+                    # Editable/dev install: never auto-upgrade; fall back to a
+                    # normal hint so the user knows a newer version exists.
+                    print(
+                        f"发现 ScriptNow CLI 新版本 v{latest}（当前 v{VERSION}）。"
+                        f"本地为开发安装，请手动升级。",
+                        file=sys.stderr,
+                    )
+                    return
                 print(
-                    f"发现 ScriptNow CLI 新版本 v{latest}（当前 v{VERSION}）。"
-                    f"运行 `scriptnow self-upgrade` 自动升级，或 `scriptnow version --check` 查看。",
-                    file=__import__("sys").stderr,
+                    f"[scriptnow] 检测到新版本 v{latest}（当前 v{VERSION}），正在自动升级…",
+                    file=sys.stderr,
                 )
+                ok = upgrade(quiet=False)
+                if ok:
+                    print(
+                        f"[scriptnow] 已自动升级到 v{latest}。请重新运行 scriptnow 使新版本生效。",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"[scriptnow] 自动升级未完成，请运行 `scriptnow self-upgrade` 手动升级。",
+                        file=sys.stderr,
+                    )
+                return
+            print(
+                f"发现 ScriptNow CLI 新版本 v{latest}（当前 v{VERSION}）。"
+                f"运行 `scriptnow self-upgrade` 自动升级，或 `scriptnow version --check` 查看。",
+                file=sys.stderr,
+            )
         except Exception:
             pass  # never break the main command because of a version hint
 

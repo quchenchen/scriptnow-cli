@@ -160,7 +160,7 @@ as a writer-facing export file yet.
 | skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
-| version / self-upgrade | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) |
+| version / self-upgrade / config | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) / `config on|off` toggles automatic upgrade on new versions (off by default; when on, upgrades in the background and notifies you, never blocking commands) |
 
 Scene-board visual-agent parameters are explicit: `--layout auto|2x2|2x3|3x3|3x4|4x4` and
 `--mode annotated|seedance_sequence`. Upload uses multipart; the server returns the authoritative layout/pages/shot_ids/digest/source.

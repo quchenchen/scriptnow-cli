@@ -27,8 +27,10 @@ from cli_anything.scriptnow.utils.session import (
     write_json,
 )
 from cli_anything.scriptnow.utils.upgrade import (
+    auto_upgrade_enabled,
     latest_version,
     maybe_warn_in_background,
+    set_config,
     upgrade as _upgrade_cli,
 )
 
@@ -299,6 +301,33 @@ def self_upgrade_cmd(assume_yes: bool, json_output: bool) -> None:
             click.echo(ui.ok("升级完成，请重新运行 scriptnow --version 确认。"))
         else:
             click.echo(ui.warn("升级未完成；本地开发模式请手动 pip install -e。"))
+
+
+@main.command("config")
+@click.argument(
+    "auto_upgrade",
+    type=click.Choice(["on", "off"]),
+    required=False,
+)
+@click.option("--json", "json_output", is_flag=True)
+def config_cmd(auto_upgrade: str | None, json_output: bool) -> None:
+    """配置 CLI 行为：scriptnow config on|off 开启/关闭「有新版本时自动升级」。
+
+    开启后，每次运行 CLI 会在后台自动检测新版本并静默升级，升级前后会打印
+    通知（不阻塞命令）。默认关闭（仅提示，需 scriptnow self-upgrade 手动升级）。
+    """
+    if auto_upgrade is not None:
+        set_config(autoUpgrade=(auto_upgrade == "on"))
+    enabled = auto_upgrade_enabled()
+    _emit({"auto_upgrade": enabled, "notify": True}, json_output)
+    if not json_output:
+        state = "开启" if enabled else "关闭"
+        click.echo(ui.kv("新版本自动升级", state))
+        if enabled:
+            click.echo(ui.dim("有新版本时后台自动升级，并在升级前后通知你。"))
+        else:
+            click.echo(ui.dim("仅提示新版本，需手动运行 scriptnow self-upgrade 升级。"))
+        click.echo(ui.dim("配置保存在 ~/.config/scriptnow-cli/config.json"))
 
 
 # --------------------------------------------------------------------------- auth
