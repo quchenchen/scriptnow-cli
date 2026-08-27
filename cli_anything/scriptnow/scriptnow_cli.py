@@ -1417,7 +1417,7 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--world-setting", default="", help="世界观设定")
 @click.option("--language", default="zh-CN")
 @click.option("--styles", default=None, help="文风标签（逗号分隔），如 heroic-epic")
-@click.option("--structure", default="", help="叙事结构（novel：three_act / hero_journey / kishotenketsu / linear / custom；script：three_act 等），未知值按 custom 处理")
+@click.option("--structure", default="", help="叙事结构（双域共享）：three_act / hero_journey / kishotenketsu / linear / custom / freytag(五幕) / circular(环形) / dual-thread(双线) / mystery-peel(悬疑剥洋葱)；也支持 JSON 对象自定义多阶段结构（如 project direction --set structure='{\"key\":\"my\",\"phases\":[...]}'）")
 @click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
 @click.option("--volume-one", default="1", help="卷数（novel）或季数（script）")
 @click.option("--volume-two", default="15", help="每卷章数（novel）或每季场次（script），可写区间如 20-30")
@@ -1466,9 +1466,13 @@ def project_create(
         "chapter_target_words": chapter_target_words,
         "creative_variance": creative_variance,
     }
-    known_novel = {"three_act", "hero_journey", "kishotenketsu", "linear", "custom"}
-    if medium == "novel" and structure.strip() and structure.strip() not in known_novel:
-        click.echo(ui.warn(f"未知叙事结构「{structure}」，将按 custom（自由结构）处理。可选：{'、'.join(sorted(known_novel))}"), err=True)
+    known_structures = {
+        "three_act", "hero_journey", "kishotenketsu", "linear", "custom",
+        "freytag", "circular", "dual-thread", "mystery-peel",
+    }
+    structure_key = structure.strip()
+    if structure_key and structure_key not in known_structures and not structure_key.startswith("{"):
+        click.echo(ui.warn(f"未知叙事结构「{structure}」，将按 custom（自由结构）处理。可选：{'、'.join(sorted(known_structures))}；或用 JSON 对象自定义多阶段结构。"), err=True)
     if styles:
         direction["styles"] = [item.strip() for item in styles.split(",") if item.strip()]
     if medium == "script":
@@ -3409,6 +3413,30 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
 @click.pass_context
 def storymap_group(ctx: click.Context) -> None:
     """小说卷章结构：查看状态 / 生成候选 / 采纳（全书规划）。"""
+
+
+@storymap_group.command("structures")
+@click.option("--json", "json_output", is_flag=True)
+def storymap_structures(json_output: bool) -> None:
+    """列出可用的叙事结构（双域共享；含用户自定义 JSON 对象用法）。"""
+    structures = [
+        {"key": "three_act", "zh": "三幕式（建置/对抗/解决）"},
+        {"key": "hero_journey", "zh": "英雄之旅（启程/考验/归来）"},
+        {"key": "kishotenketsu", "zh": "起承转合（起/承/转/合）"},
+        {"key": "freytag", "zh": "五幕式（铺垫/上升/高潮/回落/结局）"},
+        {"key": "circular", "zh": "环形叙事（起点/循环/变奏/回归）"},
+        {"key": "dual-thread", "zh": "双线并行（线A/线B/交缠/汇合）"},
+        {"key": "mystery-peel", "zh": "悬疑剥洋葱（线索/伪答案/逼近/揭底）"},
+        {"key": "linear", "zh": "线性（全书单阶段）"},
+        {"key": "custom", "zh": "自定义（单阶段兜底）"},
+    ]
+    if json_output:
+        _emit({"structures": structures, "user_defined": "project direction --set structure='{\"key\":\"my\",\"phases\":[...]}'"}, json_output)
+        return
+    click.echo(ui.section("可用叙事结构（小说/剧本双域共享）"))
+    for item in structures:
+        click.echo(ui.kv(item["key"], item["zh"]))
+    click.echo(ui.dim("自定义多阶段结构：用 JSON 对象设入 direction（如 --set structure='{\"key\":\"my-structure\",\"phases\":[{\"key\":\"a\",\"ratio\":\"0.5\"},{\"key\":\"b\",\"ratio\":\"0.5\"}]}'），比例和须为 1。"), err=True)
 
 
 @storymap_group.command("phases")
