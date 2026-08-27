@@ -615,6 +615,7 @@ _AGENT_CONTRACT = {
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
+        "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前可用 storymap propose 的预检提示自查。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
@@ -2662,6 +2663,37 @@ def _validate_appended_outlines(
             + "\n  ".join(invalid[:8])
             + "\n可用 chapter outline-check @file 单份预检，或 chapter outline-example 对照结构示范。"
         )
+
+
+_META_OBJECTIVE_TOKENS = (
+    "推进矛盾", "推进剧情", "推进情节", "推动情节", "留下钩子", "本场目标",
+    "围绕本场", "回收伏笔", "埋下伏笔", "制造悬念", "制造张力", "承上启下",
+    "深化主题", "下一场", "为后续", "引出下文",
+)
+
+
+def _meta_objective_hits(episodes: object) -> list[str]:
+    """Scan storymap episode scene beats for generic meta-language objectives.
+
+    引导层：propose 前提醒 Agent 把泛化套话改成具体剧情（谁/做什么/对谁/拿什么），
+    门禁（planning-quality beat_pacing）会对这类套话判 REVISE。
+    """
+    hits: list[str] = []
+    if not isinstance(episodes, list):
+        return hits
+    for episode in episodes:
+        if not isinstance(episode, dict):
+            continue
+        for scene in (episode.get("scenes") or []):
+            if not isinstance(scene, dict):
+                continue
+            for beat in (scene.get("beats") or []):
+                if not isinstance(beat, dict):
+                    continue
+                objective = str(beat.get("objective") or "").strip()
+                if any(token in objective for token in _META_OBJECTIVE_TOKENS):
+                    hits.append(objective[:40])
+    return hits
 
 
 def _maybe_hint_synopsis_refresh(json_output: bool) -> None:
@@ -5023,6 +5055,18 @@ def script_propose(
         episodes = data.get("episodes") or []
         if not episodes:
             raise click.ClickException("storymap 需要至少 1 个 episode")
+        meta_hits = _meta_objective_hits(episodes)
+        if meta_hits:
+            click.echo(
+                ui.warn(
+                    f"发现 {len(meta_hits)} 个泛化套话 beat objective（如『推进矛盾/留钩子』）。"
+                    "集纲/节拍必须具体到人物动作与物件（谁、做什么、对谁、拿什么），"
+                    "planning-quality 会对套话判 REVISE。示例：『阿澄把录音机放在柜台按下播放键』。"
+                ),
+                err=True,
+            )
+            if not json_output:
+                click.echo(ui.dim(f"  首例：{meta_hits[0]}"), err=True)
         state = session.request("GET", f"/script/projects/{project_id}/state")
         version = int((state.get("story_map") or {}).get("version") or 1)
         body = {

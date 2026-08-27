@@ -38,6 +38,10 @@ completion. Explain the missing prerequisite and wait.
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
+- Beats and episode/chapter outlines must be CONCRETE plot content (who does what,
+  to whom, with which object, where). Generic meta-writing like "推进矛盾 / 留下钩子 /
+  本场目标" is rejected by planning-quality (REVISE) and flagged by `storymap propose`
+  before submission. Correct: "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止".
 - A StoryMap container is not a completed outline: every Script episode must
   carry flat `logline`, `active_goal`, `conflict`, `turn`, `state_changes`, and
   `anchor_ids`; every Novel chapter must carry `outline` with `summary` or
