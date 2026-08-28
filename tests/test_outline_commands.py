@@ -33,7 +33,10 @@ def test_episode_outline_backfill_uses_server_storymap_version(monkeypatch, tmp_
         "state_changes": ["风险从隐蔽变为公开"],
         "anchor_ids": ["event:medicine"],
     })
-    result = CliRunner().invoke(main, ["script", "episode-outline", "p1", "episode-1", file_arg, "--json"])
+    result = CliRunner().invoke(main, [
+        "script", "episode-outline", "p1", "episode-1", file_arg,
+        "--review-token", "review-1", "--json",
+    ])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["id"] == "candidate-episode-1"
@@ -61,7 +64,10 @@ def test_chapter_outline_backfill_accepts_outline_wrapper(monkeypatch, tmp_path)
             "anchor_ids": ["event:medicine"],
         },
     })
-    result = CliRunner().invoke(main, ["chapter", "outline", "p1", "chapter-1", file_arg, "--json"])
+    result = CliRunner().invoke(main, [
+        "chapter", "outline", "p1", "chapter-1", file_arg,
+        "--review-token", "review-1", "--json",
+    ])
     assert result.exit_code == 0, result.output
     body = session.request.call_args.kwargs["json_body"]
     assert body["outline"]["summary"] == "主角走进旧仓库"
@@ -136,8 +142,8 @@ def test_outline_example_no_project_uses_cli_fallback():
 
 
 
-def test_chapter_outline_adopt_flag_issues_confirm_request(monkeypatch, tmp_path):
-    """chapter outline --adopt 回填后自动采纳，无需复制候选 ID。"""
+def test_chapter_outline_adopt_flag_is_rejected(monkeypatch, tmp_path):
+    """章纲提交与采纳必须是两次可见的人类决定。"""
     from unittest.mock import Mock
 
     from click.testing import CliRunner
@@ -161,11 +167,13 @@ def test_chapter_outline_adopt_flag_issues_confirm_request(monkeypatch, tmp_path
         },
     })
     runner = CliRunner()
-    result = runner.invoke(main, ["chapter", "outline", "p1", "chapter-1", file_arg, "--adopt", "--json"])
-    assert result.exit_code == 0, result.output
-    paths = [call.args[1] for call in session.request.call_args_list]
-    assert paths[0] == "/novel/projects/p1/chapters/chapter-1/outline/propose"
-    assert paths[1] == "/novel/projects/p1/story-map/cand-outline-1/adopt?confirm=true"
+    result = runner.invoke(main, [
+        "chapter", "outline", "p1", "chapter-1", file_arg, "--adopt",
+        "--review-token", "review-1", "--json",
+    ])
+    assert result.exit_code == 1
+    assert "已取消隐式 --adopt" in result.output
+    session.request.assert_not_called()
 
 
 def test_storymap_adopt_latest_resolves_active_candidate(monkeypatch):
@@ -186,11 +194,15 @@ def test_storymap_adopt_latest_resolves_active_candidate(monkeypatch):
     ]
     monkeypatch.setattr(cli, "_session", lambda _ctx: session)
     runner = CliRunner()
-    result = runner.invoke(main, ["storymap", "adopt", "p1", "--latest", "--confirm", "--json"])
+    result = runner.invoke(main, [
+        "storymap", "adopt", "p1", "--latest", "--confirm",
+        "--review-token", "review-1", "--json",
+    ])
     assert result.exit_code == 0, result.output
     paths = [call.args[1] for call in session.request.call_args_list]
     assert "/state" in paths[0]
     assert "cand-9" in paths[1]
+    assert session.request.call_args_list[1].kwargs["headers"] == {"X-Review-Token": "review-1"}
 
 
 def test_chapter_generate_help_lists_preview():
@@ -251,7 +263,6 @@ def test_storymap_phases_outputs_phase_plan(monkeypatch):
 
 def test_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
     """storymap append-phase 提交下一未完成阶段，带 digest/version/章纲预检。"""
-    import json as _json
 
     from unittest.mock import Mock
 
@@ -276,7 +287,10 @@ def test_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
     }]
     file_arg = _write(tmp_path, "chs.json", {"chapters": chapters})
     runner = CliRunner()
-    result = runner.invoke(main, ["storymap", "append-phase", "p1", "act1", file_arg, "--json"])
+    result = runner.invoke(main, [
+        "storymap", "append-phase", "p1", "act1", file_arg,
+        "--review-token", "review-1", "--json",
+    ])
     assert result.exit_code == 0, result.output
     paths = [call.args[1] for call in session.request.call_args_list]
     assert paths[-1].endswith("story-map/phase-append-propose")
@@ -318,7 +332,6 @@ def test_novel_bible_example_lists_rich_keys():
 
 
 def test_script_episode_outline_check_valid_and_invalid(tmp_path):
-    import json as _json
 
     from click.testing import CliRunner
 
@@ -357,7 +370,6 @@ def test_script_storymap_phases_outputs_plan(monkeypatch):
 
 
 def test_script_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
-    import json as _json
 
     from unittest.mock import Mock
 
@@ -380,7 +392,10 @@ def test_script_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
                              "beats": [{"id": f"b{i}-1-{k}", "objective": "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止" if k == 0 else "村医老周的手指在药瓶上停住，说听不出这是谁的声音", "anchor_ids": ["character:shen-achen"]} for k in range(3)]}]}
                 for i in range(1, 4)]
     file_arg = _write(tmp_path, "eps.json", {"episodes": episodes})
-    result = CliRunner().invoke(main, ["script", "storymap-append-phase", "p1", "act1", file_arg, "--json"])
+    result = CliRunner().invoke(main, [
+        "script", "storymap-append-phase", "p1", "act1", file_arg,
+        "--review-token", "review-1", "--json",
+    ])
     assert result.exit_code == 0, result.output
     body = session.request.call_args_list[-1].kwargs["json_body"]
     assert body["phase_key"] == "act1"
@@ -493,21 +508,26 @@ def test_storymap_structures_lists_saved_metadata(monkeypatch):
 
 
 def _rough_example(total: int = 10, keys: tuple[str, ...] = ("act1", "act2", "act3")) -> dict:
-    import json as _json
     # 三阶段：1-4 / 5-7 / 8-10（比例 0.3/0.4/0.3 → 最大余数 4/7/4? 用模板原样即可，这里按给定边界）
+    phases = [
+        {"ordinal": i + 1, "phase_key": key, "phase_title_zh": f"幕{i+1}",
+         "range_start": start, "range_end": end, "purpose": "p", "summary": "", "key_beats": [], "anchor_ids": []}
+        for i, (key, start, end) in enumerate(zip(keys, (1, 5, 8), (4, 7, 10)))
+    ]
     return {
         "structure_key": "three_act",
         "structure_title_zh": "三幕式",
         "total_units": total,
-        "phases": [
-            {"ordinal": i + 1, "phase_key": key, "phase_title_zh": f"幕{i+1}",
-             "range_start": start, "range_end": end, "purpose": "p", "summary": "", "key_beats": [], "anchor_ids": []}
-            for i, (key, start, end) in enumerate(zip(keys, (1, 5, 8), (4, 7, 10)))
+        "agent_guidance": {"purpose": "完整讲述阶段剧情"},
+        "phase_requirements": [
+            {"phase_key": phase["phase_key"], "recommended_min_chars": 800, "recommended_min_events": 8}
+            for phase in phases
         ],
+        "phases": phases,
     }
 
 
-def test_script_rough_outline_propose_passes_phases_and_adopts(monkeypatch, tmp_path):
+def test_script_rough_outline_rejects_implicit_adoption(monkeypatch, tmp_path):
     import json as _json
 
     from unittest.mock import Mock
@@ -526,17 +546,34 @@ def test_script_rough_outline_propose_passes_phases_and_adopts(monkeypatch, tmp_
     phases = [
         {"ordinal": i + 1, "phase_key": key, "phase_title_zh": f"幕{i+1}",
          "range_start": start, "range_end": end,
-         "summary": "方远志重生后拦下欲跳河的父亲，翻出祖传药典残页，决定承包村后坡地种上等地黄；先用一锅劣等地黄试制九蒸九晒地黄丸，失败后调整蒸晒火候，第二锅成品乌润药香，连夜赶到镇上免费送药给患老胃病的街坊，消息传开后济仁堂周世昌亲自登门收他为徒并签订供药合约。"}
+         "summary": (
+             "方远志拦下欲跳河的父亲并承诺三天还债，随后翻出祖传药典残页寻找翻身办法。"
+             "他发现家中劣等地黄无法入药，转而说服李福贵承包村后坡地并引山泉灌溉。"
+             "黄麻子派马六要求方家只能低价交货，方远志没有动手，而是记下药行掺假的证据。"
+             "第一锅地黄丸因火候失控失败，他逐项记录温度湿度并重新安排九蒸九晒顺序。"
+             "第二锅成品乌润药香，他免费送给患老胃病和老寒腿的街坊试用，建立第一批口碑。"
+             "病人好转后主动传播消息，刘二婶从嘲讽转为替方家说话，镇上舆论开始改变。"
+             "济仁堂周世昌登门验药，确认药效后提出收徒并签长期供药合约。"
+             "黄麻子发现方远志绕开收购渠道，先砸药摊，再向坡地撒除草剂毁掉大半新苗。"
+             "方远志封存被污染的土样、假药样本和街坊证言，准备向县药材公司举报。"
+             "父亲从劝他忍让转为主动守地，其他药农也开始讨论联合起来拒绝压价。"
+             "周晓梅替他保管供货合约，避免一次打砸让全部经营证据消失。"
+             "方远志拜访受害药农，逐户记录被压价和被迫借贷的时间、金额与见证人。"
+             "马六再次上门威胁时，村民第一次没有散开，而是站在方家院门口共同作证。"
+             "陈国栋收到举报材料后答应初步检测，但要求方远志补齐可以追溯来源的实物样本。"
+             "阶段结束时，方远志获得济仁堂和部分药农支持，也正式成为黄麻子的打击目标。"
+             "下一阶段必须在保住药田、合作关系和家人安全的同时，取得能够立案的完整物证。"
+         ) * 2}
         for i, (key, start, end) in enumerate(zip(("act1", "act2", "act3"), (1, 5, 8), (4, 7, 10)))
     ]
     file_arg = _write(tmp_path, "rough.json", {"phases": phases})
-    result = CliRunner().invoke(main, ["script", "rough-outline", "p1", file_arg, "--adopt", "--json"])
-    assert result.exit_code == 0, result.output
-    body = session.request.call_args_list[0].kwargs["json_body"]
-    assert body["phases"][0]["phase_key"] == "act1"
-    assert session.request.call_args_list[0].args[1] == "/script/projects/p1/rough-outline/propose"
-    assert session.request.call_args_list[1].args[1] == "/script/projects/p1/rough-outline/ro-cand-1/adopt"
-    assert _json.loads(result.output)["adopted"] == "adopted"
+    result = CliRunner().invoke(main, [
+        "script", "rough-outline", "p1", file_arg, "--adopt",
+        "--review-token", "review-1", "--json",
+    ])
+    assert result.exit_code == 1
+    assert "已取消隐式 --adopt" in result.output
+    session.request.assert_not_called()
 
 
 def test_novel_rough_outline_check_flags_meta_and_range(monkeypatch, tmp_path):
@@ -590,6 +627,28 @@ def test_script_rough_outline_example_prints_phase_ranges(monkeypatch):
     assert "第 65–80 集" in result.output
 
 
+def test_script_rough_outline_progress_shows_current_and_total_phase(monkeypatch):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {
+        "current_phase_ordinal": 2,
+        "current_phase_key": "sho",
+        "total_phases": 4,
+        "completed_phases": ["ki"],
+    }
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, ["script", "rough-outline-progress", "p1"])
+    assert result.exit_code == 0, result.output
+    assert "阶段 2 / 共 4 阶段" in result.output
+    assert "sho" in result.output
+    assert "ki" in result.output
+
+
 def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
     import json as _json
 
@@ -620,7 +679,7 @@ def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
         for i in range(1, 4)
     ]
     file_arg = _write(tmp_path, "phase1.json", {"episodes": episodes})
-    result = CliRunner().invoke(main, ["script", "storymap-rebuild-phase", "p1", "act1", file_arg, "--json"])
+    result = CliRunner().invoke(main, ["script", "storymap-rebuild-phase", "p1", "act1", file_arg, "--review-token", "tok", "--json"])
     assert result.exit_code == 0, result.output
     body = session.request.call_args_list[1].kwargs["json_body"]
     assert body["phase_key"] == "act1"
@@ -661,3 +720,26 @@ def test_script_storymap_rebuild_propose_returns_candidate(monkeypatch):
     result = CliRunner().invoke(main, ["script", "storymap-rebuild-propose", "p1", "--json"])
     assert result.exit_code == 0, result.output
     assert session.request.call_args.args[1] == "/script/projects/p1/storymap/rebuild-propose"
+
+
+def test_script_rough_outline_finalize_requires_and_forwards_review_token(monkeypatch):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {"id": "rough-candidate", "status": "active"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, [
+        "script", "rough-outline-propose", "p1",
+        "--review-token", "review-final", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    assert session.request.call_args.args[1] == (
+        "/script/projects/p1/rough-outline/build/finalize"
+    )
+    assert session.request.call_args.kwargs["headers"] == {
+        "X-Review-Token": "review-final",
+    }

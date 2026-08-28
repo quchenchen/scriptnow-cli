@@ -76,35 +76,39 @@ scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？�
 
 ```bash
 scriptnow project create --name 新作 --medium novel --volume-one 1 --volume-two 15 --chapter-target-words 1200
-scriptnow project direction <pid> --apply @direction.json     # Agent 主动梳理回填完整方向
-# 规划（Agent 本地导入，可只给 1 个主推直接采纳）
-scriptnow novel propose <pid> cores @cores.json --adopt
-scriptnow novel propose <pid> blueprint @blueprint.json --adopt
-scriptnow novel propose <pid> storymap @storymap.json
-scriptnow novel orchestrate <pid> --accept                    # 审阅 → 采纳 → 全书计划
+scriptnow project direction <pid> --apply @direction.json --review-token <方向审阅凭证>
+# 规划（候选提交与采纳分开；采纳前用 candidate-preview 展示平台事实）
+scriptnow novel propose <pid> cores @cores.json --review-token <提交审阅凭证>
+scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_id>
+scriptnow novel adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow novel propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
+scriptnow novel propose <pid> storymap @storymap.json --review-token <提交审阅凭证>
+scriptnow novel orchestrate <pid> --skip-adopt               # 只读编排
 # 创作循环（Agent 审读驱动）
 scriptnow book <pid>                                          # 编排原语：各章已采纳/待生成/候选待审
 scriptnow chapter show <pid> chapter-1-1 --plain
 scriptnow chapter generate <pid> chapter-1-1 --feedback "你的意见"  # 后台，run status 轮询
-scriptnow chapter adopt <pid> chapter-1-1 <rev>
-# 改编稿本地回传：chapter propose <pid> chapter-1-1 --file @blocks.json
+scriptnow chapter adopt <pid> chapter-1-1 <rev> --human --review-token <定稿审阅凭证>
+# 改编稿本地回传：chapter propose <pid> chapter-1-1 --file @blocks.json --review-token <提交审阅凭证>
 ```
 
 **剧本（剧集 × 场次）**
 
 ```bash
 scriptnow project create --name 新剧 --medium script
-scriptnow project direction <pid> --apply @direction.json
+scriptnow project direction <pid> --apply @direction.json --review-token <方向审阅凭证>
 # 规划
-scriptnow script propose <pid> cores @cores.json --adopt
-scriptnow script propose <pid> blueprint @blueprint.json --adopt
-scriptnow script propose <pid> storymap @storymap.json
+scriptnow script propose <pid> cores @cores.json --review-token <提交审阅凭证>
+scriptnow review candidate-preview script <pid> story_core_candidate <candidate_id>
+scriptnow script adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow script propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
+scriptnow script propose <pid> storymap @storymap.json --review-token <提交审阅凭证>
 # 创作循环
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
 scriptnow script scene <pid> scene-1-1 --feedback "你的意见"  # 后台，run status 轮询
-scriptnow script adopt-scene <pid> scene-1-1 <rev>
-# 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json
+scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定稿审阅凭证>
+# 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <提交审阅凭证>
 ```
 
 **交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1` → `export download -o 书.docx`。
@@ -115,13 +119,14 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | 组 | 用途 |
 |----|------|
 | guide | 聚焦式新手创作（outline-first 逐层深入）：--step 1..12 / --medium novel\|script / --pulse / --resume / --steps / --complete / --status |
+| review | 人类审阅：preview（本地候选）/ candidate-preview（平台规划候选）/ status（读取反馈）/ confirm（登记一次决定）/ claim（Agent 领取凭证）；长内容页面可选 |
 | project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete** |
 | novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate / **rough-outline（粗纲）**  / **storymap-rebuild（隔离重建：start/phase/check/propose）** |
-| script | 剧本创作链：**outline（梗概大纲）** / outline-adopt / outline-status / **episode-outline（单集集纲补纲）** / state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* / **rough-outline（粗纲）** |
+| script | 剧本创作链：outline / outline-adopt / outline-status / episode-outline / state / scene-list / scene-show / scene / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / planning-quality / storymap / blueprint / story-cores / propose / adopt-* / rough-outline / rough-outline-start/progress/phase/propose |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
@@ -188,13 +193,40 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   只有 `drifting/conflict` 才按 `recovery` 先收拢、再邀请回归。`--resume` 可直接生成温和接续。
   两者均不写平台状态、不阻断创作命令。
 - **一次明确表达即可定稿**：用户在 Agent 对话中说“定稿”“采用这版”或“可以继续”，
-  Agent 可直接执行 `chapter adopt --human` / `scene adopt --human` 并记录
-  `adopted_human`。不要求重复操作终端/页面，不强制令牌；语义不明确时只追问一次。
+  Agent 在后台登记原话、领取绑定当前版本 digest 的一次性凭证，再执行
+  `chapter adopt --human` / `scene adopt --human` 并记录 `adopted_human`。
+  用户不操作终端、不复制凭证；语义不明确时只追问一次。
 - **剧本 Skill 质量锚点**：`skill craft --domain script` 自动叠加场次功能与转折、
   可见可听可表演、对白/VO/OS 时序、台词量与目标时长四类系统锚点；不增加用户问卷，
   直接创建的 script Skill 也必须通过 robustness v2。
 - **格式契约先于个人 Skill**：项目创建时锁定的竖屏短剧分镜式、中国剧本或好莱坞格式，
   由 Agent 生成、前端显示与 DOCX 导出全链路共同遵守；个人 Skill 只叠加题材方法，不能混用格式。
+
+## 人类审阅协议（对话优先）
+
+Agent 负责执行，作者/编辑负责观察和决定。方向、故事核心、蓝图、人物圣经、粗纲、StoryMap
+集纲/章纲、正文修订、采纳和导出都经过同一条回路：Agent 从平台读取事实，完整呈现候选；用户
+在对话中只表达一次「保留 / 调整 / 换方向」；Agent 后台登记原话、读取意见，并在保留时领取绑定
+候选 digest 的一次性凭证，写入后回读平台结果。用户无需复制 token、重复命令或打开页面。
+
+内容变化会使旧 digest/凭证失效，必须重新展示新版本。长内容才附带 `review_url` 作为可选阅读
+入口；页面不是额外审批关卡。用户直接在前端编辑并保存，本身就是一次人类决定并纳入审计。
+
+长篇剧本粗纲按叙事结构逐阶段回填，但结构范围只是建议；作者可调整连续边界。
+`rough-outline-start/progress/phase` 必须持续显示「阶段 X / 共 N 阶段」、当前阶段与已完成阶段，
+不得只在后台推进 JSON。
+
+```bash
+scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
+# 用户在当前 Agent 对话中决定后，由 Agent 执行：
+scriptnow review confirm <packet-id> --decision retain --evidence "采用这一版，继续下一阶段。"
+scriptnow review claim <packet-id> --json
+# 调整时由 Agent 读取原话，修订后重新 preview；不复用旧凭证
+scriptnow review status <packet-id> --json
+```
+
+`review preview` 会在终端展示完整内容并登记 digest；`review status` 让 Agent 直接读取用户反馈；
+`--json` 只服务于 Agent 编排，不能替代可读预览。
 
 ## Agent 使用提示
 

@@ -107,38 +107,42 @@ scriptnow skill mounts <pid>                  # which skills are mounted?
 
 ```bash
 scriptnow project create --name "My Novel" --medium novel --volume-one 1 --volume-two 15 --chapter-target-words 1200
-scriptnow project direction <pid> --apply @direction.json     # agent curates the full direction
-# Planning (agent-side import; a single curated core adopts directly)
-scriptnow novel propose <pid> cores @cores.json --adopt
-scriptnow novel propose <pid> blueprint @blueprint.json --adopt
-scriptnow novel propose <pid> storymap @storymap.json
+scriptnow project direction <pid> --apply @direction.json --review-token <direction-review-token>
+# Planning (candidate submission and adoption are separate reviewed decisions)
+scriptnow novel propose <pid> cores @cores.json --review-token <submission-review-token>
+scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_id>
+scriptnow novel adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow novel propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
+scriptnow novel propose <pid> storymap @storymap.json --review-token <submission-review-token>
 scriptnow novel planning-quality <pid> storymap @storymap.json  # full chapter-outline gate
-scriptnow novel orchestrate <pid> --accept                    # review → adopt → full plan
+scriptnow novel orchestrate <pid> --skip-adopt               # read-only orchestration
 # Writing loop (agent-driven review)
 scriptnow book <pid>                                          # hosted plan: adopted/needs-generation/pending
-scriptnow chapter outline <pid> chapter-1-1 @outline.json       # backfill one legacy chapter
+scriptnow chapter outline <pid> chapter-1-1 @outline.json --review-token <submission-review-token>
 scriptnow chapter show <pid> chapter-1-1 --plain
 scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "your notes"
-scriptnow chapter adopt <pid> chapter-1-1 <rev>
-# Adapted draft return: chapter propose <pid> chapter-1-1 --file @blocks.json
+scriptnow chapter adopt <pid> chapter-1-1 <rev> --human --review-token <adoption-review-token>
+# Adapted draft return: chapter propose <pid> chapter-1-1 --file @blocks.json --review-token <submission-review-token>
 ```
 
 **Script (episodes × scenes)**
 
 ```bash
 scriptnow project create --name "My Script" --medium script
-scriptnow project direction <pid> --apply @direction.json
+scriptnow project direction <pid> --apply @direction.json --review-token <direction-review-token>
 # Planning
-scriptnow script propose <pid> cores @cores.json --adopt
-scriptnow script propose <pid> blueprint @blueprint.json --adopt
-scriptnow script propose <pid> storymap @storymap.json
+scriptnow script propose <pid> cores @cores.json --review-token <submission-review-token>
+scriptnow review candidate-preview script <pid> story_core_candidate <candidate_id>
+scriptnow script adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow script propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
+scriptnow script propose <pid> storymap @storymap.json --review-token <submission-review-token>
 scriptnow script planning-quality <pid> storymap @storymap.json  # full episode-outline gate
 # Writing loop
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
 scriptnow script scene <pid> scene-1-1 --wait --feedback "your notes"
-scriptnow script adopt-scene <pid> scene-1-1 <rev>
-# Adapted draft return: script scene-propose <pid> scene-1-1 --file @blocks.json
+scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <adoption-review-token>
+# Adapted draft return: script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <submission-review-token>
 ```
 
 **Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1` →
@@ -151,6 +155,7 @@ as a writer-facing export file yet.
 | Group | Purpose |
 |-------|---------|
 | guide | Focused newcomer flow (outline-first, layer by layer): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map |
+| review | Human review loop: `preview` shows a local candidate / `candidate-preview` shows the canonical platform planning candidate / `status` reads feedback / `confirm` records one decision / `claim` lets the Agent claim a one-time credential; the page is optional |
 | project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
@@ -158,7 +163,7 @@ as a writer-facing export file yet.
 | storymap | Novel volumes×chapters: state / generate / **planning-quality (chapter-outline gate)** / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**)  / **phases (narrative-structure phase plan)** / **append-phase (submit next phase; phase=volume)** / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete** |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate / **rough-outline (per narrative phase: propose/adopt/check/example)** / **storymap-rebuild (isolated rebuild: start/phase/check/propose)** |
-| script | Script chain: **outline (synopsis) / outline-adopt / outline-status** / **episode-outline (episode-outline backfill)** / state / scene-list / scene-show / scene / scene-propose (--auto-adopt/--help-format/--example) / scene-batch (serial + resume) / scene-quality / scene-diff / quality-report / **planning-quality (episode-outline gate)** / storymap / blueprint / story-cores / propose / adopt-* / **rough-outline (per narrative phase: propose/adopt/check/example)** |
+| script | Script chain: outline / outline-adopt / outline-status / episode-outline / state / scene-list / scene-show / scene / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / planning-quality / storymap / blueprint / story-cores / propose / adopt-* / rough-outline / rough-outline-start/progress/phase/propose |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
@@ -183,13 +188,55 @@ direction decision. Commands stay backstage.
 
 Chapter/scene finalization follows a one-explicit-statement rule: when the user
 says finalize, use this version, or continue in the Agent conversation, the
-Agent may run `chapter adopt --human` / `scene adopt --human`. No repeated
-terminal/UI action or mandatory token is required; ask once only if ambiguous.
+Agent records the original words, claims the one-time credential bound to the
+current content digest, and runs `chapter adopt --human` / `scene adopt --human`
+backstage. The user never handles a terminal or credential; ask once only if ambiguous.
 
 Script Skills automatically add four system quality anchors beyond the user's
 project-specific rules: scene function and observable turn, visible/audible/
 performable action, ordered dialogue/VO/OS, and spoken-text fit against target
 duration. The platform derives production metadata without extra questions.
+
+## Human review protocol (conversation first)
+
+The human is the observer and decision-maker; the Agent is the executor. Every
+platform-changing creative action—direction, story cores, blueprint, character
+bibles, rough outline, StoryMap/episode or chapter outlines, prose revision,
+adoption, and export—uses the same lightweight loop: the Agent reads platform
+facts and shows a complete human-readable candidate; the user says **keep**,
+**adjust**, or **change direction** once in the conversation; the Agent records
+the original words, reads later feedback, and claims a one-time credential in
+the background when the user keeps it. The user never copies a token, repeats a
+command, or has to open a page.
+
+Any content change invalidates the old digest and credential, so the new version
+must be shown and confirmed again. Long content may include the one-click
+`review_url` returned by `review preview`; the page is an optional reading aid,
+not an extra approval gate. Editing and saving directly in the frontend is
+itself a human decision and receives the same audit treatment.
+
+Long-form script rough outlines are backfilled phase by phase against the
+project's narrative structure, but structure ranges are suggestions: the author
+may adjust any continuous boundary. `rough-outline-start/progress/phase` always
+reports `Phase X / N`, the current phase key, and completed phases; progress must
+never exist only in background JSON.
+
+These commands are normally run by the Agent behind the conversation:
+
+```bash
+# Show and register the complete candidate; this does not write creative content
+scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
+# After the user's one clear decision, record the words and claim a one-time credential
+scriptnow review confirm <packet-id> --decision retain --evidence "Keep this version and continue."
+scriptnow review claim <packet-id> --json
+# On adjustment, read the feedback, revise, and preview again; never reuse the old credential
+scriptnow review status <packet-id> --json
+```
+
+`review status` lets the Agent read the user's feedback without asking them to
+repeat it. `--evidence` should preserve the user's words, not an Agent summary.
+`--json` is for Agent orchestration and never replaces the human-readable
+preview.
 
 ```bash
 scriptnow guide --step 1 --medium novel --json

@@ -26,10 +26,14 @@ workflow from memory and do not treat local files as ScriptNow projects.
 
 > **粗纲（分集/分章大纲·粗纲，双域）**：在集纲/章纲之前，按叙事结构阶段写一段具体剧情
 > 纲要（竖屏剧规范「分集大纲·粗纲」）。先取模板 `scriptnow script|novel
-> rough-outline-example <pid>`（阶段边界即叙事结构推导，不可手改），逐阶段填写
-> summary（≥80 字、写具体剧情、禁套话）+ key_beats（标题|描述）+ anchor_ids（须为已
-> 采纳蓝图锚点），再用 `rough-outline-check` 本地预检、`rough-outline <pid> @file.json
-> [--adopt]` 回填，或 `rough-outline-adopt <pid> <candidate_id>` 采纳。分集大纲稿导出：
+> rough-outline-example <pid>`（叙事结构只提供阶段与范围建议；作者可调整边界，须连续覆盖全集），逐阶段填写
+> Script summary 必须按 `rough-outline-example` 返回的动态篇幅与事件数展开入口、连续行动、
+> 阻力升级、证据/关系变化、转折、代价和出口；禁止一句话粗纲。再填写 key_beats（标题|描述）+ anchor_ids（须为已
+> 采纳蓝图锚点）。长篇剧本优先 `rough-outline-start` 开隔离链，每阶段用
+> `rough-outline-phase <pid> <phase_key> @file.json` 回填，`rough-outline-progress` 回读；
+> 每次回读必须向人显示“阶段 X / 共 N 阶段”、当前阶段与已完成阶段，不得只在后台维护 JSON；
+> 上游返工加 `--restart-from` 使下游失效。全部完成后 `rough-outline-propose` 形成完整候选，
+> 再由作者用 `rough-outline-adopt` 采纳。分集大纲稿导出：
 > `scriptnow export create <pid> --domain script --units <全集场次> --form planning
 > --front-matter outline`（剧名→故事梗概→人物小传→粗纲→集纲）。
 
@@ -120,6 +124,26 @@ completion. Explain the missing prerequisite and wait.
   across an intervening action block.
 
 ## Output discipline
+
+Before any creative write, show the complete human-readable review packet. The
+human chooses retain / adjust / change direction. Only an explicit retain may
+activate a one-time token bound to the exact content digest; changed content
+must be shown again. JSON stays backstage and never substitutes for the preview.
+
+Conversation is the default human channel. After the user gives one clear
+decision, record the original words with `review confirm`, claim the one-time
+credential with `review claim`, and pass it to the target write command. Use
+`review status` to read a user's later adjustment without asking them to repeat
+it. `review preview` may return a `review_url` for long content, but opening the
+page is optional; a user edit saved directly in the frontend is already a human
+decision and must not trigger a second confirmation. Never expose token copying
+or JSON editing as a user task.
+
+Candidate submission and candidate adoption are two separate creative
+decisions. Never use implicit `--adopt`. After propose, use
+`review candidate-preview` to show the canonical platform candidate; only then
+confirm, claim a new exact-content credential, and call the matching adopt
+command.
 
 Keep user-facing replies to: current fact, one proposed next decision, and the
 result after platform read-back. Never dump this file, terminal installation

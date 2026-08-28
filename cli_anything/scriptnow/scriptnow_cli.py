@@ -145,6 +145,16 @@ def _confirm_line(medium: str, *, adopted: bool) -> str:
     return f"{unit}候选稿已就绪 —— {_next_step_after_generate(medium)}"
 
 
+def _reject_implicit_adoption(adopt: bool) -> None:
+    """Keep candidate submission and human adoption as two visible decisions."""
+
+    if adopt:
+        raise click.ClickException(
+            "已取消隐式 --adopt：先提交候选并回读全文；人明确保留该候选后，"
+            "Agent 再用独立 adopt 命令携带一次性审阅凭证。"
+        )
+
+
 # ------------------------------------------------------------------ token budget
 
 
@@ -378,6 +388,9 @@ def _mark_onboarding_done() -> None:
 @click.argument("project_id")
 @click.option("--chapter", default=None, help="限定章节（如 chapter-2-1）；不限定则可用于该项目任意章节定稿")
 @click.option("--scene", default=None, help="限定场次（如 scene-1）")
+@click.option("--resource-kind", default=None, help="通用创作资源类型，如 rough_outline_phase")
+@click.option("--resource-id", default=None, help="通用创作资源 ID，如阶段 key")
+@click.option("--digest", default=None, help="用户已阅读内容的 sha256 digest")
 @click.option("--purpose", default="定稿授权", help="授权用途说明")
 @click.option("--evidence", default="", help="授权证据原文（用户对话里的原话引用）")
 @click.option("--json", "json_output", is_flag=True)
@@ -387,6 +400,9 @@ def authorize_cmd(
     project_id: str,
     chapter: str | None,
     scene: str | None,
+    resource_kind: str | None,
+    resource_id: str | None,
+    digest: str | None,
     purpose: str,
     evidence: str,
     json_output: bool,
@@ -402,6 +418,9 @@ def authorize_cmd(
         "project_id": project_id,
         "chapter_id": chapter,
         "scene_id": scene,
+        "resource_kind": resource_kind,
+        "resource_id": resource_id,
+        "content_digest": digest,
         "kind": "adopt",
         "purpose": purpose,
         "evidence": evidence,
@@ -423,6 +442,143 @@ def authorize_cmd(
         )
         return
     _emit(result, json_output)
+
+
+@main.group("review")
+@click.pass_context
+def creative_review_group(ctx: click.Context) -> None:
+    """人类可读预览 → 明确决定 → 一次性提交凭证。"""
+
+
+@creative_review_group.command("preview")
+@click.argument("project_id")
+@click.argument("resource_kind")
+@click.argument("resource_id")
+@click.argument("file_path")
+@click.option("--title", default="创作候选审阅")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_preview(ctx: click.Context, project_id: str, resource_kind: str,
+                            resource_id: str, file_path: str, title: str, json_output: bool) -> None:
+    """完整展示内容并把精确预览登记到平台；不提交创作候选。"""
+    import hashlib as _hashlib
+    import json as _json
+    path = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    raw = path.read_text(encoding="utf-8")
+    try:
+        content = _json.loads(raw)
+    except _json.JSONDecodeError:
+        content = {"text": raw}
+    digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+    preview = {"title": title, "content": content,
+               "human_action": "请完整阅读并选择：保留 / 调整 / 换方向。"}
+    session = _session(ctx)
+    result = session.request("POST", "/creative-reviews/preview",
+        json_body={"project_id": project_id, "resource_kind": resource_kind,
+                   "resource_id": resource_id, "content_digest": digest, "preview": preview}, write=True)
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    if json_output:
+        _emit(result, True)
+        return
+    click.echo(ui.section(f"=== {title} ==="))
+    click.echo(_json.dumps(content, ensure_ascii=False, indent=2))
+    click.echo(ui.warn("此操作只登记预览，没有提交候选。请明确选择：保留 / 调整 / 换方向。"), err=False)
+    click.echo(ui.kv("review_packet", result.get("packet_id")))
+    click.echo(ui.kv("一键查看", result.get("review_url")))
+
+
+@creative_review_group.command("status")
+@click.argument("packet_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_status(ctx: click.Context, packet_id: str, json_output: bool) -> None:
+    """Agent读取人的审阅决定与修改意见；用户无需重复转述。"""
+    result = _session(ctx).request("GET", f"/creative-reviews/{packet_id}")
+    if json_output:
+        _emit(result, True)
+        return
+    labels = {
+        "previewed": "等待审阅",
+        "active": "已确认保留，可提交",
+        "revoked": "已提出修改意见，需修订后重新展示",
+        "used": "已按审阅结果提交",
+    }
+    click.echo(ui.section("=== 人工审阅进度 ==="))
+    click.echo(ui.kv("状态", labels.get(str(result.get("status")), result.get("status"))))
+    if result.get("evidence"):
+        click.echo(ui.kv("人的意见", result.get("evidence")))
+    click.echo(ui.kv("内容摘要", str(result.get("content_digest") or "")[:12]))
+
+
+@creative_review_group.command("candidate-preview")
+@click.argument("medium", type=click.Choice(["novel", "script"]))
+@click.argument("project_id")
+@click.argument(
+    "resource_kind",
+    type=click.Choice([
+        "story_core_candidate",
+        "blueprint_candidate",
+        "rough_outline_candidate",
+        "storymap_candidate",
+    ]),
+)
+@click.argument("candidate_id")
+@click.option("--title", default="规划候选审阅")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_candidate_preview(
+    ctx: click.Context,
+    medium: str,
+    project_id: str,
+    resource_kind: str,
+    candidate_id: str,
+    title: str,
+    json_output: bool,
+) -> None:
+    """从平台事实源展开规划候选并登记采纳审阅；无需制作临时JSON。"""
+
+    session = _session(ctx)
+    result = session.request(
+        "POST",
+        f"/{medium}/projects/{project_id}/creative-reviews/planning-candidate-preview",
+        json_body={
+            "resource_kind": resource_kind,
+            "candidate_id": candidate_id,
+            "title": title,
+        },
+        write=True,
+    )
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    if json_output:
+        _emit(result, True)
+        return
+    click.echo(ui.section(f"=== {title} ==="))
+    click.echo(json.dumps((result.get("preview") or {}).get("content"), ensure_ascii=False, indent=2))
+    click.echo(ui.kv("一键查看（可选）", result.get("review_url")))
+    click.echo(ui.warn("请决定：保留 / 调整 / 换方向。此处尚未采纳候选。"))
+
+
+@creative_review_group.command("confirm")
+@click.argument("packet_id")
+@click.option("--decision", type=click.Choice(["retain", "adjust", "change_direction"]), default="retain")
+@click.option("--evidence", required=True, help="用户明确决定的原话，例如：保留这一阶段")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_confirm(ctx: click.Context, packet_id: str, decision: str, evidence: str, json_output: bool) -> None:
+    """人明确保留预览内容后，激活一次性提交凭证。"""
+    result = _session(ctx).request("POST", f"/creative-reviews/{packet_id}/confirm",
+        json_body={"decision": decision, "evidence": evidence}, write=True)
+    _emit(result, json_output)
+
+
+@creative_review_group.command("claim")
+@click.argument("packet_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_claim(ctx: click.Context, packet_id: str, json_output: bool) -> None:
+    """Agent后台领取人已确认packet的提交凭证；不要求人复制任何内容。"""
+    _emit(_session(ctx).request("POST", f"/creative-reviews/{packet_id}/claim", write=True), json_output)
 
 
 @main.command("feedback")
@@ -634,20 +790,20 @@ _AGENT_CONTRACT = {
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
-        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层：每叙事阶段一段具体剧情纲要（谁/做什么/对谁/拿什么/在哪），阶段边界来自叙事结构推导不可手改。先 `scriptnow script|novel rough-outline-example <pid>` 取模板，逐阶段填写 summary（≥80 字，禁止『推进矛盾/留下钩子』套话）+ key_beats + anchor_ids（须为已采纳蓝图锚点），`rough-outline-check` 本地预检后 `rough-outline <pid> @file.json [--adopt]` 回填或 `rough-outline-adopt` 采纳。竖屏剧分集大纲稿用 `export create --domain script --form planning --front-matter outline` 导出（剧名→故事梗概→人物小传→粗纲→集纲）。",
+        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 rough-outline-start 开隔离链，逐阶段 rough-outline-phase 回填并 rough-outline-progress 回读，上游返工用 --restart-from 使下游失效，全部完成后 rough-outline-propose 形成完整候选。最低篇幅和事件数由 rough-outline-example 动态返回，禁止一句话粗纲。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
-        "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后应把全文或用户要求的审读范围呈现出来；用户在对话中明确表达『定稿』『采用这版』『可以进入下一章/场』等，即构成人工决定，Agent 可直接执行 chapter adopt --human / scene adopt --human，平台记录 adopted_human。无需用户重复去终端或页面确认，也不强制签发令牌；令牌仅是可选的增强审计方式。没有明确表达时才追问一次，Agent 不得从沉默、泛泛称赞或大纲授权中自行推断定稿。",
+        "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后展示全文；用户明确表达『定稿』『采用这版』『可以进入下一章/场』后，Agent 在后台执行 review confirm → claim，并把 --review-token 传给 chapter/scene adopt --human，平台记录 adopted_human。用户不复制凭证、不操作终端或页面。没有明确表达时才追问一次，不得从沉默或泛泛称赞推断定稿。",
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
         "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
-        "scriptnow novel propose cores @cores.json --adopt && scriptnow novel propose blueprint @blueprint.json --adopt && scriptnow novel propose storymap @storymap.json",
+        "每阶段先 review preview → propose，再用 review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
-        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → 呈现正文 → 用户在对话中明确采用后，Agent 直接 chapter adopt --human <pid> <cid> <revision_id>",
-        "集纲/章纲回填：剧本在 storymap JSON 的每个 episode 上填写平铺的 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说在每个 chapter 的 outline 中填写 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。先运行 scriptnow script/novel planning-quality <pid> storymap @storymap.json，再 propose；只在用户明确决定后 adopt。旧项目可用 script episode-outline <pid> <episode_id> @outline.json 或 chapter outline <pid> <chapter_id> @outline.json 单集/单章补纲；补纲候选仍须 planning-quality 与 StoryMap 采纳。新增卷/章（纯追加，不动已有卷章）：scriptnow storymap append-volume <pid> @volumes.json --adopt | scriptnow storymap append-chapters <pid> <volume_id> @chapters.json --adopt",
+        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter adopt --human --review-token <token> <pid> <cid> <revision_id>",
+        "集纲/章纲回填：剧本在 storymap JSON 的每个 episode 上填写平铺的 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说在每个 chapter 的 outline 中填写 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。先运行 planning-quality，再经 review preview 提交候选；用 review candidate-preview 展开平台候选，人明确保留后独立 adopt。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选，禁止 --adopt 隐式采纳。",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
@@ -673,7 +829,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 detail 修正，不能编造替代结果。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
-        "粗纲是集纲/章纲之前的叙事阶段层：rough-outline-example 取模板（阶段边界来自结构推导）、rough-outline @file.json 回填（--adopt 直接采纳）、rough-outline-check 本地预检、rough-outline-adopt 采纳候选；summary 必须具体（≥80 字，禁套话），anchor_ids 须为已采纳蓝图锚点。",
+        "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 rough-outline-example 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。rough-outline-check 通过后才可回填候选。",
         "StoryMap 隔离重建（script）：已有 StoryMap 重建必须用 storymap-rebuild-start 开隔离会话，逐阶段 rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。禁止一次生成完整 80 集。",
     ],
     "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
@@ -808,7 +964,7 @@ _GUIDE_STEPS = [
         "scene": "摊开编剧的案头：先让三个故事方向互相竞争，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
         "why": "故事核心定方向，创作蓝图立骨架：人物为何行动、关系如何变化、情节怎样升级、承诺如何回收。",
         "downstream": "cores 定人物/世界观根因、blueprint 定锚点；后续 StoryMap 的 beats 与每章章纲的 anchor_ids 都引用这些锚点，因果才不会断。",
-        "command": "scriptnow novel propose cores @cores.json --adopt && novel propose blueprint @blueprint.json --adopt",
+        "command": "review preview → novel propose cores → review candidate-preview → novel adopt-core；blueprint 同样分两次决定",
         "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
         "prompt": "这个故事里，你最想让哪一层先立起来：人物、关系、还是世界？",
         "masters": [
@@ -832,7 +988,7 @@ _GUIDE_STEPS = [
         "scene": "把全书拆成一卷卷、一章章——像为故事画出时间的地图。采纳前一切可改，采纳后才是定稿的结构。",
         "why": "StoryMap 规划卷、章与故事节拍；采纳后成为正文的唯一结构事实源。新流程要求先有已采纳梗概，才能规划结构。",
         "downstream": "采纳后成为全书唯一结构事实源；逐章写作、导出、故事图谱都基于它。",
-        "command": "scriptnow novel propose storymap @storymap.json（或 storymap generate）→ novel orchestrate <作品号> --accept 采纳",
+        "command": "review preview → novel propose storymap @storymap.json --review-token <凭证> → review candidate-preview → 人明确采用 → storymap adopt --review-token <凭证>",
         "verify": "结构已定稿，创作计划可打印（book）。",
         "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？",
         "masters": [
@@ -897,9 +1053,9 @@ _GUIDE_STEPS = [
         "command": (
             "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
             "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "用户在对话中明确采用 → Agent 执行 chapter adopt --human <作品号> <章节号> <版本号>"
+            "用户明确采用 → Agent 后台 confirm/claim → chapter adopt --human --review-token <凭证> <作品号> <章节号> <版本号>"
         ),
-        "verify": "每一章都有来自用户明确表达的定稿版本（adopted_human）；无需重复确认。",
+        "verify": "每一章都有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复确认或处理凭证。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
         "masters": [
             {
@@ -1035,7 +1191,7 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
         "verify": "梗概大纲已采纳（script outline-status 显示已定稿）。",
     },
     5: {
-        "command": "scriptnow script propose <作品号> cores @cores.json --adopt → blueprint @blueprint.json --adopt",
+        "command": "review preview → script propose cores → review candidate-preview → script adopt-core；blueprint 同样分两次决定",
         "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
     },
     6: {
@@ -1048,8 +1204,8 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
         "downstream": "新集带完整集纲并通过 planning-quality 后，逐场写作才开放；历史集（已有正文）可读可写不受阻。",
     },
     9: {
-        "command": "scriptnow scene list <作品号> → scene generate/propose <作品号> <场次号> → 呈现正文 → 用户明确采用后 Agent 执行 scene adopt --human",
-        "verify": "当前场有来自用户明确表达的 adopted_human 版本；不要求重复终端或页面确认。",
+        "command": "scriptnow scene list <作品号> → scene generate/propose → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → scene adopt --human --review-token <凭证>",
+        "verify": "当前场有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复终端、页面或凭证操作。",
     },
     10: {
         "command": "scriptnow scene show <作品号> <场次号> --plain → scene quality <作品号> <场次号> → 按反馈修订",
@@ -1590,6 +1746,7 @@ def project_delete(ctx: click.Context, project_id: str, confirm_name: str, json_
 @click.option("--variance", type=click.Choice(["balanced", "high", "low"]), default="balanced", help="灵感模式：创意发散程度")
 @click.option("--set", "set_pairs", multiple=True, help="手动补齐字段：--set key=value（可多次），如 --set tone=暗黑 --set genre=\"mystery, werewolf\"")
 @click.option("--show", is_flag=True, help="仅查看当前创作方向")
+@click.option("--review-token", default=None, help="人类确认当前方向预览后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def project_direction(
@@ -1602,6 +1759,7 @@ def project_direction(
     variance: str,
     set_pairs: tuple[str, ...],
     show: bool,
+    review_token: str | None,
     json_output: bool,
 ) -> None:
     """查看 / 灵感生成 / 客户端梳理回填 / 手动补齐项目的创作方向（direction）。
@@ -1677,6 +1835,7 @@ def project_direction(
         f"/projects/{project_id}/direction",
         json_body={"direction": direction},
         write=True,
+        headers={"X-Review-Token": review_token} if review_token else None,
     )
     result = {
         "project_id": project_id,
@@ -2445,19 +2604,21 @@ def chapter_group(ctx: click.Context) -> None:
 @click.argument("project_id")
 @click.argument("chapter_id")
 @click.argument("file_path", type=str)
-@click.option("--adopt", is_flag=True, help="回填后自动采纳该章纲（视为你的显式授权）")
+@click.option("--adopt", is_flag=True, help="已停用：提交与采纳必须分开审阅")
+@click.option("--review-token", required=True, help="人类确认单章章纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_outline(
-    ctx: click.Context, project_id: str, chapter_id: str, file_path: str, adopt: bool, json_output: bool
+    ctx: click.Context, project_id: str, chapter_id: str, file_path: str, adopt: bool,
+    review_token: str, json_output: bool
 ) -> None:
-    """回填单章 outline（保存为 StoryMap 结构候选；--adopt 时自动采纳）。
+    """回填单章 outline（保存为 StoryMap 结构候选；采纳是下一次独立决定）。
 
     FILE_PATH is a JSON object containing ``outline`` or the outline fields
-    directly. Without --adopt the candidate must still be reviewed and adopted
-    through the normal StoryMap decision path. Passing --adopt is your explicit
-    authorization to adopt the resulting structure candidate immediately.
+    directly. The resulting candidate must be shown with candidate-preview and
+    adopted through the normal StoryMap decision path.
     """
+    _reject_implicit_adoption(adopt)
     import json as _json
 
     path = file_path[1:] if file_path.startswith("@") else file_path
@@ -2482,6 +2643,7 @@ def chapter_outline(
         f"/novel/projects/{project_id}/chapters/{chapter_id}/outline/propose",
         json_body={"outline": outline, "idempotency_key": f"cli-chapter-outline-{__import__('time').time_ns()}"},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     candidate_id = result.get("id")
     if adopt and candidate_id:
@@ -2500,7 +2662,7 @@ def chapter_outline(
         return
     if not json_output:
         click.echo(ui.ok(f"第 {chapter_id} 章章纲已形成结构候选（{candidate_id}）"))
-        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后采纳（或用 --adopt 自动采纳）。"), err=True)
+        click.echo(ui.dim("请回读 StoryMap、运行 planning-quality，并在用户明确决定后独立采纳。"), err=True)
         return
     _emit(result, json_output)
 
@@ -2508,10 +2670,12 @@ def chapter_outline(
 @chapter_group.command("outline-batch")
 @click.argument("project_id")
 @click.argument("file_path", type=str)
+@click.option("--review-token", required=True, help="人类确认批量章纲与完整StoryMap候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def chapter_outline_batch(
-    ctx: click.Context, project_id: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, file_path: str,
+    review_token: str, json_output: bool
 ) -> None:
     """批量回填多章 outline（已成型作品后补章纲入口）。
 
@@ -2591,6 +2755,7 @@ def chapter_outline_batch(
             "idempotency_key": f"cli-ch-outline-batch-{__import__('time').time_ns()}",
         },
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"已合成单候选并提交 {len(applied)} 章章纲（候选 {result.get('id')}）"))
@@ -2770,10 +2935,6 @@ def _rough_outline_issues(phases: object, example: object, range_label: str = "�
             continue
         key = str(phase.get("phase_key") or "")
         summary = str(phase.get("summary") or "").strip()
-        if len(summary) < 80:
-            issues.append(
-                f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲过短：{len(summary)} 字，至少需要 80 字剧情纲要"
-            )
         if any(token in summary for token in _META_OBJECTIVE_TOKENS):
             issues.append(
                 f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲含套话（推进矛盾/留下钩子类），请写具体剧情"
@@ -2789,22 +2950,25 @@ def _rough_outline_issues(phases: object, example: object, range_label: str = "�
         except (TypeError, ValueError):
             issues.append(f"阶段 {key} 的区间必须为整数")
             continue
+        unit_count = max(0, end - start + 1)
+        minimum = max(800, unit_count * 100) if range_label == "集" else 80
+        if len(summary) < minimum:
+            issues.append(
+                f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲过短：{len(summary)} 字，"
+                f"覆盖 {unit_count} {range_label}至少需要 {minimum} 字连续剧情"
+            )
+        import re as _re
+        event_count = len([item for item in _re.split(r"[。！？!?\n]+", summary) if item.strip()])
+        event_minimum = max(8, unit_count) if range_label == "集" else 1
+        if event_count < event_minimum:
+            issues.append(
+                f"阶段 {key} 事件链过薄：仅 {event_count} 个可辨认事件段，至少需要 {event_minimum} 个；"
+                "请展开入口状态、连续行动、阻力升级、证据/关系变化、阶段转折与出口状态"
+            )
         if start != previous_end + 1:
             issues.append(f"阶段 {key} 区间起点应为 {previous_end + 1}（当前 {start}）")
         if end < start:
             issues.append(f"阶段 {key} 区间终点小于起点")
-        if index <= len(example_phases) and isinstance(example_phases[index - 1], dict):
-            expected = example_phases[index - 1]
-            try:
-                expected_start = int(str(expected.get("range_start") or "").strip())
-                expected_end = int(str(expected.get("range_end") or "").strip())
-                if (start, end) != (expected_start, expected_end):
-                    issues.append(
-                        f"阶段 {key} 区间必须与结构推导一致：应为第 {expected_start}–{expected_end} {range_label}"
-                        f"（当前 {start}–{end}）"
-                    )
-            except (TypeError, ValueError):
-                pass
         previous_end = end
     if total_units and previous_end != total_units:
         issues.append(f"区间必须连续覆盖 1..{total_units}（当前终点 {previous_end}）")
@@ -3164,18 +3328,24 @@ def chapter_generate(
     "--token",
     "decision_token",
     default=None,
-    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
+    help="旧版兼容授权令牌；新流程统一使用 --review-token",
 )
+@click.option("--review-token", required=True, help="平台候选全文经人确认后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool) -> None:
+def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision_id: str,
+                  human_decision: bool, decision_token: str | None, review_token: str,
+                  json_output: bool) -> None:
     """Adopt a chapter revision as the working text.
 
     定稿必须来自人的明确决定。用户本人运行，或在与 Agent 的对话中明确表示
     「定稿 / 采用这版 / 可以继续」后，均可带 --human；无需重复终端确认。
     """
+    if decision_token:
+        raise click.ClickException(
+            "旧版 --token 已停用；请只使用 --review-token，不能同时发送两类凭证。"
+        )
     # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
-    # --token 仅为需要更强审计时的可选通道。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
@@ -3188,7 +3358,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
         else:
             raise click.ClickException(
                 "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
-                "Agent 可直接用 chapter adopt --human。--token 仅为可选增强审计方式。"
+                "Agent 应先在后台 confirm/claim，再用 chapter adopt --human --review-token <token>。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid，
@@ -3234,9 +3404,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
                 return
     except ScriptNowError:
         pass  # 前置检查失败不阻塞，交给平台权威校验
-    extra_headers = {}
-    if decision_token:
-        extra_headers["X-Decision-Token"] = decision_token
+    extra_headers = {"X-Review-Token": review_token}
     result = _session(ctx).request(
         "POST",
         f"/novel/projects/{project_id}/chapters/{chapter_id}/revisions/{resolved_revision_id}/adopt?human_decision={str(human_decision).lower()}",
@@ -3273,6 +3441,7 @@ _CHAPTER_EXAMPLE = """第一章 复职日
 @click.option("--file", "blocks_file", default=None, help="章节正文 JSON：{\"blocks\":[{\"block_id\":\"h1\",\"type\":\"heading|prose|dialogue|quote|divider\",\"text\":\"...\"}]}")
 @click.option("--text", default=None, help="纯文本正文（自动分段为 prose blocks，首段为标题）")
 @click.option("--budget", type=int, default=None, help="正文 token 预算上限（中文≈1 token/字，英文≈1 token/4 字符）")
+@click.option("--review-token", default=None)
 @click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
 @click.option("--example", is_flag=True, help="显示规格示例文本")
 @click.option("--json", "json_output", is_flag=True)
@@ -3284,6 +3453,7 @@ def chapter_propose(
     blocks_file: str | None,
     text: str | None,
     budget: int | None,
+    review_token: str | None,
     help_format: bool,
     example: bool,
     json_output: bool,
@@ -3294,6 +3464,8 @@ def chapter_propose(
     if example:
         click.echo(_CHAPTER_EXAMPLE)
         return
+    if not review_token:
+        raise click.ClickException("提交前先用 review preview 展示全文，并在人明确保留后由Agent取得审阅凭证")
     """Agent 本地创作章节 → 回传为候选（改编创作不经过平台文本生成）。
 
     适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
@@ -3342,6 +3514,7 @@ def chapter_propose(
         f"/novel/projects/{project_id}/chapters/{chapter_id}/propose",
         json_body=body,
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         adopted = result.get("status") in ("adopted", "adopted_human")
@@ -3641,10 +3814,12 @@ def storymap_phases(ctx: click.Context, project_id: str, json_output: bool) -> N
 @click.argument("project_id")
 @click.argument("phase_key")
 @click.argument("file_path", type=str)
+@click.option("--review-token", required=True, help="人类确认本阶段完整章纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def storymap_append_phase(
-    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str,
+    review_token: str, json_output: bool
 ) -> None:
     """按叙事阶段追加章节（提交下一个未完成阶段；复用 append 采纳路径）。
 
@@ -3683,6 +3858,7 @@ def storymap_append_phase(
             "idempotency_key": f"cli-phase-{phase_key}-{__import__('time').time_ns()}",
         },
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
@@ -3730,9 +3906,11 @@ def storymap_generate(
 @click.argument("candidate_id", required=False)
 @click.option("--latest", is_flag=True, help="自动采用最新 active 结构候选（仍需 --confirm，免去复制候选 ID）")
 @click.option("--confirm", is_flag=True, help="高危操作：明确授权采纳此结构修订（覆盖当前 StoryMap 并影响已采纳正文；旧结构将自动归档）")
+@click.option("--review-token", required=True, help="人类确认完整StoryMap候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str | None, latest: bool, confirm: bool, json_output: bool) -> None:
+def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str | None, latest: bool,
+                   confirm: bool, review_token: str, json_output: bool) -> None:
     """Adopt a StoryMap structure candidate (HIGH-RISK, requires --confirm).
 
     StoryMap 修订是高危操作：采纳会覆盖当前结构、改变保留章节的标题/字数，
@@ -3765,6 +3943,7 @@ def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str | None
             "POST",
             f"/novel/projects/{project_id}/story-map/{candidate_id}/adopt?confirm=true",
             write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -3798,11 +3977,13 @@ def _read_append_json(file_path: str, key: str) -> list[dict[str, object]]:
 @storymap_group.command("append-volume")
 @click.argument("project_id")
 @click.argument("file_path")
-@click.option("--adopt", is_flag=True, help="追加形成候选后直接采纳（追加不动已有章节，风险低；仍是结构变更，平台会记录）")
+@click.option("--adopt", is_flag=True, help="已停用：追加候选也必须分开审阅与采纳")
+@click.option("--review-token", required=True, help="人类确认追加卷章后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def storymap_append_volume(
-    ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool
+    ctx: click.Context, project_id: str, file_path: str, adopt: bool,
+    review_token: str, json_output: bool
 ) -> None:
     """新增卷章（追加模式）：在现有 StoryMap 尾部新增卷，已有卷章完全不动。
 
@@ -3813,6 +3994,7 @@ def storymap_append_volume(
     如需新角色/新主题锚点，先更新蓝图（蓝图更新会校验不破坏已采纳结构的引用）。
     故事图谱与人物圣经随章节采纳自动跟进，无需手动更新。
     """
+    _reject_implicit_adoption(adopt)
     volumes = _read_append_json(file_path, "volumes")
     _validate_appended_outlines(volumes, key="volumes")
     session = _session(ctx)
@@ -3825,6 +4007,7 @@ def storymap_append_volume(
         f"/novel/projects/{project_id}/story-map/append-propose",
         json_body=body,
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if adopt and result.get("id"):
         adopted = session.request(
@@ -3842,7 +4025,8 @@ def storymap_append_volume(
 @click.argument("project_id")
 @click.argument("volume_id")
 @click.argument("file_path")
-@click.option("--adopt", is_flag=True, help="追加形成候选后直接采纳（追加不动已有章节，风险低）")
+@click.option("--adopt", is_flag=True, help="已停用：追加候选也必须分开审阅与采纳")
+@click.option("--review-token", required=True, help="人类确认追加章节后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def storymap_append_chapters(
@@ -3851,6 +4035,7 @@ def storymap_append_chapters(
     volume_id: str,
     file_path: str,
     adopt: bool,
+    review_token: str,
     json_output: bool,
 ) -> None:
     """新增章节（追加模式）：向指定卷尾部新增章节，已有卷章完全不动。
@@ -3860,6 +4045,7 @@ def storymap_append_chapters(
     联动提示：新章 beats 若引用蓝图锚点，锚点必须已存在（新锚点需先更新蓝图）；
     蓝图更新会校验不破坏已采纳结构引用；故事图谱/人物圣经随采纳自动跟进。
     """
+    _reject_implicit_adoption(adopt)
     chapters = _read_append_json(file_path, "chapters")
     _validate_appended_outlines(chapters, key="chapters")
     session = _session(ctx)
@@ -3873,6 +4059,7 @@ def storymap_append_chapters(
         f"/novel/projects/{project_id}/story-map/append-propose",
         json_body=body,
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if adopt and result.get("id"):
         adopted = session.request(
@@ -3899,10 +4086,12 @@ def novel_group(ctx: click.Context) -> None:
 @click.argument("project_id", required=False)
 @click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
 @click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_outline(
-    ctx: click.Context, project_id: str | None, text: str | None, file: str | None, json_output: bool
+    ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
+    review_token: str, json_output: bool
 ) -> None:
     """回填梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 用户审阅 → outline 采纳后 storymap 才可规划。
 
@@ -3923,6 +4112,7 @@ def novel_outline(
         f"/novel/projects/{pid}/synopsis-outline/propose",
         json_body={"content": (text or "").strip(), "idempotency_key": f"cli-outline-{__import__('time').time_ns()}"},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{_status_word(result.get('status'), medium='novel')}）——请先通读审阅："))
@@ -3951,12 +4141,17 @@ def novel_outline_status(ctx: click.Context, project_id: str | None, json_output
 
 @novel_group.command("outline-adopt")
 @click.argument("project_id", required=False)
+@click.option("--review-token", required=True, help="人类确认当前梗概候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def novel_outline_adopt(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+def novel_outline_adopt(ctx: click.Context, project_id: str | None,
+                        review_token: str, json_output: bool) -> None:
     """采纳梗概大纲（StoryMap 规划的前置条件）。"""
     pid = _resolve_project_id(ctx, project_id)
-    result = _api_request(ctx, "POST", f"/novel/projects/{pid}/synopsis-outline/adopt", write=True)
+    result = _api_request(
+        ctx, "POST", f"/novel/projects/{pid}/synopsis-outline/adopt", write=True,
+        headers={"X-Review-Token": review_token},
+    )
     if not json_output:
         click.echo(ui.ok(f"梗概大纲已定稿（v{result.get('version')}）——接下来规划全书结构（storymap）。"))
         return
@@ -3976,8 +4171,8 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     direction_ok = bool((state.get("creation_settings") or {}).get("chapter_target_words"))
     checks.append(("创作方向（direction）", direction_ok, "project direction --apply @direction.json"))
     cores = [c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]
-    checks.append(("故事核心（已定稿）", bool(cores), "novel propose cores @file --adopt"))
-    checks.append(("蓝图", state.get("blueprint") is not None, "novel propose blueprint @file --adopt"))
+    checks.append(("故事核心（已定稿）", bool(cores), "novel propose cores → review candidate-preview → adopt-core"))
+    checks.append(("蓝图", state.get("blueprint") is not None, "novel propose blueprint → review candidate-preview → adopt-blueprint"))
     outline = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
     checks.append(("梗概大纲（已定稿）", bool(outline and outline.get("status") == "adopted"), 'novel outline <作品号> --text "…" → outline-adopt'))
     sm = state.get("story_map") or {}
@@ -4112,7 +4307,7 @@ def novel_story_cores(
       scriptnow novel propose <project_id> cores <file.json>
       -- 文件格式：{"drafts": [{"title","premise","point_of_view",
       "narrative_constraints":[],"angles":[]}]}，1-3 个 draft；
-      可加 --adopt 直接采纳最佳候选。
+      候选形成后用 review candidate-preview 展示，再独立 adopt。
     本命令是平台 AI 生成，仅在 Agent 无法自行产出方向时使用。
     """
     session = _session(ctx)
@@ -4132,15 +4327,18 @@ def novel_story_cores(
 @novel_group.command("adopt-core")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认此候选全文后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def novel_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def novel_adopt_core(ctx: click.Context, project_id: str, candidate_id: str,
+                     review_token: str, json_output: bool) -> None:
     """Adopt a story core candidate (novel)."""
     _emit(
         _session(ctx).request(
             "POST",
             f"/novel/projects/{project_id}/story-cores/{candidate_id}/adopt",
             write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -4161,7 +4359,7 @@ def novel_blueprint(
       scriptnow novel propose <project_id> blueprint <file.json>
       -- {"anchors":[{"id":"kind:key","kind":"world|character|relationship|
       character_arc|plot|foreshadow|motif","name","payload":{}}]}
-      可加 --adopt 直接采纳。
+      候选形成后用 review candidate-preview 展示，再独立 adopt。
     本命令是平台 AI 生成，仅在 Agent 无法自行产出蓝图时使用。
     """
     session = _session(ctx)
@@ -4181,15 +4379,18 @@ def novel_blueprint(
 @novel_group.command("adopt-blueprint")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认此候选全文后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str,
+                          review_token: str, json_output: bool) -> None:
     """Adopt a blueprint candidate (novel)."""
     _emit(
         _session(ctx).request(
             "POST",
             f"/novel/projects/{project_id}/blueprints/{candidate_id}/adopt",
             write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -4227,6 +4428,10 @@ def novel_bootstrap(
     未传该文件时才由平台 AI 生成（后备）。可 --stop-at cores|blueprint 在
     中间停下让人审阅候选。
     """
+    raise click.ClickException(
+        "bootstrap 的连续自动采纳已停用：请依次走 cores → blueprint → rough outline → StoryMap，"
+        "每阶段展示可读候选并取得一次独立的人类决定。"
+    )
     import json as _json
     import time as _time
 
@@ -4401,12 +4606,14 @@ def novel_bootstrap(
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=str)
-@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
+@click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True, help="人类确认当前可读预览后由Agent后台取得")
 @click.option("--budget", type=int, default=None, help="导入内容 token 预算上限；超限拒绝（如 20000）。中文≈1 token/字，英文≈1 token/4 字符")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_propose(
-    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, budget: int | None, json_output: bool
+    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool,
+    review_token: str, budget: int | None, json_output: bool
 ) -> None:
     """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
 
@@ -4423,6 +4630,7 @@ def novel_propose(
     storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）；
     bibles 建议在采纳 blueprint 后回填（character_key 通常与蓝图锚点一致）。
     """
+    _reject_implicit_adoption(adopt)
     import json as _json
 
     raw = Path(file_path).read_text(encoding="utf-8")
@@ -4442,7 +4650,8 @@ def novel_propose(
         _check_budget(drafts, budget, "故事方向", json_output)
         body = {"idempotency_key": idem, "drafts": drafts}
         result = session.request(
-            "POST", f"/novel/projects/{project_id}/story-cores/propose", json_body=body, write=True
+            "POST", f"/novel/projects/{project_id}/story-cores/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
         # story-cores/propose 返回 3 个候选的 list；取第一个用于 adopt。
         if isinstance(result, list):
@@ -4460,9 +4669,10 @@ def novel_propose(
         _check_budget(anchors, budget, "蓝图锚点", json_output)
         body = {"idempotency_key": idem, "anchors": anchors}
         result = session.request(
-            "POST", f"/novel/projects/{project_id}/blueprints/propose", json_body=body, write=True
+            "POST", f"/novel/projects/{project_id}/blueprints/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
-    else:  # storymap
+    elif kind == "storymap":
         volumes = data.get("volumes") or []
         if not volumes:
             raise click.ClickException("storymap 需要至少 1 个 volume")
@@ -4475,13 +4685,16 @@ def novel_propose(
             "volumes": volumes,
         }
         result = session.request(
-            "POST", f"/novel/projects/{project_id}/story-map/propose", json_body=body, write=True
+            "POST", f"/novel/projects/{project_id}/story-map/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
     if kind == "bibles":
         # 人物圣经是逐条采纳（PUT），不是 propose→adopt；--adopt 参数在此无意义。
         bibles = data.get("bibles") or []
         if not bibles:
             raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        if len(bibles) != 1:
+            raise click.ClickException("人物圣经必须逐人展示和确认；每次只提交 1 条 bible")
         _check_budget(bibles, budget, "人物圣经", json_output)
         adopted = []
         for bible in bibles:
@@ -4497,6 +4710,7 @@ def novel_propose(
                     "source_note": bible.get("source_note"),
                 },
                 write=True,
+                headers={"X-Review-Token": review_token},
             )
             adopted.append(
                 {"character_key": record.get("character_key"), "status": record.get("status")}
@@ -4560,18 +4774,21 @@ def _rough_outline_template(ctx: click.Context, prefix: str, project_id: str) ->
 @novel_group.command("rough-outline")
 @click.argument("project_id")
 @click.argument("file_path", type=str)
-@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳")
+@click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True, help="人类确认完整粗纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def novel_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool) -> None:
-    """回填/提交小说粗纲（每叙事阶段一块；阶段边界来自叙事结构推导）。
+def novel_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool,
+                        review_token: str, json_output: bool) -> None:
+    """回填/提交小说粗纲（结构给出默认阶段；作者可手写并调整连续边界）。
 
     FILE_PATH: {"phases":[{"ordinal","phase_key","phase_title_zh","phase_title_en",
     "purpose","range_start","range_end","summary","key_beats":
     [{"title","description","anchor_ids":[]}],"anchor_ids":[]}]}
-    先用 novel rough-outline-example <pid> 取模板（阶段边界即叙事结构阶段），
-    再逐阶段填写具体剧情纲要后回填；--adopt 直接采纳为当前粗纲。
+    先用 novel rough-outline-example <pid> 取结构建议（作者可调整边界，须连续覆盖全书），
+    再逐阶段填写具体剧情纲要后回填；候选形成后另行审阅与采纳。
     """
+    _reject_implicit_adoption(adopt)
     phases = _load_rough_outline_file(file_path)
     session = _session(ctx)
     example = _rough_outline_template(ctx, "novel", project_id)
@@ -4584,6 +4801,7 @@ def novel_rough_outline(ctx: click.Context, project_id: str, file_path: str, ado
         f"/novel/projects/{project_id}/rough-outline/propose",
         json_body={"idempotency_key": idem, "phases": phases},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     candidate_id = result.get("id") if isinstance(result, dict) else None
     payload = {"candidate_id": candidate_id, "status": result.get("status") if isinstance(result, dict) else result}
@@ -4607,12 +4825,15 @@ def novel_rough_outline(ctx: click.Context, project_id: str, file_path: str, ado
 @novel_group.command("rough-outline-adopt")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认完整粗纲候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def novel_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def novel_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str,
+                              review_token: str, json_output: bool) -> None:
     """采纳小说粗纲候选为当前版本（低风险规划写入，非结构覆盖）。"""
     result = _session(ctx).request(
-        "POST", f"/novel/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True
+        "POST", f"/novel/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"小说粗纲已采纳（id={result.get('id')}）。"))
@@ -4645,7 +4866,7 @@ def novel_rough_outline_check(ctx: click.Context, project_id: str, file_path: st
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_rough_outline_example(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """取小说粗纲空模板（阶段边界即叙事结构阶段），填写 summary 后回填。"""
+    """取小说粗纲结构建议；作者手写 summary，并可调整连续覆盖全书的阶段边界。"""
     result = _api_request(ctx, "GET", f"/novel/projects/{project_id}/rough-outline/example")
     if json_output:
         _emit(result, json_output)
@@ -4693,10 +4914,10 @@ def novel_planning_quality(
 
 @novel_group.command("orchestrate")
 @click.argument("project_id")
-@click.option("--storymap-candidate", "candidate_id", default=None, help="要审阅/采纳的 storymap 候选 id（默认取最新 active 候选）")
-@click.option("--adjust", "adjust_file", default=None, help="审阅后调整：传入修改后的 storymap JSON（@file），重新 propose 并采纳")
-@click.option("--accept", is_flag=True, help="确认接受当前 storymap 候选并采纳")
-@click.option("--skip-adopt", is_flag=True, help="只展示候选与计划，不自动采纳（等人工决策）")
+@click.option("--storymap-candidate", "candidate_id", default=None, help="要展示的 storymap 候选 id（默认取最新 active 候选）")
+@click.option("--adjust", "adjust_file", default=None, help="已停用：请修订 JSON 后重新走 preview/propose")
+@click.option("--accept", is_flag=True, help="已停用：候选必须经 candidate-preview 与独立凭证采纳")
+@click.option("--skip-adopt", is_flag=True, help="兼容选项；orchestrate 现在始终只展示，不采纳")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_orchestrate(
@@ -4708,21 +4929,18 @@ def novel_orchestrate(
     skip_adopt: bool,
     json_output: bool,
 ) -> None:
-    """编排故事结构：审阅 storymap 候选 → 决定 接受/调整 → 采纳 → 输出全书创作计划。
+    """只读展示 StoryMap 候选与全书创作计划，不连续调整或采纳。
 
-    这是「用户是否对 storymap 进行调整」的显式决策步骤：
-      1. 展示当前 storymap 候选（卷/章/节拍摘要）。
-      2. 决策：
-         --accept        采纳当前候选；
-         --adjust @file  用修改后的 JSON 重新导入并采纳（旧的自动过期）；
-         都不传则只展示（配合 --skip-adopt 完全等人决定）。
-      3. 采纳后输出 book plan（各章创作状态），作为逐章创作的起点。
+    候选全文使用 review candidate-preview 展示；人明确决定后，Agent 后台
+    confirm/claim，再用 storymap adopt --review-token 独立采纳。
     """
-    import json as _json
-
+    if accept or adjust_file:
+        raise click.ClickException(
+            "orchestrate 不再连续调整/采纳：先用 review candidate-preview 展示平台 StoryMap 候选，"
+            "人明确保留后再用 storymap adopt --review-token 独立采纳。"
+        )
     session = _session(ctx)
     state = _novel_state(session, project_id)
-    story_map = state.get("story_map") or {}
     candidates = state.get("story_map_candidates") or []
     active = [c for c in candidates if c.get("status") in ("active", "candidate")]
     if candidate_id:
@@ -4761,50 +4979,8 @@ def novel_orchestrate(
         _emit(summarize(chosen), json_output)
         return
 
-    final_candidate = chosen
-    # ② 用户决策：调整 → 重新导入
-    if adjust_file:
-        import pathlib as _pl
-
-        raw = _pl.Path(adjust_file[1:] if adjust_file.startswith("@") else adjust_file).read_text(
-            encoding="utf-8"
-        )
-        data = _json.loads(raw)
-        version = int(story_map.get("version") or 1)
-        body = {
-            "idempotency_key": f"cli-orchestrate-adjust-{__import__('time').time_ns()}",
-            "expected_version": version,
-            "volumes": data.get("volumes") or [],
-        }
-        result = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-map/propose",
-            json_body=body,
-            write=True,
-        )
-        final_candidate = {
-            "id": result.get("id"),
-            "status": result.get("status"),
-            "volumes": data.get("volumes") or [],
-        }
-        if not json_output:
-            click.echo(
-                f"已用调整后的 JSON 重新导入（候选 {result.get('id')}，旧候选自动过期）", err=True
-            )
-
-    # ③ 采纳（除非 --skip-adopt 且无 accept）
-    if not skip_adopt or accept:
-        if final_candidate is None or not final_candidate.get("id"):
-            raise click.ClickException("没有可采纳的 storymap 候选")
-        adopted = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-map/{final_candidate['id']}/adopt?confirm=true",
-            write=True,
-        )
-        if not json_output:
-            click.echo(ui.ok(f"全书结构已定稿（{_status_word(adopted.get('status'), medium='novel')}）——下面打印全书创作计划。"), err=True)
-
-    # ④ 输出全书创作计划
+    # ② 输出全书创作计划。候选调整、再提交与采纳由各自的
+    # review/propose/candidate-preview/adopt 命令承担，orchestrate 永远只读。
     fresh = _novel_state(session, project_id)
     volumes = (fresh.get("story_map") or {}).get("volumes", [])
     documents = fresh.get("documents") or []
@@ -4910,13 +5086,17 @@ def scene_generate(
     "--token",
     "decision_token",
     default=None,
-    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
+    help="旧版兼容授权令牌；新流程统一使用 --review-token",
 )
+@click.option("--review-token", required=True, help="平台候选全文经人确认后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool) -> None:
+def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id: str,
+                human_decision: bool, decision_token: str | None, review_token: str,
+                json_output: bool) -> None:
     """Adopt a scene revision (alias of script adopt-scene)."""
-    script_adopt_scene.callback(project_id, scene_id, revision_id, human_decision, decision_token, json_output)
+    script_adopt_scene.callback(project_id, scene_id, revision_id, human_decision,
+                                decision_token, review_token, json_output)
 
 
 @scene_group.command("propose")
@@ -4925,7 +5105,8 @@ def scene_adopt(ctx: click.Context, project_id: str, scene_id: str, revision_id:
 @click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
 @click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
 @click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
-@click.option("--auto-adopt", is_flag=True, help="回传后自动采纳该候选")
+@click.option("--auto-adopt", is_flag=True, help="已停用：正文候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True)
 @click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
 @click.option("--example", is_flag=True, help="显示示例文本")
 @click.option("--json", "json_output", is_flag=True)
@@ -4938,13 +5119,15 @@ def scene_propose(
     text: str | None,
     budget: int | None,
     auto_adopt: bool,
+    review_token: str | None,
     help_format: bool,
     example: bool,
     json_output: bool,
 ) -> None:
     """Agent 本地创作场次 → 回传为候选（alias of script scene-propose）。"""
     script_scene_propose.callback(
-        project_id, scene_id, blocks_file, text, budget, auto_adopt, help_format, example, json_output
+        project_id, scene_id, blocks_file, text, budget, auto_adopt, review_token,
+        help_format, example, json_output
     )
 
 
@@ -5065,8 +5248,8 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
     state = session.request("GET", f"/script/projects/{pid}/state")
     checks = [
         ("创作方向（direction）", bool(state.get("story_cores") or state.get("blueprint")), "project direction --apply @direction.json"),
-        ("故事核心（adopted core）", bool([c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]), "script propose cores @file --adopt"),
-        ("蓝图（blueprint）", state.get("blueprint") is not None, "script propose blueprint @file --adopt"),
+        ("故事核心（adopted core）", bool([c for c in (state.get("story_cores") or []) if c.get("status") in ("adopted", "active")]), "script propose cores → review candidate-preview → adopt-core"),
+        ("蓝图（blueprint）", state.get("blueprint") is not None, "script propose blueprint → review candidate-preview → adopt-blueprint"),
         ("StoryMap", bool((state.get("story_map") or {}).get("episodes")), "script propose storymap @file 或 script storymap --wait"),
     ]
     outline = _api_request(ctx, "GET", f"/script/projects/{pid}/synopsis-outline")
@@ -5099,10 +5282,12 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
 @click.argument("project_id")
 @click.argument("episode_id")
 @click.argument("file_path", type=str)
+@click.option("--review-token", required=True, help="人类确认单集集纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_episode_outline(
-    ctx: click.Context, project_id: str, episode_id: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, episode_id: str, file_path: str,
+    review_token: str, json_output: bool
 ) -> None:
     """回填单集纲（旧项目补纲入口；保存为 StoryMap 结构候选）。
 
@@ -5134,6 +5319,7 @@ def script_episode_outline(
             **outline,
         },
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"第 {episode_id} 集集纲已形成结构候选（{result.get('id')}）"))
@@ -5155,10 +5341,12 @@ def script_state(ctx: click.Context, project_id: str, json_output: bool) -> None
 @click.argument("project_id", required=False)
 @click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
 @click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_outline(
-    ctx: click.Context, project_id: str | None, text: str | None, file: str | None, json_output: bool
+    ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
+    review_token: str, json_output: bool
 ) -> None:
     """回填剧本梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 采纳后 StoryMap 才可规划。"""
     pid = _resolve_project_id(ctx, project_id)
@@ -5174,6 +5362,7 @@ def script_outline(
         f"/script/projects/{pid}/synopsis-outline/propose",
         json_body={"content": (text or "").strip(), "idempotency_key": f"cli-script-outline-{__import__('time').time_ns()}"},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"梗概大纲已回填（v{result.get('version')}，{_status_word(result.get('status'), medium='script')}）"))
@@ -5184,12 +5373,17 @@ def script_outline(
 
 @script_group.command("outline-adopt")
 @click.argument("project_id", required=False)
+@click.option("--review-token", required=True, help="人类确认当前梗概候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_outline_adopt(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+def script_outline_adopt(ctx: click.Context, project_id: str | None,
+                         review_token: str, json_output: bool) -> None:
     """采纳剧本梗概大纲（StoryMap 规划的前置条件）。"""
     pid = _resolve_project_id(ctx, project_id)
-    result = _api_request(ctx, "POST", f"/script/projects/{pid}/synopsis-outline/adopt", write=True)
+    result = _api_request(
+        ctx, "POST", f"/script/projects/{pid}/synopsis-outline/adopt", write=True,
+        headers={"X-Review-Token": review_token},
+    )
     if not json_output:
         click.echo(ui.ok(f"梗概大纲已定稿（v{result.get('version')}）——接下来规划剧集结构（storymap）。"))
         return
@@ -5392,7 +5586,7 @@ def script_story_cores(
       -- 文件格式：{"drafts": [{"title","concept","angles":[...],
       "details":{"narrative_engine":[],"viewpoint_anchor":[],"pacing_recipe":[],
       "market_judgement":[]}}]}，1-3 个 draft；
-      可加 --adopt 直接采纳最佳候选。
+      候选形成后用 review candidate-preview 展示，再独立 adopt。
     本命令是平台 AI 生成，仅在 Agent 无法自行产出方向时使用。
     """
     session = _session(ctx)
@@ -5412,13 +5606,16 @@ def script_story_cores(
 @script_group.command("adopt-core")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认此候选全文后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def script_adopt_core(ctx: click.Context, project_id: str, candidate_id: str,
+                      review_token: str, json_output: bool) -> None:
     """Adopt a story core candidate (script)."""
     _emit(
         _session(ctx).request(
-            "POST", f"/script/projects/{project_id}/story-cores/{candidate_id}/adopt", write=True
+            "POST", f"/script/projects/{project_id}/story-cores/{candidate_id}/adopt", write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -5571,11 +5768,13 @@ def script_planning_quality(
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=str)
-@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
+@click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True, help="人类确认当前可读预览后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_propose(
-    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool, json_output: bool
+    ctx: click.Context, project_id: str, kind: str, file_path: str, adopt: bool,
+    review_token: str, json_output: bool
 ) -> None:
     """从本地 JSON 导入创作候选（Agent 本地生成 → 标准格式导入，降低平台生成压力）。
 
@@ -5594,6 +5793,7 @@ def script_propose(
     storymap 导入前需已采纳 blueprint（beats 引用的 anchor_ids 必须存在）；
     bibles 建议在采纳 blueprint 后回填（character_key 通常与蓝图锚点一致）。
     """
+    _reject_implicit_adoption(adopt)
     import json as _json
 
     raw = Path(file_path).read_text(encoding="utf-8")
@@ -5612,7 +5812,8 @@ def script_propose(
             raise click.ClickException("script story cores 需要 1 到 3 个 draft（可只给 1 个主推方向）")
         body = {"idempotency_key": idem, "drafts": drafts}
         result = session.request(
-            "POST", f"/script/projects/{project_id}/story-cores/propose", json_body=body, write=True
+            "POST", f"/script/projects/{project_id}/story-cores/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
         if isinstance(result, list):
             result = result[0] if result else {}
@@ -5628,7 +5829,8 @@ def script_propose(
                 )
         body = {"idempotency_key": idem, "anchors": anchors}
         result = session.request(
-            "POST", f"/script/projects/{project_id}/blueprints/propose", json_body=body, write=True
+            "POST", f"/script/projects/{project_id}/blueprints/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
     elif kind == "storymap":  # storymap
         episodes = data.get("episodes") or []
@@ -5654,13 +5856,16 @@ def script_propose(
             "episodes": episodes,
         }
         result = session.request(
-            "POST", f"/script/projects/{project_id}/story-map/propose", json_body=body, write=True
+            "POST", f"/script/projects/{project_id}/story-map/propose", json_body=body, write=True,
+            headers={"X-Review-Token": review_token}
         )
     elif kind == "bibles":
         # 人物圣经是逐条采纳（PUT），不是 propose→adopt；--adopt 参数在此无意义。
         bibles = data.get("bibles") or []
         if not bibles:
             raise click.ClickException("bibles 需要至少 1 条人物圣经")
+        if len(bibles) != 1:
+            raise click.ClickException("人物圣经必须逐人展示和确认；每次只提交 1 条 bible")
         thin = _thin_bible_profiles(bibles)
         if thin:
             click.echo(
@@ -5686,6 +5891,7 @@ def script_propose(
                     "source_note": bible.get("source_note"),
                 },
                 write=True,
+                headers={"X-Review-Token": review_token},
             )
             adopted.append(
                 {"character_key": record.get("character_key"), "status": record.get("status")}
@@ -5722,18 +5928,21 @@ def script_propose(
 @script_group.command("rough-outline")
 @click.argument("project_id")
 @click.argument("file_path", type=str)
-@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳")
+@click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True, help="人类确认完整粗纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool) -> None:
+def script_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool,
+                         review_token: str, json_output: bool) -> None:
     """回填/提交剧本粗纲（竖屏剧「分集大纲·粗纲」：每叙事阶段一块）。
 
     FILE_PATH: {"phases":[{"ordinal","phase_key","phase_title_zh","phase_title_en",
     "purpose","range_start","range_end","summary","key_beats":
     [{"title","description","anchor_ids":[]}],"anchor_ids":[]}]}
-    先用 script rough-outline-example <pid> 取模板（阶段边界即叙事结构阶段），
-    逐阶段填写具体剧情纲要后回填；--adopt 直接采纳。
+    先用 script rough-outline-example <pid> 取结构建议（作者可调整边界，须连续覆盖全集），
+    逐阶段填写具体剧情纲要后回填；候选形成后另行审阅与采纳。
     """
+    _reject_implicit_adoption(adopt)
     phases = _load_rough_outline_file(file_path)
     session = _session(ctx)
     example = _rough_outline_template(ctx, "script", project_id)
@@ -5746,6 +5955,7 @@ def script_rough_outline(ctx: click.Context, project_id: str, file_path: str, ad
         f"/script/projects/{project_id}/rough-outline/propose",
         json_body={"idempotency_key": idem, "phases": phases},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     candidate_id = result.get("id") if isinstance(result, dict) else None
     payload = {"candidate_id": candidate_id, "status": result.get("status") if isinstance(result, dict) else result}
@@ -5769,12 +5979,15 @@ def script_rough_outline(ctx: click.Context, project_id: str, file_path: str, ad
 @script_group.command("rough-outline-adopt")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认完整粗纲候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def script_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str,
+                               review_token: str, json_output: bool) -> None:
     """采纳剧本粗纲候选为当前版本（低风险规划写入，非结构覆盖）。"""
     result = _session(ctx).request(
-        "POST", f"/script/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True
+        "POST", f"/script/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"剧本粗纲已采纳（id={result.get('id')}）。"))
@@ -5788,7 +6001,7 @@ def script_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_rough_outline_check(ctx: click.Context, project_id: str, file_path: str, json_output: bool) -> None:
-    """本地预检剧本粗纲文件（阶段边界/字数/套话），propose 前的确定性自查。"""
+    """预检剧本粗纲：阶段边界、动态篇幅、事件链密度与具体性。"""
     phases = _load_rough_outline_file(file_path)
     example = _rough_outline_template(ctx, "script", project_id)
     issues = _rough_outline_issues(phases, example, range_label="集")
@@ -5799,7 +6012,142 @@ def script_rough_outline_check(ctx: click.Context, project_id: str, file_path: s
         for issue in issues:
             click.echo(ui.error(issue), err=True)
         raise click.ClickException(f"粗纲预检未通过（{len(issues)} 项）")
-    click.echo(ui.ok("粗纲预检通过：阶段边界、字数与具体性均符合要求。"))
+    click.echo(ui.ok("粗纲预检通过：阶段边界、动态篇幅、事件链密度与具体性均符合要求。"))
+
+
+@script_group.command("rough-outline-start")
+@click.argument("project_id")
+@click.option("--restart", is_flag=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_start(ctx: click.Context, project_id: str, restart: bool, json_output: bool) -> None:
+    """开始分阶段粗纲构建；不影响已采纳粗纲。"""
+    result = _session(ctx).request("POST", f"/script/projects/{project_id}/rough-outline/build/start?restart={str(restart).lower()}", write=True)
+    if json_output:
+        _emit(result, True)
+        return
+    click.echo(ui.ok("分阶段粗纲构建已就绪。"))
+    progress = (
+        f"已完成 / 共 {result.get('total_phases')} 阶段"
+        if result.get("is_complete")
+        else f"阶段 {result.get('current_phase_ordinal')} / 共 {result.get('total_phases')} 阶段"
+    )
+    click.echo(ui.kv("当前进度", progress))
+    click.echo(ui.kv("当前阶段", result.get("current_phase_key") or "已全部完成"))
+    click.echo(ui.kv("已完成", "、".join(result.get("completed_phases") or []) or "（无）"))
+
+
+@script_group.command("rough-outline-progress")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_progress(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """查看分阶段粗纲构建进度。"""
+    result = _session(ctx).request("GET", f"/script/projects/{project_id}/rough-outline/build")
+    if json_output:
+        _emit(result, True)
+        return
+    if not result:
+        click.echo(ui.warn("尚未开始分阶段粗纲构建。"))
+        return
+    click.echo(ui.section("=== 分阶段粗纲进度 ==="))
+    progress = (
+        f"已完成 / 共 {result.get('total_phases')} 阶段"
+        if result.get("is_complete")
+        else f"阶段 {result.get('current_phase_ordinal')} / 共 {result.get('total_phases')} 阶段"
+    )
+    click.echo(ui.kv("当前进度", progress))
+    click.echo(ui.kv("当前阶段", result.get("current_phase_key") or "已全部完成"))
+    click.echo(ui.kv("已完成", "、".join(result.get("completed_phases") or []) or "（无）"))
+
+
+@script_group.command("rough-outline-phase")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path")
+@click.option("--restart-from", is_flag=True, help="替换该阶段，并使下游阶段失效")
+@click.option("--review-token", required=True, help="人类已阅读当前内容后签发的一次性审阅凭证")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_phase(ctx: click.Context, project_id: str, phase_key: str, file_path: str,
+                               restart_from: bool, review_token: str, json_output: bool) -> None:
+    """从完整或单阶段JSON中提取一个阶段，回填到隔离构建链。"""
+    phases = _load_rough_outline_file(file_path)
+    phase = next((item for item in phases if str(item.get("phase_key")) == phase_key), None)
+    if phase is None:
+        raise click.ClickException(f"文件中没有阶段 {phase_key}")
+    result = _session(ctx).request("POST", f"/script/projects/{project_id}/rough-outline/build/phase",
+        json_body={"phase": phase, "restart_from": restart_from}, write=True,
+        headers={"X-Review-Token": review_token})
+    if json_output:
+        _emit(result, True)
+        return
+    click.echo(ui.ok(f"阶段 {phase_key} 已回填。"))
+    progress = (
+        f"已完成 / 共 {result.get('total_phases')} 阶段"
+        if result.get("is_complete")
+        else f"阶段 {result.get('current_phase_ordinal')} / 共 {result.get('total_phases')} 阶段"
+    )
+    click.echo(ui.kv("当前进度", progress))
+    click.echo(ui.kv("下一阶段", result.get("current_phase_key") or "已全部完成，可汇总提案"))
+    click.echo(ui.kv("已完成", "、".join(result.get("completed_phases") or []) or "（无）"))
+
+
+@script_group.command("rough-outline-phase-preview")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phase_key: str,
+                                       file_path: str, json_output: bool) -> None:
+    """展示人类可读阶段全文并生成绑定该内容的 digest；不写平台。"""
+    import hashlib as _hashlib
+    import json as _json
+
+    phases = _load_rough_outline_file(file_path)
+    phase = next((item for item in phases if str(item.get("phase_key")) == phase_key), None)
+    if phase is None:
+        raise click.ClickException(f"文件中没有阶段 {phase_key}")
+    digest = _hashlib.sha256(_json.dumps(phase, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+    packet = {"project_id": project_id, "resource_kind": "rough_outline_phase",
+              "resource_id": phase_key, "content_digest": digest, "phase": phase,
+              "human_action": "请完整阅读，决定：保留 / 调整 / 换方向。只有明确保留后才签发凭证提交。"}
+    registered = _session(ctx).request("POST", "/creative-reviews/preview",
+        json_body={"project_id": project_id, "resource_kind": "rough_outline_phase",
+                   "resource_id": phase_key, "content_digest": digest,
+                   "preview": {"title": str(phase.get("phase_title_zh") or phase_key),
+                               "content": phase, "human_action": packet["human_action"]}}, write=True)
+    packet["packet_id"] = registered.get("packet_id")
+    packet["review_url"] = _session(ctx).base_url + str(registered.get("review_path") or "")
+    if json_output:
+        _emit(packet, True)
+        return
+    click.echo(ui.section(f"=== {phase.get('phase_title_zh')} · 第 {phase.get('range_start')}–{phase.get('range_end')} 集 ==="))
+    click.echo(str(phase.get("summary") or ""))
+    click.echo(ui.section("关键事件"))
+    for beat in phase.get("key_beats") or []:
+        click.echo(f"- {beat.get('title')}：{beat.get('description')}")
+    click.echo(ui.dim(f"内容指纹：{digest}"), err=False)
+    click.echo(ui.kv("review_packet", registered.get("packet_id")))
+    click.echo(ui.kv("一键查看", packet["review_url"]))
+    click.echo(ui.warn("请先让人完整阅读并明确选择：保留 / 调整 / 换方向。此命令没有写入平台。"), err=False)
+
+
+@script_group.command("rough-outline-propose")
+@click.argument("project_id")
+@click.option("--review-token", required=True, help="人类确认分阶段汇总粗纲后由Agent后台取得")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_propose(
+    ctx: click.Context, project_id: str, review_token: str, json_output: bool,
+) -> None:
+    """全部阶段完成后形成正式完整粗纲候选；不自动采纳。"""
+    _emit(_session(ctx).request(
+        "POST", f"/script/projects/{project_id}/rough-outline/build/finalize",
+        write=True, headers={"X-Review-Token": review_token},
+    ), json_output)
 
 
 @script_group.command("rough-outline-example")
@@ -5807,15 +6155,26 @@ def script_rough_outline_check(ctx: click.Context, project_id: str, file_path: s
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_rough_outline_example(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """取剧本粗纲空模板（阶段边界即叙事结构阶段），填写 summary 后回填。"""
+    """取剧本粗纲结构建议；作者手写 summary，并可调整连续覆盖全集的阶段边界。"""
     result = _api_request(ctx, "GET", f"/script/projects/{project_id}/rough-outline/example")
     if json_output:
         _emit(result, json_output)
         return
     click.echo(ui.section(f"剧本粗纲模板 · {result.get('structure_title_zh')}（{result.get('structure_key')}）· 共 {result.get('total_units')} 集"))
+    click.echo(ui.warn("Agent 创作提醒：粗纲必须完整讲述阶段剧情，不能用一句话复述阶段目的。"), err=False)
+    click.echo(ui.dim("  必须展开：入口状态 → 连续行动 → 阻力升级 → 证据/关系变化 → 中部转折 → 不可逆代价 → 出口状态。"), err=False)
+    requirements = {
+        str(item.get("phase_key") or ""): item
+        for item in (result.get("phase_requirements") or [])
+        if isinstance(item, dict)
+    }
     for phase in result.get("phases") or []:
         click.echo(ui.kv(f"阶段{phase['ordinal']} {phase['phase_title_zh']}", f"第 {phase['range_start']}–{phase['range_end']} 集 · 目的：{phase.get('purpose')}"))
-        click.echo(ui.dim("  summary：填写该阶段具体剧情纲要（≥80 字，禁止套话）"), err=False)
+        req = requirements.get(str(phase.get("phase_key") or ""), {})
+        click.echo(ui.dim(
+            f"  summary：至少 {req.get('recommended_min_chars', '动态')} 字、"
+            f"{req.get('recommended_min_events', '动态')} 个可辨认事件段；禁止套话与事件清单式压缩。"
+        ), err=False)
 
 
 @script_group.command("blueprint")
@@ -5833,7 +6192,7 @@ def script_blueprint(
       scriptnow script propose <project_id> blueprint <file.json>
       -- {"anchors":[{"id":"kind:key","kind":"world|character|relationship|
       character_arc|plot|foreshadow|motif","name","payload":{}}]}
-      可加 --adopt 直接采纳。
+      候选形成后用 review candidate-preview 展示，再独立 adopt。
     本命令是平台 AI 生成，仅在 Agent 无法自行产出蓝图时使用。
     """
     session = _session(ctx)
@@ -5853,13 +6212,16 @@ def script_blueprint(
 @script_group.command("adopt-blueprint")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认此候选全文后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def script_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str,
+                           review_token: str, json_output: bool) -> None:
     """Adopt a blueprint candidate (script)."""
     _emit(
         _session(ctx).request(
-            "POST", f"/script/projects/{project_id}/blueprints/{candidate_id}/adopt", write=True
+            "POST", f"/script/projects/{project_id}/blueprints/{candidate_id}/adopt", write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -5895,10 +6257,12 @@ def script_storymap_phases(ctx: click.Context, project_id: str, json_output: boo
 @click.argument("project_id")
 @click.argument("phase_key")
 @click.argument("file_path", type=str)
+@click.option("--review-token", required=True, help="人类确认本阶段完整集纲后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_storymap_append_phase(
-    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str,
+    review_token: str, json_output: bool
 ) -> None:
     """按叙事阶段提交剧本的下一未完成阶段（阶段=集区间；采纳仍走 adopt-storymap）。
 
@@ -5945,6 +6309,7 @@ def script_storymap_append_phase(
             "idempotency_key": f"cli-script-phase-{phase_key}-{__import__('time').time_ns()}",
         },
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
@@ -5977,7 +6342,7 @@ def script_storymap_rebuild_start(
     if not json_output:
         click.echo(ui.ok(f"重建会话已开始（{result.get('id')}）：基础 StoryMap v{result.get('base_story_map_version')}"))
         click.echo(ui.dim(f"  阶段：{' → '.join(result.get('phase_keys') or [])}"))
-        click.echo(ui.dim(f"  下一步：storymap phases 查看阶段边界 → 本地生成第1阶段 → storymap rebuild-phase <pid> <phase_key> @episodes.json"), err=True)
+        click.echo(ui.dim("  下一步：storymap phases 查看阶段边界 → 本地生成第1阶段 → storymap rebuild-phase <pid> <phase_key> @episodes.json"), err=True)
         return
     _emit(result, json_output)
 
@@ -6007,10 +6372,11 @@ def script_storymap_rebuild(ctx: click.Context, project_id: str, json_output: bo
 @click.argument("project_id")
 @click.argument("phase_key")
 @click.argument("file_path", type=str)
+@click.option("--review-token", required=True)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_storymap_rebuild_phase(
-    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, review_token: str, json_output: bool
 ) -> None:
     """提交一个阶段到重建会话（阶段=集区间；每次只做一个阶段）。
 
@@ -6043,6 +6409,7 @@ def script_storymap_rebuild_phase(
         f"/script/projects/{pid}/storymap/rebuild-phase",
         json_body={"phase_key": phase_key, "episodes": episodes},
         write=True,
+        headers={"X-Review-Token": review_token},
     )
     if not json_output:
         click.echo(ui.ok(f"阶段 {phase_key} 已累积（累计 {result.get('accumulated_episodes')} 集）"))
@@ -6053,6 +6420,31 @@ def script_storymap_rebuild_phase(
             click.echo(ui.dim("  全部阶段完成：请审阅后 storymap rebuild-propose 形成替换候选（采纳仍走 storymap adopt，需明确确认）。"), err=True)
         return
     _emit(result, json_output)
+
+
+@script_group.command("storymap-rebuild-phase-preview")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild_phase_preview(ctx: click.Context, project_id: str, phase_key: str,
+                                          file_path: str, json_output: bool) -> None:
+    """展示完整阶段集纲并登记人类审阅packet；不累积到重建会话。"""
+    import hashlib as _hashlib
+    import json as _json
+    raw = _json.loads(Path(file_path[1:] if file_path.startswith("@") else file_path).read_text(encoding="utf-8"))
+    episodes = raw.get("episodes") if isinstance(raw, dict) else raw
+    content = {"phase_key": phase_key, "episodes": episodes}
+    digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+    preview = {"title": f"StoryMap阶段 {phase_key}", "content": content,
+               "human_action": "请逐集阅读并选择：保留 / 调整 / 换方向。"}
+    result = _session(ctx).request("POST", "/creative-reviews/preview",
+        json_body={"project_id": project_id, "resource_kind": "storymap_phase",
+                   "resource_id": phase_key, "content_digest": digest, "preview": preview}, write=True)
+    payload = {**result, "content_digest": digest, "episodes": episodes}
+    _emit(payload, json_output)
 
 
 @script_group.command("storymap-rebuild-check")
@@ -6127,7 +6519,7 @@ def script_storymap(
       scriptnow script propose <project_id> storymap <file.json>
       -- {"episodes":[{"id","ordinal","title","scenes":[{"id","ordinal","title",
       "duration_seconds_target","beats":[{"id","objective","anchor_ids":[]}]}]}]}
-      可加 --adopt 直接采纳。
+      候选形成后用 review candidate-preview 展示，再独立 adopt。
     本命令是平台 AI 生成，仅在 Agent 无法自行产出 StoryMap 时使用。
     """
     session = _session(ctx)
@@ -6147,13 +6539,16 @@ def script_storymap(
 @script_group.command("adopt-storymap")
 @click.argument("project_id")
 @click.argument("candidate_id")
+@click.option("--review-token", required=True, help="人类确认完整StoryMap候选后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def script_adopt_storymap(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+def script_adopt_storymap(ctx: click.Context, project_id: str, candidate_id: str,
+                          review_token: str, json_output: bool) -> None:
     """Adopt a script StoryMap candidate."""
     _emit(
         _session(ctx).request(
-            "POST", f"/script/projects/{project_id}/story-map/{candidate_id}/adopt", write=True
+            "POST", f"/script/projects/{project_id}/story-map/{candidate_id}/adopt", write=True,
+            headers={"X-Review-Token": review_token},
         ),
         json_output,
     )
@@ -6216,20 +6611,25 @@ def script_scene(
     "--token",
     "decision_token",
     default=None,
-    help="可选增强审计令牌；用户在对话中明确采用时，Agent 直接使用 --human 即可",
+    help="旧版兼容授权令牌；新流程统一使用 --review-token",
 )
+@click.option("--review-token", required=True, help="平台候选全文经人确认后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_adopt_scene(
-    ctx: click.Context, project_id: str, scene_id: str, revision_id: str, human_decision: bool, decision_token: str | None, json_output: bool
+    ctx: click.Context, project_id: str, scene_id: str, revision_id: str,
+    human_decision: bool, decision_token: str | None, review_token: str, json_output: bool
 ) -> None:
     """Adopt a scene revision (script).
 
     定稿必须来自人的明确决定。用户本人运行，或在与 Agent 的对话中明确表示
     「定稿 / 采用这版 / 可以继续」后，均可带 --human；无需重复终端确认。
     """
+    if decision_token:
+        raise click.ClickException(
+            "旧版 --token 已停用；请只使用 --review-token，不能同时发送两类凭证。"
+        )
     # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
-    # --token 仅为需要更强审计时的可选通道。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
@@ -6242,7 +6642,7 @@ def script_adopt_scene(
         else:
             raise click.ClickException(
                 "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
-                "Agent 可直接用 scene adopt --human。--token 仅为可选增强审计方式。"
+                "Agent 应先在后台 confirm/claim，再用 scene adopt --human --review-token <token>。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid。
@@ -6271,9 +6671,7 @@ def script_adopt_scene(
                 return
     except ScriptNowError:
         pass  # 前置检查失败不阻塞，交给平台权威校验
-    extra_headers = {}
-    if decision_token:
-        extra_headers["X-Decision-Token"] = decision_token
+    extra_headers = {"X-Review-Token": review_token}
     result = _session(ctx).request(
         "POST",
         f"/script/projects/{project_id}/scenes/{scene_id}/revisions/{resolved_revision_id}/adopt?human_decision={str(human_decision).lower()}",
@@ -6314,7 +6712,8 @@ _SCENE_EXAMPLE = """内景. 教室 - 清晨
 @click.option("--file", "blocks_file", default=None, help="blocks JSON 路径（@file 前缀表示文本文件），每项 {para_id,type,text}")
 @click.option("--text", default=None, help="纯文本：首段作 slugline，其余按 action block 回传")
 @click.option("--budget", type=int, default=None, help="token 预算上限（超限拒绝）")
-@click.option("--auto-adopt", is_flag=True, help="回传后自动采纳该候选")
+@click.option("--auto-adopt", is_flag=True, help="已停用：正文候选提交与采纳必须分开审阅")
+@click.option("--review-token", required=True)
 @click.option("--help-format", is_flag=True, help="显示 blocks JSON 格式说明")
 @click.option("--example", is_flag=True, help="显示示例文本")
 @click.option("--json", "json_output", is_flag=True)
@@ -6327,6 +6726,7 @@ def script_scene_propose(
     text: str | None,
     budget: int | None,
     auto_adopt: bool,
+    review_token: str,
     help_format: bool,
     example: bool,
     json_output: bool,
@@ -6337,6 +6737,10 @@ def script_scene_propose(
     if example:
         click.echo(_SCENE_EXAMPLE)
         return
+    if not review_token:
+        raise click.ClickException("提交前先展示完整场次并取得人工审阅凭证")
+    if auto_adopt:
+        raise click.ClickException("预览提交与最终采纳必须分开；不再支持 scene-propose --auto-adopt")
     """Agent 本地创作场次 → 回传为候选（剧本改编不经过平台文本生成）。
 
     适用于改编场景：Agent 已用解读出的 skill 方法论（interpret local 产出）在本地
@@ -6392,6 +6796,7 @@ def script_scene_propose(
             f"/script/projects/{project_id}/scenes/{scene_id}/propose",
             json_body=body,
             write=True,
+            headers={"X-Review-Token": review_token},
         )
     except ScriptNowError as error:
         if "409" in str(error) or "缺少" in str(error):
@@ -8275,6 +8680,7 @@ def export_options(ctx: click.Context, project_id: str, domain: str, json_output
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--review-token", required=True)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def export_create(
@@ -8286,6 +8692,7 @@ def export_create(
     translation_mode: str,
     target_language: str | None,
     front_matter: str,
+    review_token: str,
     json_output: bool,
 ) -> None:
     """创建导出（返回 manifest，用于下载）。"""
@@ -8302,10 +8709,41 @@ def export_create(
         body["target_language"] = target_language
     _emit(
         _session(ctx).request(
-            "POST", f"{prefix}/projects/{project_id}/exports", json_body=body, write=True, timeout=600
+            "POST", f"{prefix}/projects/{project_id}/exports", json_body=body, write=True,
+            timeout=600, headers={"X-Review-Token": review_token}
         ),
         json_output,
     )
+
+
+@export_group.command("preview")
+@click.argument("project_id")
+@click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
+@click.option("--units", default="")
+@click.option("--form", type=click.Choice(["clean", "working", "planning"]), default="clean")
+@click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
+@click.option("--target-language", default=None)
+@click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def export_preview(ctx: click.Context, project_id: str, domain: str, units: str, form: str,
+                   translation_mode: str, target_language: str | None, front_matter: str,
+                   json_output: bool) -> None:
+    """展示本次交付范围与形式，返回一键审阅地址；不创建导出。"""
+    import hashlib as _hashlib
+    import json as _json
+    key = "chapter_ids" if domain == "novel" else "scene_ids"
+    content = {key: [item.strip() for item in units.split(",") if item.strip()],
+               "form": form, "translation_mode": translation_mode,
+               "target_language": target_language, "front_matter": front_matter}
+    digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":")).encode()).hexdigest()
+    session = _session(ctx)
+    result = session.request("POST", "/creative-reviews/preview",
+        json_body={"project_id": project_id, "resource_kind": "export", "resource_id": domain,
+                   "content_digest": digest, "preview": {"title": "交付预览", "content": content}}, write=True)
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    _emit(result, json_output)
 
 
 @export_group.command("download")

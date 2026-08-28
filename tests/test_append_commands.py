@@ -16,6 +16,9 @@ from click.testing import CliRunner
 from cli_anything.scriptnow.scriptnow_cli import main
 
 
+REVIEW_ARGS = ["--review-token", "review-1"]
+
+
 @pytest.fixture
 def runner():
     return CliRunner()
@@ -51,7 +54,7 @@ def test_append_volume_object_input_payload(fake_session, runner, tmp_path):
         "vols.json",
         '{"volumes": [{"id": "volume-2", "ordinal": 1, "title": "第二卷", "chapters": [{"id": "chapter-2-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": [], "outline": {"summary": "主角踏入旧仓库", "active_goal": "找回药方", "conflict": "仓库被封锁", "turn": "药方被调包", "state_changes": {"information": "未知变为已知"}, "anchor_ids": ["event:medicine"]}}]}]}',
     )
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code == 0
     args, kwargs = fake_session.request.call_args
     assert args[1] == "/novel/projects/pid-1/story-map/append-propose"
@@ -68,7 +71,7 @@ def test_append_volume_array_input(fake_session, runner, tmp_path):
         "vols.json",
         '[{"id": "volume-3", "ordinal": 1, "title": "第三卷", "chapters": []}]',
     )
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code == 0
     body = fake_session.request.call_args.kwargs["json_body"]
     assert body["volumes"][0]["id"] == "volume-3"
@@ -80,7 +83,7 @@ def test_append_chapters_requires_volume_id(fake_session, runner, tmp_path):
         "chs.json",
         '[{"id": "chapter-9-1", "ordinal": 1, "title": "新章", "target_words": 3000, "beats": [], "outline": {"summary": "主角踏入旧仓库", "active_goal": "找回药方", "conflict": "仓库被封锁", "turn": "药方被调包", "state_changes": {"information": "未知变为已知"}, "anchor_ids": ["event:medicine"]}}]',
     )
-    result = runner.invoke(main, ["storymap", "append-chapters", "pid-1", "volume-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-chapters", "pid-1", "volume-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code == 0
     args, kwargs = fake_session.request.call_args
     assert args[1] == "/novel/projects/pid-1/story-map/append-propose"
@@ -90,7 +93,7 @@ def test_append_chapters_requires_volume_id(fake_session, runner, tmp_path):
 
 
 def test_missing_file_is_rejected(fake_session, runner, tmp_path):
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", "@nope.json"])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", "@nope.json", *REVIEW_ARGS])
     assert result.exit_code != 0
     assert "No such file" in result.output or "不存在" in result.output
     fake_session.request.assert_not_called()
@@ -98,7 +101,7 @@ def test_missing_file_is_rejected(fake_session, runner, tmp_path):
 
 def test_invalid_json_is_rejected(fake_session, runner, tmp_path):
     file_arg = _write(tmp_path, "bad.json", "{not json")
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code != 0
     assert "JSON" in result.output
     fake_session.request.assert_not_called()
@@ -106,25 +109,22 @@ def test_invalid_json_is_rejected(fake_session, runner, tmp_path):
 
 def test_empty_array_is_rejected(fake_session, runner, tmp_path):
     file_arg = _write(tmp_path, "empty.json", "[]")
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code != 0
     assert "至少 1 个条目" in result.output
     fake_session.request.assert_not_called()
 
 
-def test_adopt_flag_issues_second_confirm_request(fake_session, runner, tmp_path):
+def test_adopt_flag_is_rejected_to_keep_adoption_as_separate_human_decision(fake_session, runner, tmp_path):
     file_arg = _write(
         tmp_path,
         "vols.json",
         '[{"id": "volume-4", "ordinal": 1, "title": "第四卷", "chapters": []}]',
     )
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, "--adopt"])
-    assert result.exit_code == 0
-    paths = [call.args[1] for call in fake_session.request.call_args_list]
-    assert paths == [
-        "/novel/projects/pid-1/story-map/append-propose",
-        "/novel/projects/pid-1/story-map/candidate-1/adopt?confirm=true",
-    ]
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, "--adopt", *REVIEW_ARGS])
+    assert result.exit_code == 1
+    assert "已取消隐式 --adopt" in result.output
+    fake_session.request.assert_not_called()
 
 
 def test_backend_conflict_is_mapped_to_error(fake_session, runner, tmp_path, monkeypatch):
@@ -139,7 +139,7 @@ def test_backend_conflict_is_mapped_to_error(fake_session, runner, tmp_path, mon
         "vols.json",
         '[{"id": "volume-5", "ordinal": 1, "title": "第五卷", "chapters": []}]',
     )
-    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg])
+    result = runner.invoke(main, ["storymap", "append-volume", "pid-1", file_arg, *REVIEW_ARGS])
     assert result.exit_code != 0
     assert "duplicate ids" in result.output
 
