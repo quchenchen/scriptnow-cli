@@ -2975,6 +2975,49 @@ def _rough_outline_issues(phases: object, example: object, range_label: str = "�
     return issues
 
 
+def _rough_outline_phase_issues(
+    phase: dict[str, object], example: dict[str, object], progress: dict[str, object],
+) -> list[str]:
+    """Validate one isolated Script rough-outline phase before preview/backfill."""
+
+    key = str(phase.get("phase_key") or "")
+    template_phases = [
+        item for item in (example.get("phases") or []) if isinstance(item, dict)
+    ]
+    target = next((item for item in template_phases if item.get("phase_key") == key), None)
+    if target is None:
+        return [f"阶段 {key} 不属于当前叙事结构"]
+    issues: list[str] = []
+    if progress.get("current_phase_key") != key:
+        issues.append(f"当前只能创作阶段 {progress.get('current_phase_key')}，收到 {key}")
+    if int(phase.get("ordinal") or 0) != int(target.get("ordinal") or 0):
+        issues.append("阶段序号必须与叙事结构顺序一致")
+    completed = [item for item in (progress.get("phases") or []) if isinstance(item, dict)]
+    required_start = 1 if not completed else int(completed[-1].get("range_end") or 0) + 1
+    start = int(phase.get("range_start") or 0)
+    end = int(phase.get("range_end") or 0)
+    if start != required_start:
+        issues.append(f"阶段范围必须从第 {required_start} 集连续开始")
+    remaining = max(0, len(template_phases) - int(target.get("ordinal") or 0))
+    total_units = int(example.get("total_units") or 0)
+    latest_end = total_units - remaining
+    if end > latest_end:
+        issues.append(f"本阶段最晚结束于第 {latest_end} 集，须为后续阶段保留范围")
+    if remaining == 0 and end != total_units:
+        issues.append(f"最后阶段必须覆盖到第 {total_units} 集")
+    if end < start:
+        issues.append("阶段区间终点小于起点")
+        return issues
+    unit_count = end - start + 1
+    normalized = {**phase, "ordinal": 1, "range_start": 1, "range_end": unit_count}
+    synthetic = {
+        "total_units": unit_count,
+        "phases": [{**target, "ordinal": 1, "range_start": 1, "range_end": unit_count}],
+    }
+    issues.extend(_rough_outline_issues([normalized], synthetic, range_label="集"))
+    return issues
+
+
 def _thin_bible_profiles(bibles: object) -> list[str]:
     """Detect thin character-bible profiles for the propose preflight (guidance).
 
@@ -6101,7 +6144,7 @@ def script_rough_outline_phase(ctx: click.Context, project_id: str, phase_key: s
 @click.pass_context
 def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phase_key: str,
                                        file_path: str, json_output: bool) -> None:
-    """展示人类可读阶段全文并生成绑定该内容的 digest；不写平台。"""
+    """预检并展示单阶段全文，生成绑定该内容的 digest；不回填粗纲。"""
     import hashlib as _hashlib
     import json as _json
 
@@ -6109,18 +6152,24 @@ def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phas
     phase = next((item for item in phases if str(item.get("phase_key")) == phase_key), None)
     if phase is None:
         raise click.ClickException(f"文件中没有阶段 {phase_key}")
+    session = _session(ctx)
+    example = session.request("GET", f"/script/projects/{project_id}/rough-outline/example")
+    progress = session.request("GET", f"/script/projects/{project_id}/rough-outline/build")
+    issues = _rough_outline_phase_issues(phase, example, progress or {})
+    if issues:
+        raise click.ClickException("单阶段粗纲预检未通过：" + "；".join(issues[:5]))
     digest = _hashlib.sha256(_json.dumps(phase, ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
     packet = {"project_id": project_id, "resource_kind": "rough_outline_phase",
               "resource_id": phase_key, "content_digest": digest, "phase": phase,
               "human_action": "请完整阅读，决定：保留 / 调整 / 换方向。只有明确保留后才签发凭证提交。"}
-    registered = _session(ctx).request("POST", "/creative-reviews/preview",
+    registered = session.request("POST", "/creative-reviews/preview",
         json_body={"project_id": project_id, "resource_kind": "rough_outline_phase",
                    "resource_id": phase_key, "content_digest": digest,
                    "preview": {"title": str(phase.get("phase_title_zh") or phase_key),
                                "content": phase, "human_action": packet["human_action"]}}, write=True)
     packet["packet_id"] = registered.get("packet_id")
-    packet["review_url"] = _session(ctx).base_url + str(registered.get("review_path") or "")
+    packet["review_url"] = session.base_url + str(registered.get("review_path") or "")
     if json_output:
         _emit(packet, True)
         return

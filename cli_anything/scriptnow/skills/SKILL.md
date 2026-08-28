@@ -31,6 +31,8 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > 阻力升级、证据/关系变化、转折、代价和出口；禁止一句话粗纲。再填写 key_beats（标题|描述）+ anchor_ids（须为已
 > 采纳蓝图锚点）。长篇剧本优先 `rough-outline-start` 开隔离链，每阶段用
 > `rough-outline-phase <pid> <phase_key> @file.json` 回填，`rough-outline-progress` 回读；
+> `rough-outline-phase-preview` 会先按当前构建进度检查单阶段连续边界、动态篇幅与事件密度，
+> 通过后才登记审阅包；完整 `rough-outline-check` 仅用于十阶段汇总文件；
 > 每次回读必须向人显示“阶段 X / 共 N 阶段”、当前阶段与已完成阶段，不得只在后台维护 JSON；
 > 上游返工加 `--restart-from` 使下游失效。全部完成后 `rough-outline-propose` 形成完整候选，
 > 再由作者用 `rough-outline-adopt` 采纳。分集大纲稿导出：

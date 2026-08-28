@@ -649,6 +649,56 @@ def test_script_rough_outline_progress_shows_current_and_total_phase(monkeypatch
     assert "ki" in result.output
 
 
+def test_single_phase_preflight_uses_progress_boundary_and_dynamic_density():
+    from cli_anything.scriptnow.scriptnow_cli import _rough_outline_phase_issues
+
+    summary = "阿澄拆开同盟的利益差异，让证人公开选择并承担代价。" * 45
+    phase = {
+        "ordinal": 4,
+        "phase_key": "alliance_cracks",
+        "phase_title_zh": "同盟裂解",
+        "range_start": 22,
+        "range_end": 30,
+        "summary": summary,
+        "key_beats": [],
+    }
+    example = {
+        "total_units": 80,
+        "phases": [
+            {"ordinal": index, "phase_key": key}
+            for index, key in enumerate(
+                ("return_probe", "voices_identified", "ship_ledger", "alliance_cracks",
+                 "reach_yichuan", "false_timeline", "wreck_truth", "revenge_or_rescue",
+                 "rescue_testimony", "public_aftermath"),
+                start=1,
+            )
+        ],
+    }
+    progress = {
+        "current_phase_key": "alliance_cracks",
+        "phases": [{"range_end": 6}, {"range_end": 13}, {"range_end": 21}],
+    }
+    assert _rough_outline_phase_issues(phase, example, progress) == []
+    assert "第 22 集" in _rough_outline_phase_issues(
+        {**phase, "range_start": 23}, example, progress
+    )[0]
+    final_phase = {
+        **phase,
+        "ordinal": 10,
+        "phase_key": "public_aftermath",
+        "range_start": 72,
+        "range_end": 79,
+    }
+    final_progress = {
+        "current_phase_key": "public_aftermath",
+        "phases": [{"range_end": value} for value in (6, 13, 21, 30, 38, 46, 55, 62, 71)],
+    }
+    assert any(
+        "最后阶段必须覆盖到第 80 集" in issue
+        for issue in _rough_outline_phase_issues(final_phase, example, final_progress)
+    )
+
+
 def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
     import json as _json
 
