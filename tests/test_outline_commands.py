@@ -385,3 +385,279 @@ def test_script_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
     body = session.request.call_args_list[-1].kwargs["json_body"]
     assert body["phase_key"] == "act1"
     assert body["plan_digest"] == "d" * 16
+
+
+def test_storymap_structure_save_passes_metadata(monkeypatch, tmp_path):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {
+        "key": "serial-saga", "title_zh": "连载体长线", "description": "每卷一个完整事件，全局留长线",
+        "applicable_medium": "novel", "phase_count": 3,
+    }
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "structure.json", {
+        "title_zh": "连载体长线", "title_en": "Serial Saga",
+        "phases": [
+            {"key": "v1", "title_zh": "第一卷", "purpose": "setup", "ratio": "0.4"},
+            {"key": "v2", "title_zh": "第二卷", "purpose": "development", "ratio": "0.4"},
+            {"key": "v3", "title_zh": "第三卷", "purpose": "resolution", "ratio": "0.2"},
+        ],
+    })
+    result = CliRunner().invoke(main, [
+        "storymap", "structure-save", "serial-saga", file_arg,
+        "--description", "每卷一个完整事件，全局留长线", "--medium", "novel", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args.kwargs["json_body"]
+    assert body["key"] == "serial-saga"
+    assert body["applicable_medium"] == "novel"
+    assert body["description"] == "每卷一个完整事件，全局留长线"
+    assert len(body["phases"]) == 3
+    assert _json.loads(result.output)["phase_count"] == 3
+
+
+def test_storymap_structure_save_defaults_medium_from_json(monkeypatch, tmp_path):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {"key": "dual-arc", "phase_count": 2, "applicable_medium": "script"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "structure.json", {
+        "title_zh": "双弧", "applicable_medium": "script",
+        "phases": [
+            {"key": "a", "title_zh": "线A", "purpose": "setup", "ratio": "0.5"},
+            {"key": "b", "title_zh": "线B", "purpose": "resolution", "ratio": "0.5"},
+        ],
+    })
+    result = CliRunner().invoke(main, ["storymap", "structure-save", "dual-arc", file_arg, "--json"])
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args.kwargs["json_body"]
+    assert body["applicable_medium"] == "script"
+    assert _json.loads(result.output)["applicable_medium"] == "script"
+
+
+def test_storymap_structure_save_rejects_bad_medium(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "structure.json", {
+        "phases": [{"key": "a", "title_zh": "甲", "ratio": "1"}],
+    })
+    result = CliRunner().invoke(main, ["storymap", "structure-save", "bad", file_arg, "--medium", "film"])
+    assert result.exit_code != 0
+    assert "not one of 'novel', 'script', 'both'" in result.output
+    assert session.request.call_count == 0
+
+
+def test_storymap_structures_lists_saved_metadata(monkeypatch):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = [
+        {"key": "serial-saga", "title_zh": "连载体长线", "description": "每卷一个完整事件",
+         "applicable_medium": "novel", "phase_count": 3},
+        {"key": "dual-arc", "title_zh": "双弧", "description": "", "applicable_medium": "both", "phase_count": 2},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kw: session.request.return_value)
+    result = CliRunner().invoke(main, ["storymap", "structures", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.output)
+    assert payload["saved_templates"][0]["applicable_medium"] == "novel"
+    assert payload["saved_templates"][0]["description"] == "每卷一个完整事件"
+    assert any("适用小说" in s["zh"] for s in payload["structures"])
+
+
+def _rough_example(total: int = 10, keys: tuple[str, ...] = ("act1", "act2", "act3")) -> dict:
+    import json as _json
+    # 三阶段：1-4 / 5-7 / 8-10（比例 0.3/0.4/0.3 → 最大余数 4/7/4? 用模板原样即可，这里按给定边界）
+    return {
+        "structure_key": "three_act",
+        "structure_title_zh": "三幕式",
+        "total_units": total,
+        "phases": [
+            {"ordinal": i + 1, "phase_key": key, "phase_title_zh": f"幕{i+1}",
+             "range_start": start, "range_end": end, "purpose": "p", "summary": "", "key_beats": [], "anchor_ids": []}
+            for i, (key, start, end) in enumerate(zip(keys, (1, 5, 8), (4, 7, 10)))
+        ],
+    }
+
+
+def test_script_rough_outline_propose_passes_phases_and_adopts(monkeypatch, tmp_path):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"id": "ro-cand-1", "status": "active"},
+        {"id": "ro-outline-1", "status": "adopted"},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kw: _rough_example())
+    phases = [
+        {"ordinal": i + 1, "phase_key": key, "phase_title_zh": f"幕{i+1}",
+         "range_start": start, "range_end": end,
+         "summary": "方远志重生后拦下欲跳河的父亲，翻出祖传药典残页，决定承包村后坡地种上等地黄；先用一锅劣等地黄试制九蒸九晒地黄丸，失败后调整蒸晒火候，第二锅成品乌润药香，连夜赶到镇上免费送药给患老胃病的街坊，消息传开后济仁堂周世昌亲自登门收他为徒并签订供药合约。"}
+        for i, (key, start, end) in enumerate(zip(("act1", "act2", "act3"), (1, 5, 8), (4, 7, 10)))
+    ]
+    file_arg = _write(tmp_path, "rough.json", {"phases": phases})
+    result = CliRunner().invoke(main, ["script", "rough-outline", "p1", file_arg, "--adopt", "--json"])
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args_list[0].kwargs["json_body"]
+    assert body["phases"][0]["phase_key"] == "act1"
+    assert session.request.call_args_list[0].args[1] == "/script/projects/p1/rough-outline/propose"
+    assert session.request.call_args_list[1].args[1] == "/script/projects/p1/rough-outline/ro-cand-1/adopt"
+    assert _json.loads(result.output)["adopted"] == "adopted"
+
+
+def test_novel_rough_outline_check_flags_meta_and_range(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kw: _rough_example())
+    bad = {
+        "phases": [
+            {"ordinal": 1, "phase_key": "act1", "phase_title_zh": "幕1", "range_start": 2, "range_end": 4,
+             "summary": "围绕本场目标推进矛盾，为下一场留下钩子。"},
+        ]
+    }
+    file_arg = _write(tmp_path, "bad.json", bad)
+    result = CliRunner().invoke(main, ["novel", "rough-outline-check", "p1", file_arg])
+    assert result.exit_code != 0
+    assert "区间起点应为 1" in result.output
+    assert "套话" in result.output
+    assert session.request.call_count == 0
+
+
+def test_script_rough_outline_example_prints_phase_ranges(monkeypatch):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kw: _rough_example(80, ("ki", "sho", "ten", "ketsu")) if "example" in _path else {})
+    # 80 集 + 4 阶段（起承转合）：用 1-16/17-40/41-64/65-80 边界
+    example = {
+        "structure_key": "kishotenketsu", "structure_title_zh": "起承转合", "total_units": 80,
+        "phases": [
+            {"ordinal": i + 1, "phase_key": key, "phase_title_zh": title, "range_start": start, "range_end": end,
+             "purpose": "p", "summary": "", "key_beats": [], "anchor_ids": []}
+            for i, (key, title, start, end) in enumerate(
+                (("ki", "起·引入", 1, 16), ("sho", "承·发展", 17, 40), ("ten", "转·转折", 41, 64), ("ketsu", "合·收束", 65, 80)))
+        ],
+    }
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kw: example)
+    result = CliRunner().invoke(main, ["script", "rough-outline-example", "p1"])
+    assert result.exit_code == 0, result.output
+    assert "起承转合" in result.output
+    assert "第 65–80 集" in result.output
+
+
+def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
+    import json as _json
+
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {"id": "rebuild-1", "status": "building", "base_story_map_version": 3,
+         "phase_keys": ["act1", "act2", "act3"], "completed_phases": [], "next_phase": "act1"},
+        {"id": "rebuild-1", "status": "building", "completed_phases": ["act1"],
+         "accumulated_episodes": 3, "next_phase": "act2"},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    start = CliRunner().invoke(main, ["script", "storymap-rebuild-start", "p1", "--json"])
+    assert start.exit_code == 0, start.output
+    assert _json.loads(start.output)["phase_keys"] == ["act1", "act2", "act3"]
+
+    episodes = [
+        {"id": f"ep-{i}", "ordinal": i, "title": f"第{i}集",
+         "logline": f"阿澄在第{i}集推进物证查证", "active_goal": "g", "conflict": "c", "turn": "t",
+         "state_changes": ["s"], "anchor_ids": ["character:achen"],
+         "scenes": [{"id": f"s{i}-1", "ordinal": 1, "title": "场",
+                     "beats": [{"id": f"b{i}-1", "objective": f"阿澄把第{i}条物证放上柜台", "anchor_ids": ["character:achen"]}]}]}
+        for i in range(1, 4)
+    ]
+    file_arg = _write(tmp_path, "phase1.json", {"episodes": episodes})
+    result = CliRunner().invoke(main, ["script", "storymap-rebuild-phase", "p1", "act1", file_arg, "--json"])
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args_list[1].kwargs["json_body"]
+    assert body["phase_key"] == "act1"
+    assert len(body["episodes"]) == 3
+    assert session.request.call_args_list[1].args[1] == "/script/projects/p1/storymap/rebuild-phase"
+    assert _json.loads(result.output)["accumulated_episodes"] == 3
+
+
+def test_script_storymap_rebuild_check_flags_duplicates(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(
+        cli, "_api_request",
+        lambda _ctx, _method, _path, **_kw: {"pass": False, "issues": ["集 ID 重复：ep-1", "集序号应连续"]},
+    )
+    file_arg = _write(tmp_path, "phase.json", {"episodes": [{"id": "ep-1", "ordinal": 1}]})
+    result = CliRunner().invoke(main, ["script", "storymap-rebuild-check", "p1", "act1", file_arg])
+    assert result.exit_code != 0
+    assert "集 ID 重复" in result.output
+
+
+def test_script_storymap_rebuild_propose_returns_candidate(monkeypatch):
+    from unittest.mock import Mock
+
+    from click.testing import CliRunner
+
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {"id": "cand-rebuild-1", "status": "active"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, ["script", "storymap-rebuild-propose", "p1", "--json"])
+    assert result.exit_code == 0, result.output
+    assert session.request.call_args.args[1] == "/script/projects/p1/storymap/rebuild-propose"

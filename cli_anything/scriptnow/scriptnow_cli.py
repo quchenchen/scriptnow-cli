@@ -63,6 +63,11 @@ def _emit(value: Any, json_output: bool) -> None:
         click.echo(_human(value))
 
 
+def _medium_label(value: Any) -> str:
+    """结构库适用类型 → 中文标签（novel/script/both）。"""
+    return {"novel": "小说", "script": "剧本", "both": "双域"}.get(str(value or "both"), str(value or "both"))
+
+
 def _novel_state(session: Session, project_id: str) -> Any:
     """Fetch novel project state WITHOUT manuscript blocks (light payload).
 
@@ -628,6 +633,8 @@ _AGENT_CONTRACT = {
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
+        "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
+        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层：每叙事阶段一段具体剧情纲要（谁/做什么/对谁/拿什么/在哪），阶段边界来自叙事结构推导不可手改。先 `scriptnow script|novel rough-outline-example <pid>` 取模板，逐阶段填写 summary（≥80 字，禁止『推进矛盾/留下钩子』套话）+ key_beats + anchor_ids（须为已采纳蓝图锚点），`rough-outline-check` 本地预检后 `rough-outline <pid> @file.json [--adopt]` 回填或 `rough-outline-adopt` 采纳。竖屏剧分集大纲稿用 `export create --domain script --form planning --front-matter outline` 导出（剧名→故事梗概→人物小传→粗纲→集纲）。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
         "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后应把全文或用户要求的审读范围呈现出来；用户在对话中明确表达『定稿』『采用这版』『可以进入下一章/场』等，即构成人工决定，Agent 可直接执行 chapter adopt --human / scene adopt --human，平台记录 adopted_human。无需用户重复去终端或页面确认，也不强制签发令牌；令牌仅是可选的增强审计方式。没有明确表达时才追问一次，Agent 不得从沉默、泛泛称赞或大纲授权中自行推断定稿。",
     ],
@@ -665,6 +672,9 @@ _AGENT_RUNTIME_CONTRACT = {
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 detail 修正，不能编造替代结果。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
+        "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
+        "粗纲是集纲/章纲之前的叙事阶段层：rough-outline-example 取模板（阶段边界来自结构推导）、rough-outline @file.json 回填（--adopt 直接采纳）、rough-outline-check 本地预检、rough-outline-adopt 采纳候选；summary 必须具体（≥80 字，禁套话），anchor_ids 须为已采纳蓝图锚点。",
+        "StoryMap 隔离重建（script）：已有 StoryMap 重建必须用 storymap-rebuild-start 开隔离会话，逐阶段 rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。禁止一次生成完整 80 集。",
     ],
     "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
     "format_hint": "具体 JSON 结构只以目标 propose 命令的 --help-format / --example 为准。",
@@ -2732,6 +2742,75 @@ def _meta_objective_hits(episodes: object) -> list[str]:
 _BIBLE_REQUIRED_KEYS = ("desire", "fear", "weakness", "goal", "inner_need")
 
 
+def _rough_outline_issues(phases: object, example: object, range_label: str = "章") -> list[str]:
+    """Deterministic pre-flight checks for a rough outline (粗纲) submission.
+
+    ``phases`` is the submitted phase blocks; ``example`` is the structure-
+    derived template from the rough-outline-example endpoint (phase boundaries
+    + total units). Mirrors the server-side validation so the Agent can self-
+    check before propose.
+    """
+    issues: list[str] = []
+    if not isinstance(phases, list) or not phases:
+        return ["phases 至少需要 1 个阶段块"]
+    example_phases = (example or {}).get("phases") or [] if isinstance(example, dict) else []
+    total_units = 0
+    try:
+        total_units = int(str((example or {}).get("total_units") or "").strip())
+    except (TypeError, ValueError):
+        total_units = 0
+    expected_keys = [str(item.get("phase_key") or "") for item in example_phases if isinstance(item, dict)]
+    actual_keys = [str(item.get("phase_key") or "") for item in phases if isinstance(item, dict)]
+    if actual_keys != expected_keys:
+        issues.append(f"阶段顺序/数量与叙事结构推导不符：预期 {expected_keys}，收到 {actual_keys}")
+    previous_end = 0
+    for index, phase in enumerate(phases, start=1):
+        if not isinstance(phase, dict):
+            issues.append(f"第 {index} 个阶段必须是对象")
+            continue
+        key = str(phase.get("phase_key") or "")
+        summary = str(phase.get("summary") or "").strip()
+        if len(summary) < 80:
+            issues.append(
+                f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲过短：{len(summary)} 字，至少需要 80 字剧情纲要"
+            )
+        if any(token in summary for token in _META_OBJECTIVE_TOKENS):
+            issues.append(
+                f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲含套话（推进矛盾/留下钩子类），请写具体剧情"
+            )
+        for beat in phase.get("key_beats") or []:
+            if isinstance(beat, dict) and any(
+                token in str(beat.get("description") or "") for token in _META_OBJECTIVE_TOKENS
+            ):
+                issues.append(f"阶段 {key} 关键事件「{beat.get('title')}」含套话")
+        try:
+            start = int(str(phase.get("range_start") or "").strip())
+            end = int(str(phase.get("range_end") or "").strip())
+        except (TypeError, ValueError):
+            issues.append(f"阶段 {key} 的区间必须为整数")
+            continue
+        if start != previous_end + 1:
+            issues.append(f"阶段 {key} 区间起点应为 {previous_end + 1}（当前 {start}）")
+        if end < start:
+            issues.append(f"阶段 {key} 区间终点小于起点")
+        if index <= len(example_phases) and isinstance(example_phases[index - 1], dict):
+            expected = example_phases[index - 1]
+            try:
+                expected_start = int(str(expected.get("range_start") or "").strip())
+                expected_end = int(str(expected.get("range_end") or "").strip())
+                if (start, end) != (expected_start, expected_end):
+                    issues.append(
+                        f"阶段 {key} 区间必须与结构推导一致：应为第 {expected_start}–{expected_end} {range_label}"
+                        f"（当前 {start}–{end}）"
+                    )
+            except (TypeError, ValueError):
+                pass
+        previous_end = end
+    if total_units and previous_end != total_units:
+        issues.append(f"区间必须连续覆盖 1..{total_units}（当前终点 {previous_end}）")
+    return issues
+
+
 def _thin_bible_profiles(bibles: object) -> list[str]:
     """Detect thin character-bible profiles for the propose preflight (guidance).
 
@@ -3437,7 +3516,13 @@ def storymap_structures(ctx: click.Context, json_output: bool) -> None:
     except Exception:
         saved = []
     for item in saved or []:
-        structures.append({"key": item.get("key"), "zh": f"{item.get('title_zh')}（已存结构库）"})
+        medium = item.get("applicable_medium") or "both"
+        structures.append({
+            "key": item.get("key"),
+            "zh": f"{item.get('title_zh')}（已存结构库 · 适用{_medium_label(medium)}）",
+            "applicable_medium": medium,
+            "description": item.get("description") or "",
+        })
     if json_output:
         _emit({"structures": structures, "saved_templates": saved,
                "user_defined": "structure-save 存库后按 key 复用；或 project direction --set structure='{...phases...}'"}, json_output)
@@ -3445,21 +3530,32 @@ def storymap_structures(ctx: click.Context, json_output: bool) -> None:
     click.echo(ui.section("可用叙事结构（小说/剧本双域共享）"))
     for item in structures:
         click.echo(ui.kv(item["key"], item["zh"]))
+        if item.get("description"):
+            click.echo(ui.dim(f"    {item['description']}"), err=False)
     if saved:
         click.echo(ui.dim("已存结构库模板可跨项目复用：project create --structure <key> 或 storymap phases 自动解析。"), err=True)
-    click.echo(ui.dim("存库：storymap structure-save <key> @structure.json；删除：storymap structure-delete <key>。"), err=True)
+    click.echo(ui.dim("存库：storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]；删除：storymap structure-delete <key>。"), err=True)
 
 
 @storymap_group.command("structure-save")
 @click.argument("key")
 @click.argument("file_path", type=str)
+@click.option(
+    "--description", "description", default=None,
+    help="一句话说明该结构的适用场景与特征（可选；亦可写在 JSON 的 description 字段）",
+)
+@click.option(
+    "--medium", "medium", type=click.Choice(["novel", "script", "both"]), default=None,
+    help="适用类型：novel（小说）/ script（剧本）/ both（双域，默认）",
+)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def storymap_structure_save(ctx: click.Context, key: str, file_path: str, json_output: bool) -> None:
+def storymap_structure_save(ctx: click.Context, key: str, file_path: str, description: str | None, medium: str | None, json_output: bool) -> None:
     """保存一个命名叙事结构到结构库（跨项目复用；双域可用）。
 
-    FILE_PATH 是结构 JSON：{"title_zh","title_en","phases":[{"key","title_zh",
-    "purpose","ratio",["entry_requirement"],["exit_requirement"]}]}，比例和须为 1。
+    FILE_PATH 是结构 JSON：{"title_zh","title_en","description","applicable_medium",
+    "phases":[{"key","title_zh","purpose","ratio",["entry_requirement"],["exit_requirement"]}]}，
+    比例和须为 1。描述/适用类型也可用 --description / --medium 显式传入（优先于 JSON）。
     """
     import json as _json
 
@@ -3473,6 +3569,13 @@ def storymap_structure_save(ctx: click.Context, key: str, file_path: str, json_o
     phases = raw.get("phases") or []
     if not isinstance(phases, list) or not phases:
         raise click.ClickException("phases 至少 1 个阶段")
+    applicable_medium = (
+        medium
+        if medium is not None
+        else str(raw.get("applicable_medium") or raw.get("medium") or "both").strip() or "both"
+    )
+    if applicable_medium not in ("novel", "script", "both"):
+        raise click.ClickException(f"适用类型仅支持 novel/script/both，收到 {applicable_medium!r}")
     result = _session(ctx).request(
         "POST",
         "/narrative-structures",
@@ -3480,12 +3583,16 @@ def storymap_structure_save(ctx: click.Context, key: str, file_path: str, json_o
             "key": key,
             "title_zh": str(raw.get("title_zh") or key),
             "title_en": str(raw.get("title_en") or ""),
+            "description": description if description is not None else str(raw.get("description") or ""),
+            "applicable_medium": applicable_medium,
             "phases": phases,
         },
         write=True,
     )
     if not json_output:
-        click.echo(ui.ok(f"叙事结构「{key}」已存入结构库（{result.get('phase_count')} 阶段）。"))
+        click.echo(ui.ok(f"叙事结构「{key}」已存入结构库（{result.get('phase_count')} 阶段 · 适用{_medium_label(result.get('applicable_medium'))}）。"))
+        if result.get("description"):
+            click.echo(ui.dim(result["description"]), err=False)
         click.echo(ui.dim("跨项目复用：project create --structure <key>，或设入 direction 后 storymap phases 自动解析。"), err=True)
         return
     _emit(result, json_output)
@@ -4293,7 +4400,7 @@ def novel_bootstrap(
 @novel_group.command("propose")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
 @click.option("--budget", type=int, default=None, help="导入内容 token 预算上限；超限拒绝（如 20000）。中文≈1 token/字，英文≈1 token/4 字符")
 @click.option("--json", "json_output", is_flag=True)
@@ -4423,10 +4530,136 @@ def novel_propose(
     _emit(payload, json_output)
 
 
+def _load_rough_outline_file(file_path: str) -> list[dict[str, object]]:
+    import json as _json
+
+    resolved = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = Path(resolved).read_text(encoding="utf-8")
+    except OSError as error:
+        raise click.ClickException(f"无法读取文件：{resolved}") from error
+    try:
+        data = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("JSON 根必须是对象")
+    phases = data.get("phases") or []
+    if not isinstance(phases, list) or not phases:
+        raise click.ClickException("phases 至少 1 个阶段块（先用 rough-outline-example 取模板）")
+    return phases
+
+
+def _rough_outline_template(ctx: click.Context, prefix: str, project_id: str) -> dict[str, object]:
+    try:
+        return _api_request(ctx, "GET", f"/{prefix}/projects/{project_id}/rough-outline/example")
+    except Exception:
+        return {}
+
+
+@novel_group.command("rough-outline")
+@click.argument("project_id")
+@click.argument("file_path", type=str)
+@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool) -> None:
+    """回填/提交小说粗纲（每叙事阶段一块；阶段边界来自叙事结构推导）。
+
+    FILE_PATH: {"phases":[{"ordinal","phase_key","phase_title_zh","phase_title_en",
+    "purpose","range_start","range_end","summary","key_beats":
+    [{"title","description","anchor_ids":[]}],"anchor_ids":[]}]}
+    先用 novel rough-outline-example <pid> 取模板（阶段边界即叙事结构阶段），
+    再逐阶段填写具体剧情纲要后回填；--adopt 直接采纳为当前粗纲。
+    """
+    phases = _load_rough_outline_file(file_path)
+    session = _session(ctx)
+    example = _rough_outline_template(ctx, "novel", project_id)
+    issues = _rough_outline_issues(phases, example, range_label="章")
+    if issues:
+        raise click.ClickException("粗纲预检未通过：" + "；".join(issues[:5]))
+    idem = f"cli-rough-outline-{__import__('time').time_ns()}"
+    result = session.request(
+        "POST",
+        f"/novel/projects/{project_id}/rough-outline/propose",
+        json_body={"idempotency_key": idem, "phases": phases},
+        write=True,
+    )
+    candidate_id = result.get("id") if isinstance(result, dict) else None
+    payload = {"candidate_id": candidate_id, "status": result.get("status") if isinstance(result, dict) else result}
+    if adopt and candidate_id:
+        adopted = session.request(
+            "POST",
+            f"/novel/projects/{project_id}/rough-outline/{candidate_id}/adopt",
+            write=True,
+        )
+        payload["adopted"] = adopted.get("status") if isinstance(adopted, dict) else adopted
+    if not json_output:
+        click.echo(ui.ok(f"小说粗纲已提交候选（{len(phases)} 个阶段块）。"))
+        if adopt and payload.get("adopted") == "adopted":
+            click.echo(ui.ok("已采纳为当前粗纲。"), err=False)
+        else:
+            click.echo(ui.dim(f"采纳：scriptnow novel rough-outline-adopt {project_id} {candidate_id}"), err=True)
+        return
+    _emit(payload, json_output)
+
+
+@novel_group.command("rough-outline-adopt")
+@click.argument("project_id")
+@click.argument("candidate_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+    """采纳小说粗纲候选为当前版本（低风险规划写入，非结构覆盖）。"""
+    result = _session(ctx).request(
+        "POST", f"/novel/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"小说粗纲已采纳（id={result.get('id')}）。"))
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("rough-outline-check")
+@click.argument("project_id")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_rough_outline_check(ctx: click.Context, project_id: str, file_path: str, json_output: bool) -> None:
+    """本地预检小说粗纲文件（阶段边界/字数/套话），propose 前的确定性自查。"""
+    phases = _load_rough_outline_file(file_path)
+    example = _rough_outline_template(ctx, "novel", project_id)
+    issues = _rough_outline_issues(phases, example, range_label="章")
+    if json_output:
+        _emit({"pass": not issues, "issues": issues}, json_output)
+        return
+    if issues:
+        for issue in issues:
+            click.echo(ui.error(issue), err=True)
+        raise click.ClickException(f"粗纲预检未通过（{len(issues)} 项）")
+    click.echo(ui.ok("粗纲预检通过：阶段边界、字数与具体性均符合要求。"))
+
+
+@novel_group.command("rough-outline-example")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_rough_outline_example(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """取小说粗纲空模板（阶段边界即叙事结构阶段），填写 summary 后回填。"""
+    result = _api_request(ctx, "GET", f"/novel/projects/{project_id}/rough-outline/example")
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.section(f"小说粗纲模板 · {result.get('structure_title_zh')}（{result.get('structure_key')}）· 共 {result.get('total_units')} 章"))
+    for phase in result.get("phases") or []:
+        click.echo(ui.kv(f"阶段{phase['ordinal']} {phase['phase_title_zh']}", f"第 {phase['range_start']}–{phase['range_end']} 章 · 目的：{phase.get('purpose')}"))
+        click.echo(ui.dim("  summary：填写该阶段具体剧情纲要（≥80 字，禁止套话）"), err=False)
+
+
 @novel_group.command("planning-quality")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def novel_planning_quality(
@@ -5050,9 +5283,58 @@ def script_scene_show(
             )
             chosen = candidates[0] if candidates else docs[0]
     blocks = chosen.get("blocks") or []
-    text = "\n\n".join(
-        (block.get("text") or "") for block in blocks if (block.get("text") or "").strip()
-    )
+    if state.get("script_format") == "chinese-short":
+        episode = next(
+            (
+                item
+                for item in (state.get("story_map") or {}).get("episodes", [])
+                if any(scene.get("id") == scene_id for scene in (item.get("scenes") or []))
+            ),
+            {},
+        )
+        scene = next(
+            (item for item in (episode.get("scenes") or []) if item.get("id") == scene_id),
+            {},
+        )
+        episode_no = int(episode.get("ordinal") or 1)
+        scene_no = int(scene.get("ordinal") or 1)
+        episode_title = str(episode.get("title") or "").strip()
+        slugline = next(
+            (str(block.get("text") or "").strip() for block in blocks if block.get("type") == "slugline"),
+            "",
+        )
+        speakers = list(
+            dict.fromkeys(
+                str(block.get("text") or "").split("（", 1)[0].split("(", 1)[0].strip()
+                for block in blocks
+                if block.get("type") == "character" and str(block.get("text") or "").strip()
+            )
+        )
+        lines = [f"第 {episode_no} 集" + (f"：{episode_title}" if episode_title else "")]
+        lines.append(f"第 {episode_no}-{scene_no} 场 {slugline}".strip())
+        if speakers:
+            lines.append(f"人物：{'、'.join(speakers)}")
+        pending_character = ""
+        for block in blocks:
+            block_type = str(block.get("type") or "")
+            block_text = str(block.get("text") or "").strip()
+            if not block_text or block_type == "slugline":
+                continue
+            if block_type == "character":
+                pending_character = block_text
+                continue
+            if block_type == "dialogue":
+                lines.append(f"{pending_character or '人物'}：{block_text}")
+                pending_character = ""
+                continue
+            if block_type == "action" and not block_text.startswith("△"):
+                block_text = f"△{block_text}"
+            lines.append(block_text)
+        text = "\n\n".join(lines)
+    else:
+        text = "\n\n".join(
+            (block.get("text") or "") for block in blocks if (block.get("text") or "").strip()
+        )
     if plain:
         click.echo(text)
         return
@@ -5254,7 +5536,7 @@ def script_bible_example(json_output: bool) -> None:
 @script_group.command("planning-quality")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_planning_quality(
@@ -5288,7 +5570,7 @@ def script_planning_quality(
 @script_group.command("propose")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--adopt", is_flag=True, help="propose 成功后自动采纳（采纳最佳候选）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -5437,6 +5719,105 @@ def script_propose(
     _emit(payload, json_output)
 
 
+@script_group.command("rough-outline")
+@click.argument("project_id")
+@click.argument("file_path", type=str)
+@click.option("--adopt", is_flag=True, help="propose 成功后自动采纳")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline(ctx: click.Context, project_id: str, file_path: str, adopt: bool, json_output: bool) -> None:
+    """回填/提交剧本粗纲（竖屏剧「分集大纲·粗纲」：每叙事阶段一块）。
+
+    FILE_PATH: {"phases":[{"ordinal","phase_key","phase_title_zh","phase_title_en",
+    "purpose","range_start","range_end","summary","key_beats":
+    [{"title","description","anchor_ids":[]}],"anchor_ids":[]}]}
+    先用 script rough-outline-example <pid> 取模板（阶段边界即叙事结构阶段），
+    逐阶段填写具体剧情纲要后回填；--adopt 直接采纳。
+    """
+    phases = _load_rough_outline_file(file_path)
+    session = _session(ctx)
+    example = _rough_outline_template(ctx, "script", project_id)
+    issues = _rough_outline_issues(phases, example, range_label="集")
+    if issues:
+        raise click.ClickException("粗纲预检未通过：" + "；".join(issues[:5]))
+    idem = f"cli-rough-outline-{__import__('time').time_ns()}"
+    result = session.request(
+        "POST",
+        f"/script/projects/{project_id}/rough-outline/propose",
+        json_body={"idempotency_key": idem, "phases": phases},
+        write=True,
+    )
+    candidate_id = result.get("id") if isinstance(result, dict) else None
+    payload = {"candidate_id": candidate_id, "status": result.get("status") if isinstance(result, dict) else result}
+    if adopt and candidate_id:
+        adopted = session.request(
+            "POST",
+            f"/script/projects/{project_id}/rough-outline/{candidate_id}/adopt",
+            write=True,
+        )
+        payload["adopted"] = adopted.get("status") if isinstance(adopted, dict) else adopted
+    if not json_output:
+        click.echo(ui.ok(f"剧本粗纲已提交候选（{len(phases)} 个阶段块）。"))
+        if adopt and payload.get("adopted") == "adopted":
+            click.echo(ui.ok("已采纳为当前粗纲。"), err=False)
+        else:
+            click.echo(ui.dim(f"采纳：scriptnow script rough-outline-adopt {project_id} {candidate_id}"), err=True)
+        return
+    _emit(payload, json_output)
+
+
+@script_group.command("rough-outline-adopt")
+@click.argument("project_id")
+@click.argument("candidate_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_adopt(ctx: click.Context, project_id: str, candidate_id: str, json_output: bool) -> None:
+    """采纳剧本粗纲候选为当前版本（低风险规划写入，非结构覆盖）。"""
+    result = _session(ctx).request(
+        "POST", f"/script/projects/{project_id}/rough-outline/{candidate_id}/adopt", write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"剧本粗纲已采纳（id={result.get('id')}）。"))
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("rough-outline-check")
+@click.argument("project_id")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_check(ctx: click.Context, project_id: str, file_path: str, json_output: bool) -> None:
+    """本地预检剧本粗纲文件（阶段边界/字数/套话），propose 前的确定性自查。"""
+    phases = _load_rough_outline_file(file_path)
+    example = _rough_outline_template(ctx, "script", project_id)
+    issues = _rough_outline_issues(phases, example, range_label="集")
+    if json_output:
+        _emit({"pass": not issues, "issues": issues}, json_output)
+        return
+    if issues:
+        for issue in issues:
+            click.echo(ui.error(issue), err=True)
+        raise click.ClickException(f"粗纲预检未通过（{len(issues)} 项）")
+    click.echo(ui.ok("粗纲预检通过：阶段边界、字数与具体性均符合要求。"))
+
+
+@script_group.command("rough-outline-example")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_example(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """取剧本粗纲空模板（阶段边界即叙事结构阶段），填写 summary 后回填。"""
+    result = _api_request(ctx, "GET", f"/script/projects/{project_id}/rough-outline/example")
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.section(f"剧本粗纲模板 · {result.get('structure_title_zh')}（{result.get('structure_key')}）· 共 {result.get('total_units')} 集"))
+    for phase in result.get("phases") or []:
+        click.echo(ui.kv(f"阶段{phase['ordinal']} {phase['phase_title_zh']}", f"第 {phase['range_start']}–{phase['range_end']} 集 · 目的：{phase.get('purpose')}"))
+        click.echo(ui.dim("  summary：填写该阶段具体剧情纲要（≥80 字，禁止套话）"), err=False)
+
+
 @script_group.command("blueprint")
 @click.argument("project_id")
 @click.option("--feedback", default=None)
@@ -5569,6 +5950,164 @@ def script_storymap_append_phase(
         click.echo(ui.ok(f"阶段 {phase_key}·{phase['title_zh']} 已形成结构候选（{result.get('id')}）"))
         click.echo(ui.dim(f"  集序：第 {phase['start_chapter']}–{phase['end_chapter']} 集（共 {phase['chapter_count']} 集）"))
         click.echo(ui.dim("请审阅影响并在用户明确决定后采纳：script adopt-storymap <作品号> <候选ID>，或 script storymap-adopt --latest。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("storymap-rebuild-start")
+@click.argument("project_id")
+@click.option("--restart", is_flag=True, help="supersede 现有会话并重新开始（丢弃已累积进度）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild_start(
+    ctx: click.Context, project_id: str, restart: bool, json_output: bool
+) -> None:
+    """开始隔离重建会话：冻结阶段计划与现有 StoryMap 版本，逐阶段累积替换候选。
+
+    替代「一次生成完整80集+240场+720beats」的不可用机制：每次只生成/提交一个阶段，
+    全部阶段完成后 rebuild-propose 形成完整替换候选，用户明确确认后才替换旧 StoryMap。
+    --restart 在阶段计划漂移或需要重做时丢弃已累积进度重新开始。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _session(ctx).request(
+        "POST",
+        f"/script/projects/{pid}/storymap/rebuild-start?restart={str(restart).lower()}",
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"重建会话已开始（{result.get('id')}）：基础 StoryMap v{result.get('base_story_map_version')}"))
+        click.echo(ui.dim(f"  阶段：{' → '.join(result.get('phase_keys') or [])}"))
+        click.echo(ui.dim(f"  下一步：storymap phases 查看阶段边界 → 本地生成第1阶段 → storymap rebuild-phase <pid> <phase_key> @episodes.json"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("storymap-rebuild")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """查看重建会话状态（已提交阶段、累积集数、下一阶段）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/script/projects/{pid}/storymap/rebuild")
+    if result is None:
+        click.echo(ui.dim("暂无进行中的重建会话；可用 storymap rebuild-start 开始。"), err=False)
+        return
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.section("StoryMap 重建会话"))
+    click.echo(ui.kv("状态", result.get("status")))
+    click.echo(ui.kv("已完成阶段", "、".join(result.get("completed_phases") or []) or "（无）"))
+    click.echo(ui.kv("累积集数", str(result.get("accumulated_episodes"))))
+    click.echo(ui.kv("下一阶段", result.get("next_phase") or "（全部完成，可 rebuild-propose）"))
+
+
+@script_group.command("storymap-rebuild-phase")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild_phase(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+) -> None:
+    """提交一个阶段到重建会话（阶段=集区间；每次只做一个阶段）。
+
+    FILE_PATH 是 episodes 数组（每集带完整集纲+场次+beats）。提交前自动集纲自查，
+    服务端再做阶段级检查（重复度/因果/场名/状态变化）后累积；全部阶段完成后会话 ready。
+    """
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"集纲 JSON 解析失败：{error}") from error
+    episodes = raw.get("episodes") if isinstance(raw, dict) else raw
+    if not isinstance(episodes, list) or not episodes:
+        raise click.ClickException("episodes 必须是数组")
+    invalid = [
+        f"{e.get('id') or e.get('title') or '<未命名>'}"
+        for e in episodes if isinstance(e, dict) and _episode_outline_issues(e)
+    ]
+    if invalid:
+        raise click.ClickException(
+            "集纲自查未通过（每集需 logline/active_goal/conflict/turn/state_changes/anchor_ids）：\n  "
+            + "\n  ".join(invalid[:8])
+        )
+    result = session.request(
+        "POST",
+        f"/script/projects/{pid}/storymap/rebuild-phase",
+        json_body={"phase_key": phase_key, "episodes": episodes},
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"阶段 {phase_key} 已累积（累计 {result.get('accumulated_episodes')} 集）"))
+        click.echo(ui.dim(f"  已完成：{'、'.join(result.get('completed_phases') or [])}"))
+        if result.get("next_phase"):
+            click.echo(ui.dim(f"  下一阶段：{result.get('next_phase')}（生成后继续 rebuild-phase；每阶段先 rebuild-check 自查）"), err=True)
+        else:
+            click.echo(ui.dim("  全部阶段完成：请审阅后 storymap rebuild-propose 形成替换候选（采纳仍走 storymap adopt，需明确确认）。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("storymap-rebuild-check")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild_check(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+) -> None:
+    """阶段级确定性检查：重复度/因果/场名/状态变化（提交前预检，不写库）。"""
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"集纲 JSON 解析失败：{error}") from error
+    episodes = raw.get("episodes") if isinstance(raw, dict) else raw
+    if not isinstance(episodes, list) or not episodes:
+        raise click.ClickException("episodes 必须是数组")
+    result = _api_request(
+        ctx, "POST", f"/script/projects/{pid}/storymap/rebuild-check",
+        json_body={"phase_key": phase_key, "episodes": episodes},
+    )
+    if json_output:
+        _emit(result, json_output)
+        return
+    if result.get("pass"):
+        click.echo(ui.ok(f"阶段 {phase_key} 检查通过（{len(episodes)} 集）。"))
+        return
+    for issue in result.get("issues") or []:
+        click.echo(ui.error(issue), err=True)
+    raise click.ClickException(f"阶段检查未通过（{len(result.get('issues') or [])} 项），请修正后重试。")
+
+
+@script_group.command("storymap-rebuild-propose")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_rebuild_propose(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """合并全部阶段为完整替换候选（走普通 propose 通道，不改现有 StoryMap）。
+
+    产出候选后用户审阅影响；明确决定替换时才采纳（storymap adopt / storymap-adopt --latest，
+    需 --confirm/知情确认）。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _session(ctx).request(
+        "POST", f"/script/projects/{pid}/storymap/rebuild-propose", write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"重建候选已形成（candidate_id={result.get('id')}）"))
+        click.echo(ui.dim("请审阅结构影响；用户明确确认后才替换旧 StoryMap：script storymap-adopt <pid> <候选ID>（或 --latest --confirm）。"), err=True)
         return
     _emit(result, json_output)
 
@@ -6515,7 +7054,7 @@ def _scene_board_state(state: dict[str, Any], scene_id: str | None = None) -> An
 @storyboard_scene_board_group.command("upload")
 @click.argument("project_id")
 @click.argument("scene_id")
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--layout", "layout_key", type=click.Choice(["auto", "2x2", "2x3", "3x3", "3x4", "4x4"]), default="auto", show_default=True, help="规划板网格布局")
 @click.option("--mode", "board_mode", type=click.Choice(["annotated", "seedance_sequence"]), default="annotated", show_default=True, help="视觉代理模式")
 @click.option("--json", "json_output", is_flag=True)
@@ -7258,7 +7797,7 @@ def skill_mount(ctx: click.Context, project_id: str, skill_id: str, version_id: 
 
 
 @skill_group.command("upload")
-@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("file_path", type=str)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def skill_upload(ctx: click.Context, file_path: str, json_output: bool) -> None:
@@ -7731,8 +8270,8 @@ def export_options(ctx: click.Context, project_id: str, domain: str, json_output
 @export_group.command("create")
 @click.argument("project_id")
 @click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
-@click.option("--units", required=True, help="逗号分隔的章节/场次 id（用 export options 或 chapter/scene list 查看）")
-@click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=纯净稿；working=含预计时长/发声轨/转场的制作工作稿")
+@click.option("--units", default="", help="逗号分隔的章节/场次 id（planning 分集大纲稿可省略；用 export options 或 chapter/scene list 查看）")
+@click.option("--form", type=click.Choice(["clean", "working", "planning"]), default="clean", help="clean=纯净稿；working=制作工作稿；planning=分集大纲稿（剧名→梗概→人物小传→粗纲→集纲，竖屏剧规范）")
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
@@ -7796,7 +8335,7 @@ def export_download(
 @export_group.command("zip")
 @click.argument("project_id")
 @click.option("--domain", type=click.Choice(["novel", "script"]), default="novel")
-@click.option("--units", required=True, help="逗号分隔的章节/场次 id（用 export options 或 chapter/scene list 查看）")
+@click.option("--units", default="", help="逗号分隔的章节/场次 id（planning 分集大纲稿可省略；用 export options 或 chapter/scene list 查看）")
 @click.option("--form", type=click.Choice(["clean", "working"]), default="clean", help="clean=纯净稿；working=含预计时长/发声轨/转场的制作工作稿")
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")

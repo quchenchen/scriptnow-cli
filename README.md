@@ -193,9 +193,9 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：**outline（单章补纲）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** |
-| novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate |
-| script | 剧本创作链：**outline（梗概大纲）** / outline-adopt / outline-status / **episode-outline（单集集纲补纲）** / state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* |
+| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete** |
+| novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate / **rough-outline（粗纲：propose/adopt/check/example，按叙事阶段）**  / **storymap-rebuild（隔离重建：start/phase/check/propose）** |
+| script | 剧本创作链：**outline（梗概大纲）** / outline-adopt / outline-status / **episode-outline（单集集纲补纲）** / state / scene-list / scene-show / scene / scene-propose（--auto-adopt/--help-format/--example）/ scene-batch（批量+断点续跑）/ scene-quality / scene-diff / quality-report / **planning-quality（集纲门禁）** / storymap / blueprint / story-cores / propose / adopt-* / **rough-outline（粗纲：propose/adopt/check/example，按叙事阶段）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
@@ -224,6 +224,8 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev>
 
 剧本 Skill 在用户专属规则之外自动叠加四类质量锚点：场次功能与转折、可见可听可表演、
 对白/VO/OS 时序、台词量与目标时长。系统自动派生制作信息，不增加编剧问卷或机器字段维护。
+项目创建时锁定的剧本格式始终先于个人 Skill 加载；竖屏短剧分镜式、中国剧本、好莱坞格式
+各自使用独立生成、前端显示和导出契约。个人 Skill 只增加题材方法，不得混用或覆盖格式。
 
 ```bash
 scriptnow guide --step 1 --medium novel --json

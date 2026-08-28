@@ -18,6 +18,29 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > 未完成阶段（一阶段一卷，轮轮以已采纳前缀相接，合起来是一部完整连贯的作品）。阶段只
 > 约束跨章宏观走向，不干预单章内的节奏、伏笔与钩子。
 
+> **结构库（可复用叙事结构模板，双域）**：把多阶段结构命名保存为模板后跨项目按 key
+> 复用——`storymap structure-save <key> @structure.json [--description 说明]
+> [--medium novel|script|both]`；`storymap structures` 列出内置 + 已存模板（含适用类型
+> 与描述）；`storymap structure-delete <key>` 删除。存库后 `project create --structure
+> <key>` 或设入 direction 后 `storymap phases` 自动解析。未知 key 不报错，按 custom 兜底。
+
+> **粗纲（分集/分章大纲·粗纲，双域）**：在集纲/章纲之前，按叙事结构阶段写一段具体剧情
+> 纲要（竖屏剧规范「分集大纲·粗纲」）。先取模板 `scriptnow script|novel
+> rough-outline-example <pid>`（阶段边界即叙事结构推导，不可手改），逐阶段填写
+> summary（≥80 字、写具体剧情、禁套话）+ key_beats（标题|描述）+ anchor_ids（须为已
+> 采纳蓝图锚点），再用 `rough-outline-check` 本地预检、`rough-outline <pid> @file.json
+> [--adopt]` 回填，或 `rough-outline-adopt <pid> <candidate_id>` 采纳。分集大纲稿导出：
+> `scriptnow export create <pid> --domain script --units <全集场次> --form planning
+> --front-matter outline`（剧名→故事梗概→人物小传→粗纲→集纲）。
+
+> **StoryMap 隔离重建（script，替代一次生成完整80集）**：已有 StoryMap 需要重建时，
+> 不要一次生成全集。用 `script storymap-rebuild-start <pid>` 开启隔离会话（冻结阶段计划），
+> 逐阶段：`storymap phases` 查看阶段边界 → 本地生成该阶段集纲 → `storymap-rebuild-check
+> <pid> <phase_key> @episodes.json`（重复度/因果/场名/状态变化）→ `storymap-rebuild-phase
+> <pid> <phase_key> @episodes.json` 累积。全部阶段完成（会话 ready）后 `storymap-rebuild-propose`
+> 形成完整替换候选（走普通 propose，不改现有 StoryMap）；用户明确确认后才经
+> `storymap adopt`（--confirm）替换旧结构。
+
 ## Mandatory bootstrap — before any ScriptNow action
 
 1. Run `scriptnow agent-guide --json`.
@@ -90,6 +113,11 @@ completion. Explain the missing prerequisite and wait.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.
+- For Script writing, read the project-locked `script_format` before loading a
+  personal Skill. Vertical short-form, Chinese screenplay, and Hollywood each
+  have distinct generation, frontend, and export contracts. A personal Skill
+  extends the selected contract; it never overrides it or merges dialogue
+  across an intervening action block.
 
 ## Output discipline
 
