@@ -820,7 +820,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
-        "创意方向与蓝图不得只交付几句占位文本：cores 必须展开完整前提/戏剧概念、五类差异化角度，以及小说 narrative_constraints 或剧本 narrative_engine/viewpoint_anchor/pacing_recipe/market_judgement；blueprint 必须覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点且每项有 20–120 字具体 description。服务端在 propose 与 adopt 双重强制 planning-quality=pass，revise/block 一律按 detail 修正后重传。",
+        "创意方向与蓝图不得只交付几句占位文本：cores 可提交 1–3 组供人选择，但每组都必须展开完整前提/戏剧概念、五类差异化角度；小说 narrative_constraints 为 3–8 条，剧本 narrative_engine/viewpoint_anchor/pacing_recipe/market_judgement 四类 details 各至少 2 条具体判断。blueprint 必须覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点且每项有 20–120 字具体 description。服务端在 propose 与 adopt 双重强制 planning-quality=pass，revise/block 一律按 detail 修正后重传。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
@@ -843,7 +843,7 @@ _AGENT_CONTRACT = {
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
         "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
-        "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200（创建后立即 scriptnow project list 回读核对项目存在）",
+        "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --point-of-view <视角> --chapter-target-words 1200；script 项目另设 --volume-one 总集数 --volume-two 每集场数 --volume-three 单集目标分钟（默认 3）（创建后立即 scriptnow project list 回读核对项目存在）",
         "规划链逐层（梗概 → 粗纲 → 集纲/章纲+storymap 一体）：novel 先 novel outline（梗概）采纳，再 novel rough-outline 平铺链（rough-outline-example → rough-outline-check → rough-outline → rough-outline-adopt）；script 用 script outline 采纳后 script rough-outline-start 分阶段链（-phase/-progress/-propose）。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
         "逐章/逐场创作双模式（正文，用户必须明确选择，平台侧不阻塞）：默认平台主笔——scriptnow chapter|scene generate <pid> ...（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter/scene adopt --human --review-token <token>；平台建议优先平台主笔。仅当用户明确选择本地创作时，Agent 本地写好正文 → chapter propose / script scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时一律平台主笔。",
@@ -1011,7 +1011,7 @@ _GUIDE_STEPS = [
     {
         "step": 5,
         "title": "立故事核心与创作蓝图",
-        "scene": "摊开编剧的案头：先让三个故事方向互相竞争，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
+        "scene": "摊开编剧的案头：先让一到三个故事方向互相比较，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
         "why": "故事核心定方向，创作蓝图立骨架：人物为何行动、关系如何变化、情节怎样升级、承诺如何回收。",
         "downstream": "cores 定人物/世界观根因、blueprint 定锚点；后续 StoryMap 的 beats 与每章章纲的 anchor_ids 都引用这些锚点，因果才不会断。",
         "command": "review preview → novel propose cores → review candidate-preview → novel adopt-core；blueprint 同样分两次决定",
@@ -1638,7 +1638,7 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
 @click.option("--volume-one", default="1", help="卷数（novel）或总集数（script）")
 @click.option("--volume-two", default="15", help="每卷章数（novel）或每集场数（script），可写区间如 2-4")
-@click.option("--volume-three", default="", help="单集目标分钟（仅 script）")
+@click.option("--volume-three", default="3", show_default=True, help="单集目标分钟（仅 script，必须为正数）")
 @click.option("--chapter-target-words", default="1200", help="每章目标字数（novel）")
 @click.option("--creative-variance", type=click.Choice(["focused", "balanced", "exploratory"]), default="balanced", help="创意发散程度")
 @click.option("--json", "json_output", is_flag=True)

@@ -53,7 +53,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.71-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.72-py3-none-any.whl
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -129,7 +129,7 @@ scriptnow chapter adopt <pid> chapter-1-1 <rev> --human --review-token <adoption
 **Script (episodes × scenes)**
 
 ```bash
-scriptnow project create --name "My Script" --medium script
+scriptnow project create --name "My Script" --medium script --point-of-view "limited witness" --volume-one 10 --volume-two 2-4 --volume-three 3
 scriptnow project direction <pid> --apply @direction.json --review-token <direction-review-token>
 # Planning
 scriptnow script propose <pid> cores @cores.json --review-token <submission-review-token>

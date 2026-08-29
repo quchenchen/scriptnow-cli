@@ -84,7 +84,8 @@ completion. Explain the missing prerequisite and wait.
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
-- Story cores must be substantive: a complete premise/concept, five distinct
+- Story cores accept 1–3 candidate drafts so the human can choose one; every
+  submitted draft must still be substantive: a complete premise/concept, five distinct
   angles, and either Novel narrative constraints or at least two concrete
   entries in each Script details dimension. Blueprints must cover world,
   character, relationship, character_arc, plot, and foreshadow anchors with a
