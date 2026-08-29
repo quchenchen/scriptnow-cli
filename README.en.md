@@ -53,11 +53,17 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.72-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.73-py3-none-any.whl
+
+# Fixed-version source archive (zip)
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.73.zip
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
+
+# Fixed GitHub tag
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.73"
 ```
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
@@ -163,10 +169,10 @@ as a writer-facing export file yet.
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
 | chapter | Novel chapters: **outline (backfill one chapter) / outline-batch (batch backfill) / outline-check (self-check) / outline-example (structure example) / bible-example (character-bible example)** / list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
 | scene | Script scenes (the script-side counterpart of chapter): list / show / generate / adopt (alias of script adopt-scene) / propose (local return) / batch / quality / diff |
-| storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; phase=volume)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
+| storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; Novel uses whole-book chapter ranges, not forced volumes)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | authorize | Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes |
-| novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)**; rebuilding requires the novel rough outline adopted first, phase = a volume range |
+| novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)**; rebuilding requires the novel rough outline adopted first, phases use whole-book chapter ranges and do not force one phase per volume |
 | script | Script chain: outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)** |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
@@ -180,7 +186,7 @@ as a writer-facing export file yet.
 
 **Isolated StoryMap rebuild (the storymap-rebuild-* chain on novel/script)**: the domain rough
 outline must be adopted first; `storymap-rebuild-start` freezes the phase plan and the current
-StoryMap, then per phase (novel: a volume range; script: an episode range) run `rebuild-check`
+StoryMap, then per phase (novel: a whole-book chapter range, without forcing volumes; script: an episode range) run `rebuild-check`
 before `rebuild-phase` accumulates it; when all phases are done, `rebuild-propose` merges them
 into a complete replacement candidate (not auto-adopted). Only after explicit user confirmation
 does `storymap adopt --confirm` replace the structure, archiving the old structure and prose snapshots.

@@ -836,7 +836,7 @@ _AGENT_CONTRACT = {
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
         "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 `scriptnow script rough-outline-start` 开隔离链，逐阶段 `rough-outline-phase` 回填并 `rough-outline-progress` 回读，上游返工用 --restart-from 使下游失效，全部完成后 `rough-outline-propose` 形成完整候选。最低篇幅和事件数由 `rough-outline-example` 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链（`scriptnow novel rough-outline-example` → `rough-outline-check` → `rough-outline` 回填 → `rough-outline-adopt`），无分阶段隔离链；novel 的隔离重建走 storymap-rebuild-* 镜像链。",
-        "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（阶段=卷区间）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
+        "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间，比例按每集场数即 volume_two 解释）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
         "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后展示全文；用户明确表达『定稿』『采用这版』『可以进入下一章/场』后，Agent 在后台执行 review confirm → claim，并把 --review-token 传给 chapter/scene adopt --human，平台记录 adopted_human。用户不复制凭证、不操作终端或页面。没有明确表达时才追问一次，不得从沉默或泛泛称赞推断定稿。",
     ],
@@ -880,7 +880,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
         "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
-        "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（阶段=卷区间）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
+        "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
     ],
     "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
     "format_hint": "具体 JSON 结构只以目标 propose 命令的 --help-format / --example 为准。",
@@ -5159,7 +5159,7 @@ def novel_storymap_rebuild_start(
 ) -> None:
     """开始 novel 隔离重建会话：冻结阶段计划与现有 StoryMap 版本，逐阶段累积替换候选。
 
-    替代「一次生成完整 StoryMap」的不可用机制：每次只生成/提交一个阶段（阶段=卷区间），
+    替代「一次生成完整 StoryMap」的不可用机制：每次只生成/提交一个阶段（全书章区间，不强制阶段=卷），
     全部阶段完成后 rebuild-propose 形成完整替换候选，用户明确确认后才替换旧 StoryMap。
     --restart 在阶段计划漂移或需要重做时丢弃已累积进度重新开始。
     """
@@ -5211,7 +5211,7 @@ def novel_storymap_rebuild_phase(
     ctx: click.Context, project_id: str, phase_key: str, file_path: str,
     review_token: str, json_output: bool
 ) -> None:
-    """提交一个阶段到 novel 重建会话（阶段=卷区间；每次只做一个阶段）。
+    """提交一个阶段到 novel 重建会话（全书章区间，不强制阶段=卷；每次只做一个阶段）。
 
     FILE_PATH 是 chapters 数组（每个 chapter 带完整章纲）。提交前自动章纲自查，
     服务端再做阶段级检查（重复度/因果/章名/状态变化）后累积；全部阶段完成后会话 ready。

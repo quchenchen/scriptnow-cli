@@ -23,6 +23,7 @@
 - **Token 预算控制**：本地导入（propose / scene-propose / interpret local）带 `--budget` 预估拦截。
 - **会话自动续期**：一次 login 后 access 过期自动 refresh 续期（30 天），Agent 长会话无需反复登录。
 - **Agent 操作契约**：`scriptnow agent-guide`（--json）输出连接平台唯一准则——平台是事实源、规划回填优先、集纲/章纲质量门禁、生成后台轮询、StoryMap 修订需用户明确授权。
+- **双域阶段语义**：叙事阶段不决定小说卷边界；剧本 `volume_two` 表示每集场数，阶段比例据此按每集场数解释。
 - **新增卷章 = 纯追加**：`storymap append-volume` / `append-chapters` 只尾部新增，已有卷章完全不动；旧结构自动归档可回溯。
 - **审读是 Agent 自身能力**：平台不提供固定 rubric，Agent 读正文、自行判断、用 `--feedback` 驱动修正。
 
@@ -37,11 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.72-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.73-py3-none-any.whl
+# 固定版本源码包（zip）
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.73.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
+
+# GitHub 固定 tag 版本
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.73"
 ```
 
 ## 登录
@@ -126,8 +132,8 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | scene | 剧本场次（chapter 的剧本侧对称）：list / show / generate / adopt（alias of script adopt-scene）/ propose（本地回传）/ batch（批量串行）/ quality / diff |
-| storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；隔离重建走各域 storymap-rebuild-* 链 |
-| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）**；重建须先采纳小说粗纲，逐阶段=卷区间 |
+| storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，Novel 按全书章区间）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；隔离重建走各域 storymap-rebuild-* 链 |
+| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
 | script | 剧本创作链：outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
@@ -140,7 +146,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | version / self-upgrade / config | 版本查看与强制检查（--check）/ 自动升级（确认后执行）/ `config on|off` 开启或关闭「有新版本时后台自动升级 + 通知」（默认关闭） |
 
 **StoryMap 隔离重建（novel/script 的 storymap-rebuild-* 链）**：必须先采纳该域粗纲；
-`storymap-rebuild-start` 冻结阶段计划与现有 StoryMap，逐阶段（小说=卷区间、剧本=集区间）
+`storymap-rebuild-start` 冻结阶段计划与现有 StoryMap，逐阶段（小说按全书章区间、不强制分卷；剧本按集区间）
 先 `rebuild-check` 确定性预检再 `rebuild-phase` 累积；全部完成后 `rebuild-propose` 合并为
 完整替换候选，不自动采纳；用户明确确认后才经 `storymap adopt --confirm` 替换，旧结构与正文
 快照自动归档可回溯：novel 用 `storymap-archives <pid>` 列出、`storymap-archive <pid> <归档ID>`

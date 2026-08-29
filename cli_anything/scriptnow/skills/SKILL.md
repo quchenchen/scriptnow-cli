@@ -15,7 +15,7 @@ workflow from memory and do not treat local files as ScriptNow projects.
 
 > **分阶段创作（novel）**：`storymap phases` 预览叙事结构（three_act/hero_journey/
 > kishotenketsu/linear/custom）推导的阶段计划；`storymap append-phase` 提交下一个
-> 未完成阶段（一阶段一卷，轮轮以已采纳前缀相接，合起来是一部完整连贯的作品）。阶段只
+> 未完成阶段（Novel 按全书章区间规划，不强制一阶段一卷；轮轮以已采纳前缀相接，合起来是一部完整连贯的作品）。阶段只
 > 约束跨章宏观走向，不干预单章内的节奏、伏笔与钩子。
 
 > **结构库（可复用叙事结构模板，双域）**：把多阶段结构命名保存为模板后跨项目按 key
@@ -55,7 +55,7 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` /
 > `storymap-rebuild-propose`。必须先采纳小说粗纲（粗纲位于章纲之前；先 `novel
 > rough-outline-example <pid>` 取结构建议，作者可调整边界、须连续覆盖全书），再开启隔离会话
-> （冻结卷区间阶段计划）；逐阶段：本地生成该卷区间的章纲 → `storymap-rebuild-check
+> （冻结全书章区间阶段计划，不强制阶段=卷）；逐阶段：本地生成该章区间的章纲 → `storymap-rebuild-check
 > <pid> <phase_key> @chapters.json`（重复度/因果/章名/状态变化）→ `storymap-rebuild-phase
 > <pid> <phase_key> @chapters.json` 累积。全部阶段完成（会话 ready）后 `storymap-rebuild-propose`
 > 形成完整替换候选（走普通 propose，不改现有 StoryMap）；用户明确确认后才经
