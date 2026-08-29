@@ -38,16 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.75-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.76-py3-none-any.whl
 # 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.75.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.76.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # GitHub 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.75"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.76"
 ```
 
 ## 登录
@@ -57,6 +57,8 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式�
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
+macOS/Linux 上 CLI 会用跨进程锁协调共享会话的自动续期：不同项目可并发，避免 refresh token
+轮换互相覆盖；同一项目的创作写操作仍需串行，以免产生候选或版本冲突。
 
 **Agent 排查入口：先跑 `scriptnow doctor`** —— 输出 CLI 版本、会话文件实际路径、
 是否登录、账号、平台地址与连通性。任何「登录失败 / 找不到配置 / 409 / No such option」
@@ -76,6 +78,7 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式�
 scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？无 → 走下方创建流程
 # 一书一 Skill 蒸馏（样本不传平台）：interpret local 手稿.docx --spec → 本地解读+多轮完善 → --submit @skill.json --project-id <pid>
 #   或 个人 Skill：skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
+# 错误挂载仅在用户明确授权后：skill unmount <pid> <skill_id> --confirm --json（不归档全局 Skill，自动回读）
 ```
 
 **小说（卷 × 章）**
@@ -139,7 +142,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / **preview（交付范围审阅，返回一键审阅地址）** / download / zip；剧本 working DOCX 含每场制作信息 |
-| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
+| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | feedback | CLI 诊断包收集：版本 / 近期错误 / 命令记录；默认仅本地生成，--send 才发送平台（不含密码、令牌、正文） |

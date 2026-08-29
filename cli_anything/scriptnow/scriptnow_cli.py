@@ -826,9 +826,10 @@ _AGENT_CONTRACT = {
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
+        "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
-        "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
+        "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
@@ -847,7 +848,7 @@ _AGENT_CONTRACT = {
         "规划链逐层（梗概 → 粗纲 → 集纲/章纲+storymap 一体）：novel 先 novel outline（梗概）采纳，再 novel rough-outline 平铺链（rough-outline-example → rough-outline-check → rough-outline → rough-outline-adopt）；script 用 script outline 采纳后 script rough-outline-start 分阶段链（-phase/-progress/-propose）。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
         "逐章/逐场创作双模式（正文，用户必须明确选择，平台侧不阻塞）：默认平台主笔——scriptnow chapter|scene generate <pid> ...（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter/scene adopt --human --review-token <token>；平台建议优先平台主笔。仅当用户明确选择本地创作时，Agent 本地写好正文 → chapter propose / script scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时一律平台主笔。",
-        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
+        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
@@ -877,6 +878,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "审阅凭证只绑定用户实际阅读的可读 JSON；解析器默认值不得制造内容变化。",
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
+        "同一项目的创作写操作必须串行，避免版本和候选冲突；不同项目可并发，CLI 会安全协调共享登录会话的自动续期。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
         "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",
@@ -4319,7 +4321,7 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
     checks.append(("章纲（全书 chapter.outline）", _all_planning_contracts(chapters, "chapter_contract"), "在每个 chapter 的 outline 填写章纲 → chapter outline <pid> <chapter_id> @outline.json（单章补纲）→ planning-quality → propose"))
     try:
         mounted = session.request("GET", f"/projects/{pid}/skills")
-        skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
+        skills = [str(item.get("name") or "") for item in mounted if isinstance(item, dict) and bool(item.get("enabled", True))] if isinstance(mounted, list) else []
     except Exception:
         skills = []
     checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
@@ -5688,7 +5690,7 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
     checks.append(("集纲（全剧 Episode 平铺字段）", _all_planning_contracts(episodes, "episode_contract"), "可用 script episode-outline <pid> <episode_id> @outline.json 单集补纲；完成全量后运行 script planning-quality → propose/adopt"))
     try:
         mounted = session.request("GET", f"/projects/{pid}/skills")
-        skills = [str(i.get("name") or "") for i in mounted] if isinstance(mounted, list) else []
+        skills = [str(item.get("name") or "") for item in mounted if isinstance(item, dict) and bool(item.get("enabled", True))] if isinstance(mounted, list) else []
     except Exception:
         skills = []
     checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
@@ -8640,6 +8642,27 @@ def skill_mount(ctx: click.Context, project_id: str, skill_id: str, version_id: 
         write=True,
     )
     _emit({"ok": True, "project_id": project_id, "skill_id": skill_id} if result is None else result, json_output)
+
+
+@skill_group.command("unmount")
+@click.argument("project_id")
+@click.argument("skill_id")
+@click.option("--confirm", is_flag=True, help="确认只解除该项目的此 Skill 挂载")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_unmount(ctx: click.Context, project_id: str, skill_id: str, confirm: bool, json_output: bool) -> None:
+    """Disable one Skill only for a project; requires explicit confirmation."""
+    if not confirm:
+        raise click.ClickException("解除项目 Skill 挂载需要 --confirm；不会归档全局 Skill 或影响其他项目")
+    session = _session(ctx)
+    result = session.request("DELETE", f"/projects/{project_id}/skills/{skill_id}", write=True)
+    mounts = session.request("GET", f"/projects/{project_id}/skills") or []
+    verified = not any(
+        str(item.get("skill_id") or item.get("id") or "") == skill_id and bool(item.get("enabled", True))
+        for item in mounts
+    )
+    receipt = {"project_id": project_id, "skill_id": skill_id, "unmounted": bool((result or {}).get("unmounted", True)), "verified": verified}
+    _emit({**(result or {}), **receipt}, json_output)
 
 
 @skill_group.command("upload")

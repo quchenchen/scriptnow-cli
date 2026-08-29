@@ -17,6 +17,8 @@ import os
 import sys
 import time
 import re
+import errno
+import fcntl
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -41,12 +43,113 @@ class ScriptNowError(RuntimeError):
     """Raised when the platform returns an error or the session is unusable."""
 
 
+class _SessionFileError(RuntimeError):
+    """The local session file cannot safely participate in a refresh."""
+
+
+class _SessionLockTimeout(RuntimeError):
+    """Another CLI process held the session-refresh lock for too long."""
+
+
+class _SessionFileLock:
+    """A small, POSIX-only inter-process lock beside a session file.
+
+    ScriptNow CLI supports macOS and Linux. ``flock`` is deliberately used
+    instead of an in-memory lock because a normal CLI invocation is a new
+    process. The lock file contains no credentials and is retained as a safe,
+    empty coordination point after release.
+    """
+
+    def __init__(self, path: Path, *, timeout: float | None = None) -> None:
+        self.path = path.with_name(f"{path.name}.refresh.lock")
+        self.timeout = _refresh_lock_timeout() if timeout is None else timeout
+        self._fd: int | None = None
+
+    def __enter__(self) -> "_SessionFileLock":
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass
+        except OSError as error:
+            raise _SessionFileError("无法创建本地登录续期锁") from error
+
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError as error:
+                if error.errno not in (errno.EACCES, errno.EAGAIN):
+                    self._close()
+                    raise _SessionFileError("无法获取本地登录续期锁") from error
+                if time.monotonic() >= deadline:
+                    self._close()
+                    raise _SessionLockTimeout()
+                time.sleep(0.05)
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        del exc_type, exc, traceback
+        if self._fd is not None:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+            finally:
+                self._close()
+
+    def _close(self) -> None:
+        if self._fd is not None:
+            try:
+                os.close(self._fd)
+            finally:
+                self._fd = None
+
+
+def _refresh_lock_timeout() -> float:
+    """Return a bounded, configurable wait for another CLI refresh process."""
+    raw = os.environ.get("SCRIPTNOW_CLI_REFRESH_LOCK_TIMEOUT_SECONDS", "15")
+    try:
+        return max(0.1, min(float(raw), 120.0))
+    except ValueError:
+        return 15.0
+
+
+def _state_marker(base_url: str, cookies: dict[str, str], csrf: str) -> str:
+    """Credential-state comparison used only in memory; never logged."""
+    return json.dumps(
+        {"base_url": base_url.rstrip("/"), "cookies": cookies, "csrf": csrf},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _read_session_payload(path: Path) -> dict[str, Any]:
+    """Read and minimally validate a saved session without exposing secrets."""
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise _SessionFileError("本地登录会话文件损坏或无法读取") from error
+    if not isinstance(value, dict):
+        raise _SessionFileError("本地登录会话文件格式无效")
+    base_url = value.get("base_url")
+    cookies = value.get("cookies")
+    csrf = value.get("csrf")
+    if not isinstance(base_url, str) or not isinstance(cookies, dict) or not isinstance(csrf, str):
+        raise _SessionFileError("本地登录会话文件格式无效")
+    if not all(isinstance(key, str) and isinstance(item, str) for key, item in cookies.items()):
+        raise _SessionFileError("本地登录会话文件格式无效")
+    return value
+
+
 @dataclass
 class Session:
     base_url: str
     cookies: dict[str, str] = field(default_factory=dict)
     csrf: str = ""
     _http: requests.Session = field(default_factory=requests.Session, repr=False)
+    _persisted_marker: str | None = field(default=None, repr=False)
 
     @property
     def api_root(self) -> str:
@@ -143,13 +246,19 @@ class Session:
         # refresh tokens last for days. A long-running agent session would
         # otherwise hit 401 mid-work and stall. On 401, rotate the persisted
         # refresh token once and retry the original request before giving up.
-        if response.status_code == 401 and self._refresh():
+        if response.status_code == 401:
             try:
-                response = _perform()
-            except requests.RequestException as error:
-                err = ScriptNowError(f"network error: {error}")
-                _record(err, command)
-                raise err from error
+                refreshed = self._refresh()
+            except ScriptNowError as error:
+                _record(error, command)
+                raise
+            if refreshed:
+                try:
+                    response = _perform()
+                except requests.RequestException as error:
+                    err = ScriptNowError(f"network error: {error}")
+                    _record(err, command)
+                    raise err from error
         if response.status_code == 401:
             err = ScriptNowError("登录状态已失效，请重新运行 scriptnow login")
             _record(err, command)
@@ -176,33 +285,71 @@ class Session:
         rotation. Never raises; a failed rotation simply reports False so the
         caller can surface the usual "session expired" error.
         """
-        if not self.cookies.get("sf_refresh") or not self.csrf:
-            return False
+        path = _config_path()
         try:
-            response = self._http.post(
-                f"{self.api_root}/auth/refresh",
-                headers={"X-CSRF-Token": self.csrf},
-                cookies=self.cookies or None,
-                timeout=60,
-            )
-        except requests.RequestException:
-            return False
-        if response.status_code != 200:
-            return False
-        rotated = False
-        for cookie in response.cookies:
-            self.cookies[cookie.name] = cookie.value
-            if cookie.name == "sf_csrf":
-                self.csrf = cookie.value
-                rotated = True
-        if rotated:
-            # 持久化是尽力而为：会话目录不可写时（只读配置目录/权限异常），
-            # 只影响下次启动的复用，不应让一次 refresh 崩溃整个命令。
-            try:
-                self.save(_config_path())
-            except OSError:
-                pass
-        return rotated
+            with _SessionFileLock(path):
+                # Another process may have already rotated a one-time refresh
+                # token while this invocation was waiting. Always reload after
+                # acquiring the lock; never let a stale response overwrite it.
+                payload = _read_session_payload(path)
+                latest_base_url = str(payload["base_url"]).rstrip("/")
+                latest_cookies = dict(payload["cookies"])
+                latest_csrf = str(payload["csrf"])
+                latest_marker = _state_marker(latest_base_url, latest_cookies, latest_csrf)
+                baseline = self._persisted_marker or _state_marker(
+                    self.base_url, self.cookies, self.csrf
+                )
+                if latest_marker != baseline:
+                    self.base_url = latest_base_url
+                    self.cookies = latest_cookies
+                    self.csrf = latest_csrf
+                    self._persisted_marker = latest_marker
+                    return bool(self.cookies.get("sf_refresh") and self.csrf)
+                # Refresh with exactly the durable state that was protected by
+                # this lock. A 401 response must not leave an incidental
+                # Set-Cookie mutation in memory as the input to token rotation.
+                self.base_url = latest_base_url
+                self.cookies = latest_cookies
+                self.csrf = latest_csrf
+                self._persisted_marker = latest_marker
+                if not self.cookies.get("sf_refresh") or not self.csrf:
+                    return False
+                try:
+                    response = self._http.post(
+                        f"{self.api_root}/auth/refresh",
+                        headers={"X-CSRF-Token": self.csrf},
+                        cookies=self.cookies or None,
+                        timeout=60,
+                    )
+                except requests.RequestException:
+                    return False
+                if response.status_code != 200:
+                    return False
+                rotated = False
+                for cookie in response.cookies:
+                    self.cookies[cookie.name] = cookie.value
+                    if cookie.name == "sf_csrf":
+                        self.csrf = cookie.value
+                        rotated = True
+                if not rotated:
+                    return False
+                # Atomic replacement makes a complete new cookie set visible as
+                # one unit to other CLI processes. A failed save must not make
+                # this request fail: the freshly rotated in-memory session can
+                # still retry its original request.
+                try:
+                    self.save(path)
+                except OSError:
+                    pass
+                return True
+        except _SessionLockTimeout as error:
+            raise ScriptNowError(
+                "等待另一条 ScriptNow CLI 命令完成登录续期超时；请等待该命令结束后重试"
+            ) from error
+        except _SessionFileError as error:
+            raise ScriptNowError(
+                "本地登录会话文件损坏或不可读取，未覆盖原文件；请重新登录后重试"
+            ) from error
 
     def save(self, path: Path) -> None:
         payload = {
@@ -218,11 +365,39 @@ class Session:
             path.parent.chmod(0o700)
         except OSError:
             pass  # best-effort on platforms without POSIX chmod
-        path.write_text(json.dumps(payload, ensure_ascii=False))
+        encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.{_uuid.uuid4().hex}.tmp")
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                descriptor = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            # Best effort durability for the rename on POSIX filesystems.
+            try:
+                directory_fd = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+        except Exception:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
         try:
             path.chmod(0o600)
         except OSError:
             pass  # best-effort on platforms without POSIX chmod
+        self._persisted_marker = _state_marker(self.base_url, self.cookies, self.csrf)
 
 
 def _record(error: Exception, command: str | None) -> None:
@@ -293,11 +468,20 @@ def load() -> Session:
             "没有已保存的会话。请先运行: scriptnow login --host <平台地址> --email <账号> --password <密码>\n"
             "例如: scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'"
         )
-    payload = json.loads(path.read_text())
+    try:
+        payload = _read_session_payload(path)
+    except _SessionFileError as error:
+        raise ScriptNowError(
+            "本地登录会话文件损坏或不可读取，未覆盖原文件；请重新运行 scriptnow login"
+        ) from error
+    base_url = str(payload["base_url"]).rstrip("/")
+    cookies = dict(payload.get("cookies") or {})
+    csrf = str(payload.get("csrf") or "")
     session = Session(
-        base_url=str(payload["base_url"]),
-        cookies=dict(payload.get("cookies") or {}),
-        csrf=str(payload.get("csrf") or ""),
+        base_url=base_url,
+        cookies=cookies,
+        csrf=csrf,
+        _persisted_marker=_state_marker(base_url, cookies, csrf),
     )
     return session
 

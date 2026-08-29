@@ -80,6 +80,9 @@ completion. Explain the missing prerequisite and wait.
 
 - The platform is the only project fact source. Do not invent project IDs,
   paths, status, JSON schemas, or completion states.
+- Keep creative writes for one project serial to avoid candidate/version
+  conflicts. Different projects may run concurrently; the CLI safely
+  coordinates automatic refresh for a shared login session on macOS/Linux.
 - Use CLI commands for every platform action; local files are temporary drafts
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
@@ -160,6 +163,12 @@ completion. Explain the missing prerequisite and wait.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.
+- If a mounted Skill is wrong or blocks generation, do not archive the global
+  Skill or rebuild the project. Only after explicit user approval run `skill
+  unmount <project_id> <skill_id> --confirm --json`; it disables that one
+  project mount, reads mounts back for verification, and leaves other projects
+  and versions untouched. A project with no enabled methodology Skill is not
+  ready for writing.
 - `skill craft` preflight, its creation receipt, the mount gate, and runtime
   must resolve the same complete methodology reference; never replace it with a
   summary or leak a cross-tenant detail.

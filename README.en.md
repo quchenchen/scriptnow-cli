@@ -53,17 +53,17 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.75-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.76-py3-none-any.whl
 
 # Fixed-version source archive (zip)
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.75.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.76.zip
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # Fixed GitHub tag
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.75"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.76"
 ```
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
@@ -78,6 +78,9 @@ scriptnow login --host https://sn.igeewa.com --email you@example.com   # interac
 The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
 (cookie only, no password, mode 0600). Alternatively use the `SCRIPTNOW_BASE_URL` /
 `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` environment variables.
+On macOS/Linux, the CLI uses an inter-process lock for automatic refresh: different
+projects can run concurrently without refresh-token overwrite, while creative writes
+within one project must remain serial to avoid candidate and version conflicts.
 
 ### Config & session location (agents: run `scriptnow doctor` first)
 
@@ -92,10 +95,9 @@ The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.jso
 "No such option" — run `scriptnow doctor` FIRST.** It prints the CLI version, the
 actual session path, whether you are logged in, which account, the platform URL and
 connectivity. Do not guess where config lives. `doctor` says not logged in → re-run
-`scriptnow login`; logged in but requests 409 → usually a refresh-token rotation race,
-re-login (not a data problem). Shared session file across venvs/pipx/system means one
-login works everywhere; concurrent refresh from multiple ends may revoke the old
-token once (rotation protection) — just log in again.
+`scriptnow login`. Shared session files across venvs/pipx/system are safely coordinated
+during refresh; if the CLI reports a corrupt session file or a refresh-lock timeout, it
+has left the file untouched—wait for the other command, then retry or log in again.
 
 ## Quick start (dual-domain)
 
@@ -107,6 +109,7 @@ scriptnow skill mounts <pid>                  # which skills are mounted?
 # none → one-work-one-skill distillation (samples stay local): interpret local draft.docx --spec
 #         → read locally → --submit @skill.json --project-id <pid>
 #    or a personal skill: skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
+# wrong mount: after explicit user approval, skill unmount <pid> <skill_id> --confirm --json (project-only, then read-back)
 ```
 
 **Novel (volumes × chapters)**
@@ -178,7 +181,7 @@ as a writer-facing export file yet.
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / **preview (delivery-scope review with a one-click review URL)** / download / zip; script working DOCX includes per-scene production metadata |
-| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
+| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 | feedback | Collect a CLI diagnostics bundle (version / recent errors / command trail); local-only by default, `--send` uploads to the platform (no passwords, tokens, or prose) |

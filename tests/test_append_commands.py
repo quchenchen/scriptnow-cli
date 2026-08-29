@@ -305,6 +305,57 @@ def test_skill_craft_agent_flow_preflights_mounts_and_reads_back(monkeypatch):
     )
 
 
+def test_skill_unmount_requires_confirmation_and_reads_back(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+
+    def request(method, path, **kwargs):
+        if method == "DELETE":
+            assert path == "/projects/project-1/skills/skill-1"
+            assert kwargs["write"] is True
+            return {"project_id": "project-1", "skill_id": "skill-1", "unmounted": True, "verified": True}
+        if method == "GET":
+            assert path == "/projects/project-1/skills"
+            return [{"skill_id": "skill-1", "enabled": False}]
+        raise AssertionError((method, path, kwargs))
+
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+    blocked = runner.invoke(main, ["skill", "unmount", "project-1", "skill-1", "--json"])
+    assert blocked.exit_code != 0
+    assert "--confirm" in blocked.output
+    assert not session.request.called
+
+    result = runner.invoke(main, ["skill", "unmount", "project-1", "skill-1", "--confirm", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "project_id": "project-1", "skill_id": "skill-1", "unmounted": True, "verified": True,
+    }
+
+
+def test_novel_ready_check_ignores_disabled_skill_mounts(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = [{"skill_id": "skill-1", "name": "bad-method", "enabled": False}]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    monkeypatch.setattr(cli, "_resolve_project_id", lambda _ctx, project_id: project_id)
+    monkeypatch.setattr(cli, "_novel_state", lambda _session, _pid: {
+        "creation_settings": {"chapter_target_words": 1200}, "story_cores": [{"status": "adopted"}],
+        "blueprint": {"anchors": []}, "story_map": {"volumes": []},
+    })
+    monkeypatch.setattr(cli, "_api_request", lambda _ctx, _method, _path, **_kwargs: {"status": "adopted"})
+
+    result = CliRunner().invoke(main, ["novel", "ready-check", "project-1", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    skill_check = next(item for item in payload["checks"] if item["item"] == "方法论 Skill")
+    assert skill_check["ok"] is False
+    assert payload["skills"] == []
+
+
 def test_guide_focuses_one_creative_decision_and_adapts_script_path():
     runner = CliRunner()
 
