@@ -240,6 +240,10 @@ def _extract_detail(response: requests.Response) -> str:
         body = response.json()
     except ValueError:
         return response.text[:300]
+    if isinstance(body, dict) and body.get("agent_detail"):
+        detail = body["agent_detail"]
+        if isinstance(detail, str):
+            return detail[:300]
     if isinstance(body, dict) and body.get("detail"):
         detail = body["detail"]
         if isinstance(detail, str):

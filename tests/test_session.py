@@ -2,7 +2,17 @@ from unittest.mock import Mock
 from io import BytesIO
 from types import SimpleNamespace
 
-from cli_anything.scriptnow.utils.session import Session
+from cli_anything.scriptnow.utils.session import Session, _extract_detail
+
+
+def test_extract_detail_prefers_actionable_agent_detail() -> None:
+    response = Mock()
+    response.json.return_value = {
+        "detail": "本次操作暂未完成，请稍后重试。",
+        "agent_detail": "Novel StoryMap version conflict",
+    }
+
+    assert _extract_detail(response) == "Novel StoryMap version conflict"
 from cli_anything.scriptnow.utils.session import ScriptNowError
 import pytest
 

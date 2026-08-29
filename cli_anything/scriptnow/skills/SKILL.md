@@ -45,7 +45,24 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > <pid> <phase_key> @episodes.json`（重复度/因果/场名/状态变化）→ `storymap-rebuild-phase
 > <pid> <phase_key> @episodes.json` 累积。全部阶段完成（会话 ready）后 `storymap-rebuild-propose`
 > 形成完整替换候选（走普通 propose，不改现有 StoryMap）；用户明确确认后才经
-> `storymap adopt`（--confirm）替换旧结构。
+> `storymap adopt`（--confirm）替换旧结构。被替换的旧结构自动归档：script 用
+> `script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>`
+> 查看单份（含旧集场结构与各场正文快照），novel 镜像 `novel storymap-archives` /
+> `novel storymap-archive`。
+
+> **StoryMap 隔离重建（novel）**：长期小说需要重建 StoryMap 时同样不要一次生成完整长卷。
+> 命令链镜像 script：`scriptnow novel storymap-rebuild-start` / `storymap-rebuild` /
+> `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` /
+> `storymap-rebuild-propose`。必须先采纳小说粗纲（粗纲位于章纲之前；先 `novel
+> rough-outline-example <pid>` 取结构建议，作者可调整边界、须连续覆盖全书），再开启隔离会话
+> （冻结卷区间阶段计划）；逐阶段：本地生成该卷区间的章纲 → `storymap-rebuild-check
+> <pid> <phase_key> @chapters.json`（重复度/因果/章名/状态变化）→ `storymap-rebuild-phase
+> <pid> <phase_key> @chapters.json` 累积。全部阶段完成（会话 ready）后 `storymap-rebuild-propose`
+> 形成完整替换候选（走普通 propose，不改现有 StoryMap）；用户明确确认后才经
+> `storymap adopt`（--confirm）替换旧结构，禁止一次生成完整长卷。被替换的旧结构自动归档：
+> novel 用 `novel storymap-archives <pid>` 列出、`novel storymap-archive <pid> <archive_id>`
+> 查看单份（含旧卷章结构与各章正文快照）；script 镜像 `script storymap-archives` /
+> `script storymap-archive`，两域归档均用于重建影响审阅与回滚决策。
 
 ## Mandatory bootstrap — before any ScriptNow action
 
@@ -73,8 +90,9 @@ completion. Explain the missing prerequisite and wait.
   missing required keys; `script bible-example` shows the structure.
 - Beats and episode/chapter outlines must be CONCRETE plot content (who does what,
   to whom, with which object, where). Generic meta-writing like "推进矛盾 / 留下钩子 /
-  本场目标" is rejected by planning-quality (REVISE) and flagged by `storymap propose`
-  before submission. Correct: "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止".
+  本场目标" is rejected by planning-quality (REVISE); preflight check before
+  submission runs `planning-quality storymap` (storymap group has no standalone
+  propose-preflight command). Correct: "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止".
 - A StoryMap container is not a completed outline: every Script episode must
   carry flat `logline`, `active_goal`, `conflict`, `turn`, `state_changes`, and
   `anchor_ids`; every Novel chapter must carry `outline` with `summary` or
@@ -83,8 +101,12 @@ completion. Explain the missing prerequisite and wait.
   full map before adoption or batch prose generation.
 - Structural growth is append-only: add volumes/chapters only via
   `storymap append-volume` / `storymap append-chapters` (existing ids, titles,
-  and ordering never change). StoryMap replacement is a high-risk override that
-  requires explicit user authorization (`--confirm`).
+  and ordering never change). New chapter beats must reference blueprint
+  anchors that already exist (`anchor_ids`); blueprint updates must keep every
+  anchor referenced by adopted StoryMap beats — missing anchors are rejected.
+  StoryMap replacement is a high-risk override that requires explicit user
+  authorization (`--confirm`) and archives the replaced structure
+  automatically.
 - Storyboarding is also backfill-first: read `storyboard state` and `assets`,
   run `source-preflight` before every append, register the source, then locally extract and author a valid `ScriptOut` under
   the mounted Skills. Return it with `storyboard propose`. Platform analysis and
@@ -101,6 +123,14 @@ completion. Explain the missing prerequisite and wait.
   multi-reference generation. Agents must use returned platform URLs and never inspect workspace paths directly.
 - Never adopt a chapter, scene, or StoryMap without the user's explicit current
   decision. StoryMap replacement also needs its CLI confirmation path.
+- 逐章/逐场创作双模式（dual-mode chapter/scene creation, the user must choose
+  explicitly and the platform does not block): platform-led is the default and
+  recommended — `chapter/scene generate` produces a platform candidate →
+  `review preview` for human review → `adopt`. Only when the user explicitly
+  chooses local creation does the Agent write prose locally, backfill the
+  candidate via `chapter propose` / `scene propose`, then `review preview` →
+  `adopt --human`. Without an explicit choice, platform-led applies; never
+  default to or steer the user toward local-led writing.
 - Creative flow is outline-first and layer-by-layer: adopt a synopsis outline
   (`novel outline`/`script outline` + `outline-adopt`) before StoryMap planning;
   adopt the StoryMap; then backfill complete chapter/episode outlines before new
@@ -114,8 +144,10 @@ completion. Explain the missing prerequisite and wait.
   full map before adoption.
 - Background generation returns a `run_id`; poll `scriptnow run status` instead
   of long blocking waits.
-- Follow each command's returned error detail exactly. Do not substitute an
-  unvalidated structure or silently retry with invented data.
+- Follow each command's returned actionable error detail exactly. Agent CLI
+  requests preserve the sanitized original domain detail when the public
+  Chinese fallback is generic. Do not substitute an unvalidated structure or
+  silently retry with invented data.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.

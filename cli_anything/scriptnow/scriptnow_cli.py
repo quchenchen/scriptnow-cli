@@ -775,14 +775,15 @@ _AGENT_CONTRACT = {
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
+        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
-        "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前可用 storymap propose 的预检提示自查。",
+        "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
-        "回传被平台拒绝时，按返回的 detail 修正格式后重传；不要自建替代结构，也不要删除平台已有项目自行重建。",
+        "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景会保留经脱敏的原始领域 detail，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
@@ -790,20 +791,22 @@ _AGENT_CONTRACT = {
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
-        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 rough-outline-start 开隔离链，逐阶段 rough-outline-phase 回填并 rough-outline-progress 回读，上游返工用 --restart-from 使下游失效，全部完成后 rough-outline-propose 形成完整候选。最低篇幅和事件数由 rough-outline-example 动态返回，禁止一句话粗纲。",
+        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 `scriptnow script rough-outline-start` 开隔离链，逐阶段 `rough-outline-phase` 回填并 `rough-outline-progress` 回读，上游返工用 --restart-from 使下游失效，全部完成后 `rough-outline-propose` 形成完整候选。最低篇幅和事件数由 `rough-outline-example` 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链（`scriptnow novel rough-outline-example` → `rough-outline-check` → `rough-outline` 回填 → `rough-outline-adopt`），无分阶段隔离链；novel 的隔离重建走 storymap-rebuild-* 镜像链。",
+        "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（阶段=卷区间）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
         "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后展示全文；用户明确表达『定稿』『采用这版』『可以进入下一章/场』后，Agent 在后台执行 review confirm → claim，并把 --review-token 传给 chapter/scene adopt --human，平台记录 adopted_human。用户不复制凭证、不操作终端或页面。没有明确表达时才追问一次，不得从沉默或泛泛称赞推断定稿。",
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
         "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
-        "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
-        "每阶段先 review preview → propose，再用 review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。",
+        "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --chapter-target-words 1200（创建后立即 scriptnow project list 回读核对项目存在）",
+        "规划链逐层（梗概 → 粗纲 → 集纲/章纲+storymap 一体）：novel 先 novel outline（梗概）采纳，再 novel rough-outline 平铺链（rough-outline-example → rough-outline-check → rough-outline → rough-outline-adopt）；script 用 script outline 采纳后 script rough-outline-start 分阶段链（-phase/-progress/-propose）。",
+        "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
+        "逐章/逐场创作双模式（正文，用户必须明确选择，平台侧不阻塞）：默认平台主笔——scriptnow chapter|scene generate <pid> ...（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter/scene adopt --human --review-token <token>；平台建议优先平台主笔。仅当用户明确选择本地创作时，Agent 本地写好正文 → chapter propose / script scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时一律平台主笔。",
+        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
-        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实",
-        "scriptnow chapter generate <pid> chapter-1-1（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter adopt --human --review-token <token> <pid> <cid> <revision_id>",
-        "集纲/章纲回填：剧本在 storymap JSON 的每个 episode 上填写平铺的 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说在每个 chapter 的 outline 中填写 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。先运行 planning-quality，再经 review preview 提交候选；用 review candidate-preview 展开平台候选，人明确保留后独立 adopt。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选，禁止 --adopt 隐式采纳。",
+        "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
@@ -821,16 +824,18 @@ _AGENT_RUNTIME_CONTRACT = {
         "先读取平台状态和本契约；不确定命令或 JSON 结构时先运行对应 --help，不猜测。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
+        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
-        "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 detail 修正，不能编造替代结果。",
+        "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
-        "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 rough-outline-example 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。rough-outline-check 通过后才可回填候选。",
-        "StoryMap 隔离重建（script）：已有 StoryMap 重建必须用 storymap-rebuild-start 开隔离会话，逐阶段 rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。禁止一次生成完整 80 集。",
+        "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",
+        "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
+        "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（阶段=卷区间）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
     ],
     "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
     "format_hint": "具体 JSON 结构只以目标 propose 命令的 --help-format / --example 为准。",
@@ -2597,7 +2602,14 @@ def interpret_local(
 @main.group("chapter")
 @click.pass_context
 def chapter_group(ctx: click.Context) -> None:
-    """小说章节：列表 / 阅读 / 生成 / 质量 / 采纳。"""
+    """小说章节：列表 / 阅读 / 生成 / 质量 / 采纳。
+
+    逐章创作双模式（用户必须明确选择，平台侧不阻塞）：
+    · 平台主笔（默认）：chapter generate 由平台生成候选 → review preview 审读 →
+      adopt；平台建议优先使用。
+    · 本地 Agent 创作后回填：Agent 本地写好正文 → chapter propose 回传候选 →
+      review preview 审读 → adopt --human。仅用户明确选择本地创作时才走此模式。
+    """
 
 
 @chapter_group.command("outline")
@@ -5089,6 +5101,244 @@ def novel_orchestrate(
     }, json_output)
 
 
+@novel_group.command("storymap-rebuild-start")
+@click.argument("project_id")
+@click.option("--restart", is_flag=True, help="supersede 现有会话并重新开始（丢弃已累积进度）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild_start(
+    ctx: click.Context, project_id: str, restart: bool, json_output: bool
+) -> None:
+    """开始 novel 隔离重建会话：冻结阶段计划与现有 StoryMap 版本，逐阶段累积替换候选。
+
+    替代「一次生成完整 StoryMap」的不可用机制：每次只生成/提交一个阶段（阶段=卷区间），
+    全部阶段完成后 rebuild-propose 形成完整替换候选，用户明确确认后才替换旧 StoryMap。
+    --restart 在阶段计划漂移或需要重做时丢弃已累积进度重新开始。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _session(ctx).request(
+        "POST", f"/novel/projects/{pid}/story-map/rebuild-start?restart={str(restart).lower()}",
+        write=True,
+    )
+    if not json_output:
+        click.echo(ui.ok(f"重建会话已开始（rebuild_id={result.get('id')}，基准 StoryMap v{result.get('base_story_map_version')}）"))
+        click.echo(ui.dim(
+            f"  已完成：{'、'.join(result.get('completed_phases') or []) or '（无）'}；"
+            f"下一阶段：{result.get('next_phase') or '（全部完成，可 rebuild-propose）'}"
+        ), err=True)
+        click.echo(ui.dim("  下一步：storymap phases 查看阶段边界 → 本地生成第1阶段 → storymap rebuild-phase <pid> <phase_key> @chapters.json"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("storymap-rebuild")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """查看 novel 重建会话状态（已提交阶段、累积章数、下一阶段）。"""
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/story-map/rebuild")
+    if not json_output:
+        if result is None:
+            click.echo(ui.dim("暂无进行中的重建会话；可用 storymap rebuild-start 开始。"), err=False)
+            return
+        click.echo(ui.section(f"重建会话 {result.get('id')} · {result.get('status')}"))
+        click.echo(ui.kv("基准 StoryMap 版本", result.get("base_story_map_version")))
+        click.echo(ui.kv("已完成阶段", "、".join(result.get("completed_phases") or []) or "（无）"))
+        click.echo(ui.kv("累积章数", result.get("accumulated_chapters")))
+        click.echo(ui.kv("下一阶段", result.get("next_phase") or "（全部完成，可 rebuild-propose）"))
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("storymap-rebuild-phase")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--review-token", required=True, help="人类确认本阶段完整章纲后由 Agent 后台取得")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild_phase(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str,
+    review_token: str, json_output: bool
+) -> None:
+    """提交一个阶段到 novel 重建会话（阶段=卷区间；每次只做一个阶段）。
+
+    FILE_PATH 是 chapters 数组（每个 chapter 带完整章纲）。提交前自动章纲自查，
+    服务端再做阶段级检查（重复度/因果/章名/状态变化）后累积；全部阶段完成后会话 ready。
+    """
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
+    chapters = raw.get("chapters") if isinstance(raw, dict) else raw
+    if not isinstance(chapters, list) or not chapters:
+        raise click.ClickException("chapters 必须是数组")
+    _validate_appended_outlines([c for c in chapters if isinstance(c, dict)], key="chapters")
+    result = session.request(
+        "POST",
+        f"/novel/projects/{pid}/story-map/rebuild-phase",
+        json_body={"phase_key": phase_key, "chapters": chapters},
+        write=True,
+        headers={"X-Review-Token": review_token},
+    )
+    if not json_output:
+        click.echo(ui.ok(f"阶段 {phase_key} 已累积（累计 {result.get('accumulated_chapters')} 章）"))
+        click.echo(ui.dim(f"  已完成：{'、'.join(result.get('completed_phases') or [])}"))
+        if result.get("next_phase"):
+            click.echo(ui.dim(f"  下一阶段：{result.get('next_phase')}（生成后继续 rebuild-phase；每阶段先 rebuild-check 自查）"), err=True)
+        else:
+            click.echo(ui.dim("  全部阶段完成：请审阅后 storymap rebuild-propose 形成替换候选（采纳仍走 storymap adopt，需明确确认）。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("storymap-rebuild-phase-preview")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild_phase_preview(ctx: click.Context, project_id: str, phase_key: str,
+                                         file_path: str, json_output: bool) -> None:
+    """展示完整阶段章纲并登记人类审阅packet；不累积到重建会话。"""
+    import hashlib as _hashlib
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    chapters = raw.get("chapters") if isinstance(raw, dict) else raw
+    if not isinstance(chapters, list) or not chapters:
+        raise click.ClickException("chapters 必须是数组")
+    _validate_appended_outlines([c for c in chapters if isinstance(c, dict)], key="chapters")
+    content = {"phase_key": phase_key, "chapters": chapters}
+    digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+    preview = {"title": f"StoryMap阶段 {phase_key}", "content": content,
+               "human_action": "请逐章阅读并选择：保留 / 调整 / 换方向。"}
+    result = _session(ctx).request("POST", "/creative-reviews/preview",
+        json_body={"project_id": pid, "resource_kind": "storymap_phase_rebuild",
+                   "resource_id": phase_key, "content_digest": digest, "preview": preview}, write=True)
+    payload = {**result, "content_digest": digest, "chapters": chapters}
+    _emit(payload, json_output)
+
+
+@novel_group.command("storymap-rebuild-check")
+@click.argument("project_id")
+@click.argument("phase_key")
+@click.argument("file_path", type=str)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild_check(
+    ctx: click.Context, project_id: str, phase_key: str, file_path: str, json_output: bool
+) -> None:
+    """阶段级确定性检查：重复度/因果/章名/状态变化（提交前预检，不写库）。"""
+    import json as _json
+
+    pid = _resolve_project_id(ctx, project_id)
+    path = file_path[1:] if file_path.startswith("@") else file_path
+    try:
+        raw = _json.loads(Path(path).read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"章纲 JSON 解析失败：{error}") from error
+    chapters = raw.get("chapters") if isinstance(raw, dict) else raw
+    if not isinstance(chapters, list) or not chapters:
+        raise click.ClickException("chapters 必须是数组")
+    result = _api_request(
+        ctx, "POST", f"/novel/projects/{pid}/story-map/rebuild-check",
+        json_body={"phase_key": phase_key, "chapters": chapters},
+    )
+    if json_output:
+        _emit(result, json_output)
+        return
+    if result.get("pass"):
+        click.echo(ui.ok(f"阶段 {phase_key} 检查通过（{len(chapters)} 章）。"))
+        return
+    for issue in result.get("issues") or []:
+        click.echo(ui.error(issue), err=True)
+    raise click.ClickException(f"阶段检查未通过（{len(result.get('issues') or [])} 项），请修正后重试。")
+
+
+@novel_group.command("storymap-rebuild-propose")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_rebuild_propose(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """合并全部阶段为完整替换候选（走普通 propose 通道，不改现有 StoryMap）。
+
+    产出候选后审阅影响；明确决定替换时才采纳（storymap adopt <pid> <候选ID> --confirm，
+    或 --latest --confirm），需用户/主编明确授权。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _session(ctx).request(
+        "POST", f"/novel/projects/{pid}/story-map/rebuild-propose", write=True
+    )
+    if not json_output:
+        click.echo(ui.ok(f"重建候选已形成（candidate_id={result.get('id')}）"))
+        click.echo(ui.dim("请审阅结构影响；用户明确确认后才替换旧 StoryMap：storymap adopt <作品号> <候选ID>（或 --latest --confirm）。"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("storymap-archives")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_archives(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """列出 novel 结构归档（StoryMap 每次被替换时自动归档的旧结构与正文快照）。
+
+    替代前置衔接：rebuild-propose → storymap adopt --confirm 替换旧 StoryMap 后，
+    用本命令核对归档已生成；storymap-archive <作品号> <归档ID> 查看单份详情。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/structure-archives")
+    if not json_output:
+        archives = result.get("archives") or []
+        click.echo(ui.section("novel 结构归档"))
+        click.echo(ui.kv("当前 StoryMap 版本", result.get("current_version")))
+        click.echo(ui.kv("当前章数", result.get("current_chapter_count")))
+        if not archives:
+            click.echo(ui.dim("（尚无归档——StoryMap 尚未被替换过）"))
+            return
+        for archive in archives:
+            click.echo(ui.kv(
+                f"归档 {archive.get('version')} · {str(archive.get('created_at') or '')[:10]}",
+                f"id={archive.get('id')} · {archive.get('volume_count')}卷/{archive.get('chapter_count')}章 · 快照{archive.get('snapshot_count')}份",
+            ))
+        click.echo(ui.dim("查看单份：storymap-archive <作品号> <归档ID> --json"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@novel_group.command("storymap-archive")
+@click.argument("project_id")
+@click.argument("archive_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_archive(ctx: click.Context, project_id: str, archive_id: str, json_output: bool) -> None:
+    """查看单份 novel 结构归档详情（被替换的旧 StoryMap 卷章结构与各章正文快照）。
+
+    用于重建影响审阅与回滚决策：替换后确认旧版本、正文快照均完整可查。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/structure-archives/{archive_id}")
+    if not json_output:
+        click.echo(ui.section(f"结构归档 {result.get('id')} · StoryMap v{result.get('version')}"))
+        click.echo(ui.kv("卷数", result.get("volume_count")))
+        click.echo(ui.kv("章数", result.get("chapter_count")))
+        click.echo(ui.kv("正文快照", result.get("snapshot_count")))
+        click.echo(ui.dim("用 --json 查看完整卷章结构、章节快照与修订 ID 列表。"), err=True)
+        return
+    _emit(result, json_output)
+
+
 # ------------------------------------------------------------------------ script
 
 
@@ -5098,10 +5348,69 @@ def script_group(ctx: click.Context) -> None:
     """剧本创作链：状态 / 故事核心 / 蓝图 / 剧集结构 / 场次。"""
 
 
+@script_group.command("storymap-archives")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_archives(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """列出 script 结构归档（StoryMap 每次被替换时自动归档的旧结构与正文快照）。
+
+    与 novel storymap-archives 镜像：rebuild-propose → storymap adopt --confirm
+    替换旧 StoryMap 后，用本命令核对归档已生成；storymap-archive <作品号> <归档ID>
+    查看单份详情。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/script/projects/{pid}/story-map/structure-archives")
+    if not json_output:
+        archives = result.get("archives") or []
+        click.echo(ui.section("script 结构归档"))
+        click.echo(ui.kv("当前 StoryMap 版本", result.get("current_version")))
+        click.echo(ui.kv("当前场次数", result.get("current_scene_count")))
+        if not archives:
+            click.echo(ui.dim("（尚无归档——StoryMap 尚未被替换过）"))
+            return
+        for archive in archives:
+            click.echo(ui.kv(
+                f"归档 {archive.get('version')} · {str(archive.get('created_at') or '')[:10]}",
+                f"id={archive.get('id')} · {archive.get('episode_count')}集/{archive.get('scene_count')}场 · 快照{archive.get('snapshot_count')}份",
+            ))
+        click.echo(ui.dim("查看单份：storymap-archive <作品号> <归档ID> --json"), err=True)
+        return
+    _emit(result, json_output)
+
+
+@script_group.command("storymap-archive")
+@click.argument("project_id")
+@click.argument("archive_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_archive(ctx: click.Context, project_id: str, archive_id: str, json_output: bool) -> None:
+    """查看单份 script 结构归档详情（被替换的旧 StoryMap 集场结构与各场正文快照）。
+
+    用于重建影响审阅与回滚决策：替换后确认旧版本、正文快照均完整可查。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/script/projects/{pid}/story-map/structure-archives/{archive_id}")
+    if not json_output:
+        click.echo(ui.section(f"结构归档 {result.get('id')} · StoryMap v{result.get('version')}"))
+        click.echo(ui.kv("集数", len(result.get("episodes") or [])))
+        click.echo(ui.kv("场次快照", len(result.get("scenes") or [])))
+        click.echo(ui.dim("用 --json 查看完整集场结构、场次快照与修订 ID 列表。"), err=True)
+        return
+    _emit(result, json_output)
+
+
 @main.group("scene")
 @click.pass_context
 def scene_group(ctx: click.Context) -> None:
-    """剧本场次（与 chapter 组对称）：列表 / 阅读 / 生成 / 采纳 / 回传 / 批量 / 质量 / 差异。"""
+    """剧本场次（与 chapter 组对称）：列表 / 阅读 / 生成 / 采纳 / 回传 / 批量 / 质量 / 差异。
+
+    逐场创作双模式（用户必须明确选择，平台侧不阻塞）：
+    · 平台主笔（默认）：scene generate 由平台生成候选 → review preview 审读 →
+      adopt；平台建议优先使用。
+    · 本地 Agent 创作后回填：Agent 本地写好场次 → scene-propose 回传候选 →
+      review preview 审读 → adopt --human。仅用户明确选择本地创作时才走此模式。
+    """
 
 
 @scene_group.command("list")

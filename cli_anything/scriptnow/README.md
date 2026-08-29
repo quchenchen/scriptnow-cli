@@ -37,7 +37,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.50-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.69-py3-none-any.whl
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -120,21 +120,32 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 |----|------|
 | guide | 聚焦式新手创作（outline-first 逐层深入）：--step 1..12 / --medium novel\|script / --pulse / --resume / --steps / --complete / --status |
 | review | 人类审阅：preview（本地候选）/ candidate-preview（平台规划候选）/ status（读取反馈）/ confirm（登记一次决定）/ claim（Agent 领取凭证）；长内容页面可选 |
-| project | 项目管理：创建 / 列表 / 上传素材 / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
+| authorize | 签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿 |
+| project | 项目管理：创建 / 列表 / **files（项目文件）** / 上传素材 / **use（设为默认项目）** / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
-| chapter | 小说章节：list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
-| storymap | 小说卷章结构：state / generate / **planning-quality（章纲门禁）** / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / adopt（**高危，需 --confirm**） / **phases（按叙事结构推导的阶段计划预览）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete** |
-| novel | 小说创作链：story-cores / blueprint / bootstrap / propose（本地 JSON 导入）/ orchestrate / **rough-outline（粗纲）**  / **storymap-rebuild（隔离重建：start/phase/check/propose）** |
-| script | 剧本创作链：outline / outline-adopt / outline-status / episode-outline / state / scene-list / scene-show / scene / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / planning-quality / storymap / blueprint / story-cores / propose / adopt-* / rough-outline / rough-outline-start/progress/phase/propose |
+| chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
+| scene | 剧本场次（chapter 的剧本侧对称）：list / show / generate / adopt（alias of script adopt-scene）/ propose（本地回传）/ batch（批量串行）/ quality / diff |
+| storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，阶段=卷）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；隔离重建走各域 storymap-rebuild-* 链 |
+| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）**；重建须先采纳小说粗纲，逐阶段=卷区间 |
+| script | 剧本创作链：outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
-| export | 导出交付：options / create / download / zip；剧本 working DOCX 含每场制作信息 |
-| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
+| export | 导出交付：options / create / **preview（交付范围审阅，返回一键审阅地址）** / download / zip；剧本 working DOCX 含每场制作信息 |
+| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
+| feedback | CLI 诊断包收集：版本 / 近期错误 / 命令记录；默认仅本地生成，--send 才发送平台（不含密码、令牌、正文） |
 | version / self-upgrade / config | 版本查看与强制检查（--check）/ 自动升级（确认后执行）/ `config on|off` 开启或关闭「有新版本时后台自动升级 + 通知」（默认关闭） |
+
+**StoryMap 隔离重建（novel/script 的 storymap-rebuild-* 链）**：必须先采纳该域粗纲；
+`storymap-rebuild-start` 冻结阶段计划与现有 StoryMap，逐阶段（小说=卷区间、剧本=集区间）
+先 `rebuild-check` 确定性预检再 `rebuild-phase` 累积；全部完成后 `rebuild-propose` 合并为
+完整替换候选，不自动采纳；用户明确确认后才经 `storymap adopt --confirm` 替换，旧结构与正文
+快照自动归档可回溯：novel 用 `storymap-archives <pid>` 列出、`storymap-archive <pid> <归档ID>`
+查看单份；script 镜像 `script storymap-archives <pid>` / `script storymap-archive <pid> <归档ID>`，
+均含被替换的完整集场/卷章结构与各章/场正文快照。
 
 场次规划板的视觉代理参数显式传递给平台：`--layout auto|2x2|2x3|3x3|3x4|4x4` 与
 `--mode annotated|seedance_sequence`。上传使用 multipart，服务端返回最终 layout/pages/shot_ids/digest/source。
@@ -168,7 +179,7 @@ scriptnow skill canary decide <canary_id> --action retain|limit|need_evidence|ro
 
 ## 已知缺口（后端已具备、CLI 未覆盖）
 
-narrative-graph（叙事图谱）、onboarding、commerce（Paddle 订阅）、review-agent（审读工作台）、
+onboarding、commerce（Paddle 订阅）、review-agent（审读工作台）、
 evaluation v9（深度评估）、work-completion（完结）、invitations（邀请码）——按需补齐。
 
 ## AI Agent 安装（SKILL 体系）
@@ -236,7 +247,13 @@ scriptnow review status <packet-id> --json
   通过后自动挂载并回读验证。也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
-- 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。
+- **正文创作双模式（用户明确选择，平台侧不阻塞）**：默认由平台主笔完成——`chapter/scene generate`
+  生成候选 → `review preview` 审读 → `adopt`；仅当用户**明确选择本地创作**时，Agent 才在本地写好
+  正文后经 `chapter propose` / `script scene-propose` 回填候选 → `review preview` 审读 →
+  `adopt --human`。未明确选择时一律按平台主笔执行；本规则只约束正文（章节/场次）创作，
+  「规划回填优先」（story_cores / blueprint / storymap 规划三件套）保持不变、不受影响。
+- 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。平台拒绝操作时，CLI 优先透出
+  经脱敏的原始领域 detail；Agent 按可行动提示修正，不把中文通用兜底当作修复指令。
 - 版本管理：创作基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：读正文 → 判断 → `--feedback` 驱动修正。
 
@@ -267,9 +284,10 @@ scriptnow review status <packet-id> --json
 
 ## Agent 创作角色与流程纪律（必读）
 
-- **角色分工**：Agent = 项目经理 + 质量审查；平台（scene/chapter 生成）= 主笔。
-  **Agent 绝不自己写正文**——不在本地堆样本剧本/配置文件；准备好 direction/feedback，
-  驱动生成、审查、要求重生成、采纳达标版本。
+- **角色分工（默认：平台=主笔）**：Agent = 项目经理 + 质量审查；平台（scene/chapter 生成）
+  默认完成正文——准备好 direction/feedback，驱动生成、审查、要求重生成、采纳达标版本。
+  仅当用户**明确选择本地创作**时，Agent 才在本地写好正文并经 `chapter propose` /
+  `script scene-propose` 回填——除此之外绝不自己写正文（不在本地堆样本/配置草稿）。
 - **阶段 1（立即）**：收到需求后立刻 `project create` → 立刻用 propose 回填结构
   （cores/blueprint/storymap，前 5-10 集/卷）——不要攒本地文件。
 - **阶段 2（逐场循环）**：每场/每章 = 准备详细 feedback → 生成 → 审查

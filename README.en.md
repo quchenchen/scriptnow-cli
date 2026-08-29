@@ -53,7 +53,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.50-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.69-py3-none-any.whl
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -120,7 +120,8 @@ scriptnow novel orchestrate <pid> --skip-adopt               # read-only orchest
 scriptnow book <pid>                                          # hosted plan: adopted/needs-generation/pending
 scriptnow chapter outline <pid> chapter-1-1 @outline.json --review-token <submission-review-token>
 scriptnow chapter show <pid> chapter-1-1 --plain
-scriptnow chapter generate <pid> chapter-1-1 --wait --feedback "your notes"
+scriptnow chapter generate <pid> chapter-1-1 --feedback "your notes"   # background; returns run_id
+scriptnow run status <run_id>                                         # poll until done (agents: never --wait)
 scriptnow chapter adopt <pid> chapter-1-1 <rev> --human --review-token <adoption-review-token>
 # Adapted draft return: chapter propose <pid> chapter-1-1 --file @blocks.json --review-token <submission-review-token>
 ```
@@ -140,7 +141,8 @@ scriptnow script planning-quality <pid> storymap @storymap.json  # full episode-
 # Writing loop
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
-scriptnow script scene <pid> scene-1-1 --wait --feedback "your notes"
+scriptnow script scene <pid> scene-1-1 --feedback "your notes"   # background; returns run_id
+scriptnow run status <run_id>                                    # poll until done (agents: never --wait)
 scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <adoption-review-token>
 # Adapted draft return: script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <submission-review-token>
 ```
@@ -154,24 +156,37 @@ as a writer-facing export file yet.
 
 | Group | Purpose |
 |-------|---------|
-| guide | Focused newcomer flow (outline-first, layer by layer): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map |
+| guide | Focused newcomer flow (outline-first, layer by layer): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map; `--complete/--status` mark completion and show its status |
 | review | Human review loop: `preview` shows a local candidate / `candidate-preview` shows the canonical platform planning candidate / `status` reads feedback / `confirm` records one decision / `claim` lets the Agent claim a one-time credential; the page is optional |
-| project | Projects: create / list / upload files / delete / direction (--apply agent-curated / --inspire platform inspiration) |
+| project | Projects: create / list / **files (project files)** / upload / **use (set as default project)** / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
-| chapter | Novel chapters: **outline (backfill one chapter)** / list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
-| storymap | Novel volumes×chapters: state / generate / **planning-quality (chapter-outline gate)** / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / adopt (**HIGH-RISK, requires --confirm**)  / **phases (narrative-structure phase plan)** / **append-phase (submit next phase; phase=volume)** / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete** |
+| chapter | Novel chapters: **outline (backfill one chapter) / outline-batch (batch backfill) / outline-check (self-check) / outline-example (structure example) / bible-example (character-bible example)** / list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
+| scene | Script scenes (the script-side counterpart of chapter): list / show / generate / adopt (alias of script adopt-scene) / propose (local return) / batch / quality / diff |
+| storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; phase=volume)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
-| novel | Novel chain: story-cores / blueprint / bootstrap / propose (local JSON import) / orchestrate / **rough-outline (per narrative phase: propose/adopt/check/example)** / **storymap-rebuild (isolated rebuild: start/phase/check/propose)** |
-| script | Script chain: outline / outline-adopt / outline-status / episode-outline / state / scene-list / scene-show / scene / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / planning-quality / storymap / blueprint / story-cores / propose / adopt-* / rough-outline / rough-outline-start/progress/phase/propose |
+| authorize | Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes |
+| novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)**; rebuilding requires the novel rough outline adopted first, phase = a volume range |
+| script | Script chain: outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)** |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
-| export | Delivery: options / create / download / zip; script working DOCX includes per-scene production metadata |
-| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
+| export | Delivery: options / create / **preview (delivery-scope review with a one-click review URL)** / download / zip; script working DOCX includes per-scene production metadata |
+| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
+| feedback | Collect a CLI diagnostics bundle (version / recent errors / command trail); local-only by default, `--send` uploads to the platform (no passwords, tokens, or prose) |
 | version / self-upgrade / config | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) / `config on|off` toggles automatic upgrade on new versions (off by default; when on, upgrades in the background and notifies you, never blocking commands) |
+
+**Isolated StoryMap rebuild (the storymap-rebuild-* chain on novel/script)**: the domain rough
+outline must be adopted first; `storymap-rebuild-start` freezes the phase plan and the current
+StoryMap, then per phase (novel: a volume range; script: an episode range) run `rebuild-check`
+before `rebuild-phase` accumulates it; when all phases are done, `rebuild-propose` merges them
+into a complete replacement candidate (not auto-adopted). Only after explicit user confirmation
+does `storymap adopt --confirm` replace the structure, archiving the old structure and prose snapshots.
+Archives are readable afterwards: novel `storymap-archives <pid>` / `storymap-archive <pid> <archive_id>`,
+script mirror `script storymap-archives <pid>` / `script storymap-archive <pid> <archive_id>` — both carry
+the full replaced episode/volume structure plus per-scene/per-chapter prose snapshots.
 
 Scene-board visual-agent parameters are explicit: `--layout auto|2x2|2x3|3x3|3x4|4x4` and
 `--mode annotated|seedance_sequence`. Upload uses multipart; the server returns the authoritative layout/pages/shot_ids/digest/source.
@@ -273,7 +288,7 @@ the admin console for those.
 
 ## Known gaps (backend has it, CLI does not yet)
 
-narrative-graph, onboarding, commerce (Paddle subscriptions), review-agent workbench,
+onboarding, commerce (Paddle subscriptions), review-agent workbench,
 evaluation v9 (deep evaluation), work-completion, invitations — to be added on demand.
 
 ## AI Agent installation (SKILL system)
@@ -303,13 +318,20 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.
+- **two modes for prose writing (the user picks; the platform never blocks either)**: by default
+  the platform is the writer — `chapter/scene generate` produces a candidate → `review preview`
+  → `adopt`. Only when the user explicitly chooses local writing may the Agent write the prose
+  locally and backfill it via `chapter propose` / `script scene-propose` → `review preview` →
+  `adopt --human`. Without an explicit choice, default to the platform-authored path. This rule
+  governs prose (chapters/scenes) only; the planning-trio backfill-first rule (story_cores /
+  blueprint / storymap) is unchanged.
 - **Episode/chapter outline is mandatory before prose** — Script episodes use flat
   `logline`/`active_goal`/`conflict`/`turn`/`state_changes`/`anchor_ids`; Novel chapters embed
   `outline` with `summary` or `logline`, `active_goal`, `conflict`, `turn`, and `state_changes`
   (anchors may come from the outline or beats). Run full-map `planning-quality` before adoption.
   Backfill one unit with `script episode-outline <pid> <episode_id> @outline.json` or
   `chapter outline <pid> <chapter_id> @outline.json`; each remains a reviewable StoryMap candidate.
-- Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`).
+- Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`). When the platform rejects an operation, the CLI prefers the sanitized original domain detail so the Agent can act on it; never treat a generic localized fallback as a repair instruction.
 - Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent
   candidates are not part of the baseline.
 - Review is the agent's own judgment: read the text → judge → drive fixes with `--feedback`.
@@ -340,11 +362,13 @@ quality is judged by the agent against the evaluation dimensions above.
 
 ## Agent creation roles & workflow discipline (must-read)
 
-- **Role split**: Agent = project manager + quality reviewer; the platform
-  (scene/chapter generation) = the writer. Agents must NEVER write manuscript
-  content themselves — no local sample scripts or piled-up config files.
-  Prepare direction/feedback, drive generation, review, demand regeneration,
-  and adopt only passing versions.
+- **Role split (default: the platform is the writer)**: Agent = project manager +
+  quality reviewer; the platform (scene/chapter generation) writes by default —
+  prepare direction/feedback, drive generation, review, demand regeneration,
+  and adopt only passing versions. Only when the user explicitly chooses local
+  writing may the Agent write the prose locally and backfill it via
+  `chapter propose` / `script scene-propose` — never otherwise (no piled-up
+  local draft files).
 - **Stage 1 (immediate)**: create the project at once, then backfill structure
   via propose (cores/blueprint/storymap, first 5-10 episodes/volumes) — push to
   the platform instead of accumulating local files.
