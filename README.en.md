@@ -53,7 +53,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.69-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.70-py3-none-any.whl
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -331,7 +331,7 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   (anchors may come from the outline or beats). Run full-map `planning-quality` before adoption.
   Backfill one unit with `script episode-outline <pid> <episode_id> @outline.json` or
   `chapter outline <pid> <chapter_id> @outline.json`; each remains a reviewable StoryMap candidate.
-- Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`). When the platform rejects an operation, the CLI prefers the sanitized original domain detail so the Agent can act on it; never treat a generic localized fallback as a repair instruction.
+- Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`). Failures use `{ok:false,error:{type,status,detail}}` without a traceback, and prefer the sanitized original domain detail so the Agent can act on it; never treat a generic localized fallback as a repair instruction.
 - Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent
   candidates are not part of the baseline.
 - Review is the agent's own judgment: read the text → judge → drive fixes with `--feedback`.

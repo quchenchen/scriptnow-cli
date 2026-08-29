@@ -146,8 +146,9 @@ completion. Explain the missing prerequisite and wait.
   of long blocking waits.
 - Follow each command's returned actionable error detail exactly. Agent CLI
   requests preserve the sanitized original domain detail when the public
-  Chinese fallback is generic. Do not substitute an unvalidated structure or
-  silently retry with invented data.
+  Chinese fallback is generic; `--json` failures use
+  `{ok:false,error:{type,status,detail}}` without a traceback. Do not substitute
+  an unvalidated structure or silently retry with invented data.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.

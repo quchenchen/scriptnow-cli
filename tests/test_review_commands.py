@@ -105,6 +105,30 @@ def test_review_preview_human_mode_keeps_full_content_in_conversation(monkeypatc
     assert "一键查看" in result.output
 
 
+def test_review_preview_normalizes_plain_text_file_whitespace(monkeypatch, tmp_path):
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {
+        "packet_id": "packet-text",
+        "review_path": "/projects/p1/reviews/packet-text",
+    }
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    path = tmp_path / "outline.txt"
+    path.write_text("  精确梗概正文。\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        ["review", "preview", "p1", "synopsis_outline", "p1", f"@{path}", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args.kwargs["json_body"]
+    assert body["preview"]["content"] == {"text": "精确梗概正文。"}
+    assert body["content_digest"] == _digest({"text": "精确梗概正文。"})
+
+
 def test_review_status_reads_human_feedback_without_a_second_user_message(monkeypatch):
     session = Mock()
     session.request.return_value = {

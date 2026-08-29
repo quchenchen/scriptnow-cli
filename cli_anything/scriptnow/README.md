@@ -37,7 +37,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.69-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.70-py3-none-any.whl
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -253,7 +253,8 @@ scriptnow review status <packet-id> --json
   `adopt --human`。未明确选择时一律按平台主笔执行；本规则只约束正文（章节/场次）创作，
   「规划回填优先」（story_cores / blueprint / storymap 规划三件套）保持不变、不受影响。
 - 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。平台拒绝操作时，CLI 优先透出
-  经脱敏的原始领域 detail；Agent 按可行动提示修正，不把中文通用兜底当作修复指令。
+  经脱敏的原始领域 detail；失败统一返回 `{ok:false,error:{type,status,detail}}`，不输出 traceback。
+  Agent 按可行动提示修正，不把中文通用兜底当作修复指令。
 - 版本管理：创作基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：读正文 → 判断 → `--feedback` 驱动修正。
 

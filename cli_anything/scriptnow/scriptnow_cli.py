@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +38,39 @@ from cli_anything.scriptnow.utils.upgrade import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+
+
+class AgentJsonGroup(click.Group):
+    """Keep every ``--json`` failure machine-readable and traceback-free."""
+
+    def main(self, *args: Any, **extra: Any) -> Any:
+        cli_args = extra.get("args")
+        if cli_args is None:
+            cli_args = sys.argv[1:]
+        if "--json" not in cli_args:
+            return super().main(*args, **extra)
+
+        # Click normally formats UsageError/ClickException itself and exits,
+        # while ScriptNowError escapes with a traceback. In agent mode both
+        # must use one stable JSON contract.
+        extra["standalone_mode"] = False
+        try:
+            return super().main(*args, **extra)
+        except (ScriptNowError, click.ClickException) as error:
+            message = error.format_message() if isinstance(error, click.ClickException) else str(error)
+            status_match = re.match(r"^HTTP\s+(\d{3}):\s*(.*)$", message, re.DOTALL)
+            status = int(status_match.group(1)) if status_match else None
+            detail = status_match.group(2) if status_match else message
+            payload = {
+                "ok": False,
+                "error": {
+                    "type": "platform_error" if isinstance(error, ScriptNowError) else "cli_error",
+                    "status": status,
+                    "detail": detail,
+                },
+            }
+            write_json(payload)
+            raise SystemExit(getattr(error, "exit_code", 1)) from error
 
 
 def _session(ctx: click.Context) -> Session:
@@ -223,7 +258,12 @@ _MAIN_HELP = (
 )
 
 
-@click.group(context_settings=CONTEXT_SETTINGS, help=_MAIN_HELP, invoke_without_command=True)
+@click.group(
+    cls=AgentJsonGroup,
+    context_settings=CONTEXT_SETTINGS,
+    help=_MAIN_HELP,
+    invoke_without_command=True,
+)
 @click.option("--base-url", envvar="SCRIPTNOW_BASE_URL", help="Platform base URL (e.g. https://sn.igeewa.com)")
 @click.option("--email", envvar="SCRIPTNOW_EMAIL", help="Login email")
 @click.option("--password", envvar="SCRIPTNOW_PASSWORD", help="Login password")
@@ -468,7 +508,10 @@ def creative_review_preview(ctx: click.Context, project_id: str, resource_kind: 
     try:
         content = _json.loads(raw)
     except _json.JSONDecodeError:
-        content = {"text": raw}
+        # Text-consuming commands normalize surrounding file whitespace. Do
+        # the same before hashing so one @file cannot invalidate its own
+        # review credential solely because POSIX text files end in "\n".
+        content = {"text": raw.strip()}
     digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
     preview = {"title": title, "content": content,
@@ -783,7 +826,7 @@ _AGENT_CONTRACT = {
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
-        "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景会保留经脱敏的原始领域 detail，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
+        "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
@@ -5093,8 +5136,8 @@ def novel_orchestrate(
             })
     _emit({
         "project_id": project_id,
-        "storymap_adopted": not skip_adopt or accept,
-        "adopted_candidate_id": final_candidate.get("id") if final_candidate else None,
+        "storymap_adopted": bool(volumes),
+        "adopted_candidate_id": (fresh.get("story_map") or {}).get("id"),
         "total_chapters": len(plan),
         "needs_generation": [p["chapter_id"] for p in plan if p["state"]["needs_generation"]],
         "plan": plan,
