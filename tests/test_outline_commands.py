@@ -734,6 +734,10 @@ def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
     body = session.request.call_args_list[1].kwargs["json_body"]
     assert body["phase_key"] == "act1"
     assert len(body["episodes"]) == 3
+    assert body["episodes"][0]["promise"] is None
+    assert body["episodes"][0]["payoff"] is None
+    assert body["episodes"][0]["exit_hook"] is None
+    assert body["episodes"][0]["scenes"][0]["character_action"] is None
     assert session.request.call_args_list[1].args[1] == "/script/projects/p1/storymap/rebuild-phase"
     assert _json.loads(result.output)["accumulated_episodes"] == 3
 

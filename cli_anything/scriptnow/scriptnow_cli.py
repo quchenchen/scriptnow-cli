@@ -2904,6 +2904,39 @@ def _meta_objective_hits(episodes: object) -> list[str]:
     return hits
 
 
+def _canonical_script_episodes(episodes: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Mirror the server's Episode/Scene defaults for digest-stable review.
+
+    Pydantic adds nullable episode fields and ``character_action`` before the
+    write gate computes its digest. Preview and submission must show/send that
+    same canonical shape, otherwise unchanged content is falsely rejected.
+    """
+
+    import copy
+
+    normalized = copy.deepcopy(episodes)
+    for episode in normalized:
+        episode.setdefault("logline", "")
+        episode.setdefault("active_goal", "")
+        episode.setdefault("conflict", "")
+        episode.setdefault("turn", "")
+        episode.setdefault("state_changes", [])
+        episode.setdefault("anchor_ids", [])
+        episode.setdefault("promise", None)
+        episode.setdefault("payoff", None)
+        episode.setdefault("exit_hook", None)
+        episode.setdefault("scenes", [])
+        for scene in episode.get("scenes") or []:
+            if not isinstance(scene, dict):
+                continue
+            scene.setdefault("beats", [])
+            scene.setdefault("character_action", None)
+            for beat in scene.get("beats") or []:
+                if isinstance(beat, dict):
+                    beat.setdefault("anchor_ids", [])
+    return normalized
+
+
 _BIBLE_REQUIRED_KEYS = ("desire", "fear", "weakness", "goal", "inner_need")
 
 
@@ -6337,6 +6370,7 @@ def script_storymap_append_phase(
     episodes = raw.get("episodes") if isinstance(raw, dict) else raw
     if not isinstance(episodes, list) or not episodes:
         raise click.ClickException("episodes 必须是数组")
+    episodes = _canonical_script_episodes(episodes)
     invalid = [
         f"{e.get('id') or e.get('title') or '<未命名>'}"
         for e in episodes if isinstance(e, dict) and _episode_outline_issues(e)
@@ -6444,6 +6478,7 @@ def script_storymap_rebuild_phase(
     episodes = raw.get("episodes") if isinstance(raw, dict) else raw
     if not isinstance(episodes, list) or not episodes:
         raise click.ClickException("episodes 必须是数组")
+    episodes = _canonical_script_episodes(episodes)
     invalid = [
         f"{e.get('id') or e.get('title') or '<未命名>'}"
         for e in episodes if isinstance(e, dict) and _episode_outline_issues(e)
@@ -6484,6 +6519,9 @@ def script_storymap_rebuild_phase_preview(ctx: click.Context, project_id: str, p
     import json as _json
     raw = _json.loads(Path(file_path[1:] if file_path.startswith("@") else file_path).read_text(encoding="utf-8"))
     episodes = raw.get("episodes") if isinstance(raw, dict) else raw
+    if not isinstance(episodes, list) or not episodes:
+        raise click.ClickException("episodes 必须是数组")
+    episodes = _canonical_script_episodes(episodes)
     content = {"phase_key": phase_key, "episodes": episodes}
     digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
         separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
