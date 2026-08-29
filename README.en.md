@@ -53,7 +53,7 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.70-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.71-py3-none-any.whl
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main

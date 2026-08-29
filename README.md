@@ -53,9 +53,9 @@
 
 ```bash
 # 固定版本
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.70-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.71-py3-none-any.whl
 # 源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.70.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.71.zip
 ```
 
 **GitHub 兜底（生产源不可达时）**：
@@ -70,7 +70,7 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.70"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.71"
 ```
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；

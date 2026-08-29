@@ -820,6 +820,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
+        "创意方向与蓝图不得只交付几句占位文本：cores 必须展开完整前提/戏剧概念、五类差异化角度，以及小说 narrative_constraints 或剧本 narrative_engine/viewpoint_anchor/pacing_recipe/market_judgement；blueprint 必须覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点且每项有 20–120 字具体 description。服务端在 propose 与 adopt 双重强制 planning-quality=pass，revise/block 一律按 detail 修正后重传。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
@@ -869,6 +870,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
+        "创意方向与蓝图必须充分：cores 展开完整前提/概念、五类差异化角度及领域方法细节；blueprint 覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点并写具体 description。propose/adopt 均强制 planning-quality=pass，revise/block 必须修正后重传。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
@@ -1631,11 +1633,12 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--world-setting", default="", help="世界观设定")
 @click.option("--language", default="zh-CN")
 @click.option("--styles", default=None, help="文风标签（逗号分隔），如 heroic-epic")
+@click.option("--point-of-view", default="", help="叙事视角，如 第三人称限知 / limited witness")
 @click.option("--structure", default="", help="叙事结构（双域共享）：three_act / hero_journey / kishotenketsu / linear / custom / freytag(五幕) / circular(环形) / dual-thread(双线) / mystery-peel(悬疑剥洋葱)；也支持 JSON 对象自定义多阶段结构（如 project direction --set structure='{\"key\":\"my\",\"phases\":[...]}'）")
 @click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
-@click.option("--volume-one", default="1", help="卷数（novel）或季数（script）")
-@click.option("--volume-two", default="15", help="每卷章数（novel）或每季场次（script），可写区间如 20-30")
-@click.option("--volume-three", default="", help="第三维规模（script 用）")
+@click.option("--volume-one", default="1", help="卷数（novel）或总集数（script）")
+@click.option("--volume-two", default="15", help="每卷章数（novel）或每集场数（script），可写区间如 2-4")
+@click.option("--volume-three", default="", help="单集目标分钟（仅 script）")
 @click.option("--chapter-target-words", default="1200", help="每章目标字数（novel）")
 @click.option("--creative-variance", type=click.Choice(["focused", "balanced", "exploratory"]), default="balanced", help="创意发散程度")
 @click.option("--json", "json_output", is_flag=True)
@@ -1652,6 +1655,7 @@ def project_create(
     world_setting: str,
     language: str,
     styles: str | None,
+    point_of_view: str,
     structure: str,
     script_format: str,
     volume_one: str,
@@ -1673,6 +1677,7 @@ def project_create(
         "premise": premise,
         "tone": tone,
         "world_setting": world_setting,
+        "point_of_view": point_of_view,
         "structure": structure or ("hero_journey" if medium == "novel" else "three_act"),
         "volume_one": volume_one,
         "volume_two": volume_two,

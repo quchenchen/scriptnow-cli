@@ -84,6 +84,12 @@ completion. Explain the missing prerequisite and wait.
   only. Return creative drafts through `propose` so the platform validates them.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
+- Story cores must be substantive: a complete premise/concept, five distinct
+  angles, and either Novel narrative constraints or at least two concrete
+  entries in each Script details dimension. Blueprints must cover world,
+  character, relationship, character_arc, plot, and foreshadow anchors with a
+  concrete 20–120 character description for every anchor. Both `propose` and
+  `adopt` require `planning-quality=pass`; revise/block must be repaired first.
 - Character bibles must be substantive at creation: profile with at least
   desire/fear/weakness/goal/inner_need, plus background/traits/arc/key_relationship/
   secret/wound where possible. planning-quality REVISEs profiles <200 chars or
