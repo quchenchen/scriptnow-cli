@@ -54,9 +54,9 @@
 
 ```bash
 # 固定版本
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.73-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.74-py3-none-any.whl
 # 源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.73.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.74.zip
 ```
 
 **GitHub 兜底（生产源不可达时）**：
@@ -71,7 +71,7 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.73"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.74"
 ```
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
@@ -328,6 +328,7 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   `scriptnow agent-guide --json`（完整人工手册用 `--full`）——平台是事实源、
   规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
   StoryMap 修订需用户明确授权（Agent 不得代替采纳）。
+- **审阅凭证精确绑定**：凭证绑定用户实际阅读的可读 JSON；解析器默认值不得被当作内容变化。
 - **编排前置：Skill 是逐章/逐场创作前的必然门禁（MANDATORY，且须健壮性完善）**：
   创作意图明确且项目落地后，先与用户规划专属方法论（可多轮），再试写样本章节/场次检验
   Skill 约束力、诊断缺口并迭代加固（健壮性完善），然后在平台创建并挂载到项目

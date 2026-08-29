@@ -874,6 +874,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
+        "审阅凭证只绑定用户实际阅读的可读 JSON；解析器默认值不得制造内容变化。",
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",

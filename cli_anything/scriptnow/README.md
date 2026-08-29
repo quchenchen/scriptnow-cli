@@ -38,16 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.73-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.74-py3-none-any.whl
 # 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.73.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.74.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # GitHub 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.73"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.74"
 ```
 
 ## 登录
@@ -200,6 +200,7 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 
 安装入口是短运行契约；Agent 的第一个动作必须是 `scriptnow agent-guide --json`。
 需要人工完整说明时才运行 `scriptnow agent-guide --full`，不得把手册当作创作提示词。
+审阅凭证绑定用户实际阅读的可读 JSON；解析器默认值不得被当作内容变化。
 
 - **聚焦式新手创作**：从 `scriptnow guide --step 1 --medium novel|script --json`
   开始，只跟随当前返回的 `next_step`。每轮只问一个主问题；用户卡住时从 `lenses`

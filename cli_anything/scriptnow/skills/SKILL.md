@@ -169,8 +169,9 @@ completion. Explain the missing prerequisite and wait.
 
 Before any creative write, show the complete human-readable review packet. The
 human chooses retain / adjust / change direction. Only an explicit retain may
-activate a one-time token bound to the exact content digest; changed content
-must be shown again. JSON stays backstage and never substitutes for the preview.
+activate a one-time token bound to the exact human-readable JSON content digest;
+parser-added defaults must not manufacture a content change. Changed content must
+be shown again. JSON stays backstage and never substitutes for the preview.
 
 Conversation is the default human channel. After the user gives one clear
 decision, record the original words with `review confirm`, claim the one-time

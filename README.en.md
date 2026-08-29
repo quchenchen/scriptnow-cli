@@ -53,17 +53,17 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.73-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.74-py3-none-any.whl
 
 # Fixed-version source archive (zip)
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.73.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.74.zip
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # Fixed GitHub tag
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.73"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.74"
 ```
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
@@ -324,6 +324,7 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.
+- **Review credentials bind exact content** — bind a credential to the human-readable JSON the user actually read; parser-added defaults must not manufacture a content change.
 - **two modes for prose writing (the user picks; the platform never blocks either)**: by default
   the platform is the writer — `chapter/scene generate` produces a candidate → `review preview`
   → `adopt`. Only when the user explicitly chooses local writing may the Agent write the prose
