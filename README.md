@@ -54,9 +54,9 @@
 
 ```bash
 # 固定版本
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.74-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.75-py3-none-any.whl
 # 源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.74.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.75.zip
 ```
 
 **GitHub 兜底（生产源不可达时）**：
@@ -71,7 +71,7 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.74"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.75"
 ```
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
@@ -347,7 +347,8 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   不要用 `--wait` 长阻塞（宿主工具轮候窗口有限会超时）；交互终端可用 `--wait` 或设
   `SCRIPTNOW_WAIT_MAX_SECONDS` 限制单次等待。平台拒绝操作时，CLI 会优先透出经脱敏的
   原始领域 detail；`--json` 失败统一返回 `{ok:false,error:{type,status,detail}}`，不输出 traceback。
-  Agent 必须按其中的可行动提示修正，不能把中文通用兜底当作修复指令。
+  运行失败按 `run status` 的 `error/detail` 修正，再用 `run events <run_id> --json` 读取事件；无事件固定为
+  `events=[]`。Agent 必须按其中的可行动提示修正，不能把中文通用兜底当作修复指令。
 - **报告完成以服务器回读为据**：写操作成功 = 服务器返回 id（project_id/candidate_id/revision_id/run_id）且回读确认落盘；
   没有 id 与回读确认不得向用户报告“已完成”；`project create` 会自动回读并输出含 `verified` 的 receipt。
 - **StoryMap 修订是超级高危操作**：`storymap adopt` 必须 `--confirm`（平台需勾选知情确认）；

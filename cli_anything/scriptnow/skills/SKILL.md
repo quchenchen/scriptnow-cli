@@ -150,7 +150,8 @@ completion. Explain the missing prerequisite and wait.
   @outline.json` for one Script episode; then run `planning-quality` across the
   full map before adoption.
 - Background generation returns a `run_id`; poll `scriptnow run status` instead
-  of long blocking waits.
+  of long blocking waits. On failure, repair from `status.error/detail`, then
+  inspect `scriptnow run events <run_id> --json` (`events=[]` means no events).
 - Follow each command's returned actionable error detail exactly. Agent CLI
   requests preserve the sanitized original domain detail when the public
   Chinese fallback is generic; `--json` failures use
@@ -159,6 +160,9 @@ completion. Explain the missing prerequisite and wait.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.
+- `skill craft` preflight, its creation receipt, the mount gate, and runtime
+  must resolve the same complete methodology reference; never replace it with a
+  summary or leak a cross-tenant detail.
 - For Script writing, read the project-locked `script_format` before loading a
   personal Skill. Vertical short-form, Chinese screenplay, and Hollywood each
   have distinct generation, frontend, and export contracts. A personal Skill

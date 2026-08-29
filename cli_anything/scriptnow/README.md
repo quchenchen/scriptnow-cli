@@ -38,16 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.74-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.75-py3-none-any.whl
 # 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.74.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.75.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # GitHub 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.74"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.75"
 ```
 
 ## 登录
@@ -251,7 +251,7 @@ scriptnow review status <packet-id> --json
 - **编排前置：Skill 支撑检查（MANDATORY）**：创作前 `skill mounts <pid>`；无方法论 Skill 时
   优先用 `skill craft` 共创。Agent 先以 `--json` 获取问题协议，再以 `--answers @answers.json`
   一次回填；向用户展示草案并获明确认可后才加 `--confirm`。CLI 创建前做健壮性预检，
-  通过后自动挂载并回读验证。也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
+  创建回执、挂载门禁与运行时都解析同一完整方法论 reference；通过后自动挂载并回读验证。也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
 - **正文创作双模式（用户明确选择，平台侧不阻塞）**：默认由平台主笔完成——`chapter/scene generate`
@@ -261,7 +261,8 @@ scriptnow review status <packet-id> --json
   「规划回填优先」（story_cores / blueprint / storymap 规划三件套）保持不变、不受影响。
 - 优先 `--json`；生成命令默认后台，`--wait` 阻塞等待。平台拒绝操作时，CLI 优先透出
   经脱敏的原始领域 detail；失败统一返回 `{ok:false,error:{type,status,detail}}`，不输出 traceback。
-  Agent 按可行动提示修正，不把中文通用兜底当作修复指令。
+  运行失败按 `run status` 的 `error/detail` 修正，再用 `run events <run_id> --json` 读取事件；无事件固定为
+  `events=[]`。Agent 按可行动提示修正，不把中文通用兜底当作修复指令。
 - 版本管理：创作基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：读正文 → 判断 → `--feedback` 驱动修正。
 

@@ -825,14 +825,14 @@ _AGENT_CONTRACT = {
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
-        "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
+        "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
         "会话由 CLI 自动续期（refresh token 30 天）。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
-        "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
+        "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；失败时按 status.error/detail 修正，并用 scriptnow run events <run_id> --json 读取事件 JSON（无事件固定为 events=[]）。交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
         "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 `scriptnow script rough-outline-start` 开隔离链，逐阶段 `rough-outline-phase` 回填并 `rough-outline-progress` 回读，上游返工用 --restart-from 使下游失效，全部完成后 `rough-outline-propose` 形成完整候选。最低篇幅和事件数由 `rough-outline-example` 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链（`scriptnow novel rough-outline-example` → `rough-outline-check` → `rough-outline` 回填 → `rough-outline-adopt`），无分阶段隔离链；novel 的隔离重建走 storymap-rebuild-* 镜像链。",
@@ -1920,20 +1920,16 @@ def run_status(ctx: click.Context, run_id: str, json_output: bool) -> None:
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def run_events(ctx: click.Context, run_id: str, last_event_id: str | None, json_output: bool) -> None:
-    """Show a run's event stream (generation trace)."""
+    """Show a run's event stream as stable JSON (generation trace)."""
     session = _session(ctx)
     headers = {"Last-Event-ID": last_event_id} if last_event_id else {}
-    response = session.request(
+    payload = session.request(
         "GET",
         f"/runs/{run_id}/events",
         headers=headers,
+        params={"format": "json"},
         timeout=60,
-        raw=True,
     )
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = response.text
     _emit(payload, json_output)
 
 
