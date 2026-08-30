@@ -158,6 +158,48 @@ def _status_word(status: str | None, *, medium: str) -> str:
     return f"{status}（{unit}状态）"
 
 
+def _document_revision_state(
+    documents: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]]]:
+    """Return the effective adopted revision and real pending candidates.
+
+    ``adopted_human`` is the durable human decision recorded by the platform;
+    older clients used ``adopted`` for the same final-state role.  Keep the
+    human decision preferred when both exist, and never let a candidate mask
+    it merely because the candidate has a higher revision number.
+    """
+
+    def revision_key(document: dict[str, Any]) -> int:
+        value = document.get("revision_number")
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    human_adopted = sorted(
+        (document for document in documents if document.get("status") == "adopted_human"),
+        key=revision_key,
+        reverse=True,
+    )
+    agent_adopted = sorted(
+        (document for document in documents if document.get("status") == "adopted"),
+        key=revision_key,
+        reverse=True,
+    )
+    adopted_human = human_adopted[0] if human_adopted else None
+    adopted = adopted_human or (agent_adopted[0] if agent_adopted else None)
+    candidates = sorted(
+        (
+            document
+            for document in documents
+            if document.get("status") in ("candidate", "active")
+        ),
+        key=revision_key,
+        reverse=True,
+    )
+    return adopted, adopted_human, candidates
+
+
 def _next_step_after_generate(medium: str) -> str:
     """生成/回传完成后的下一步引导。"""
     if medium == "novel":
@@ -3293,10 +3335,7 @@ def chapter_list(ctx: click.Context, project_id: str, status: str | None, json_o
         for chapter in volume.get("chapters", []):
             chapter_id = str(chapter["id"])
             docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
-            adopted_human = next((doc for doc in docs if doc.get("status") == "adopted_human"), None)
-            adopted = adopted_human or next((doc for doc in docs if doc.get("status") == "adopted"), None)
-            candidates = [doc for doc in docs if doc.get("status") in ("candidate", "active")]
-            candidates.sort(key=lambda doc: doc.get("revision_number", 0), reverse=True)
+            adopted, adopted_human, candidates = _document_revision_state(docs)
             row = {
                 "chapter_id": chapter_id,
                 "title": chapter.get("title"),
@@ -3314,7 +3353,7 @@ def chapter_list(ctx: click.Context, project_id: str, status: str | None, json_o
 @chapter_group.command("show")
 @click.argument("project_id")
 @click.argument("chapter_id")
-@click.option("--revision", default=None, help="Revision id or number to show; defaults to the adopted revision, else latest candidate")
+@click.option("--revision", default=None, help="Revision id or number to show; defaults to adopted/adopted_human, else latest candidate")
 @click.option("--plain", is_flag=True, help="Emit only the manuscript text, no JSON wrapper (for direct reading)")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -3336,6 +3375,7 @@ def chapter_show(
     docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
     if not docs:
         raise click.ClickException(f"no documents for chapter {chapter_id}")
+    adopted, adopted_human, candidates = _document_revision_state(docs)
     chosen = None
     if revision:
         chosen = next(
@@ -3345,15 +3385,9 @@ def chapter_show(
         if chosen is None:
             raise click.ClickException(f"revision {revision} not found for chapter {chapter_id}")
     else:
-        adopted = next((doc for doc in docs if doc.get("status") == "adopted"), None)
         if adopted:
             chosen = adopted
         else:
-            candidates = sorted(
-                [doc for doc in docs if doc.get("status") in ("candidate", "active")],
-                key=lambda doc: doc.get("revision_number", 0),
-                reverse=True,
-            )
             chosen = candidates[0] if candidates else docs[0]
     blocks = chosen.get("blocks") or []
     text = "\n\n".join(
@@ -3387,6 +3421,7 @@ def chapter_show(
             "revision_number": chosen.get("revision_number"),
             "source": chosen.get("source"),
             "status": chosen.get("status"),
+            "adopted_human": adopted_human is not None,
             "title": heading,
             "text": text,
             "block_count": len(blocks),
@@ -3395,7 +3430,7 @@ def chapter_show(
                 item for item in revision_summary if item["status"] in ("candidate", "active")
             ],
             "adopted_revision": next(
-                (item for item in revision_summary if item["status"] == "adopted"), None
+                (item for item in revision_summary if adopted and item["revision_id"] == adopted.get("id")), None
             ),
         },
         json_output,
@@ -3731,10 +3766,7 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
         chapter_id = str(chapter["id"])
         docs = [doc for doc in documents if doc.get("chapter_id") == chapter_id]
         # 优先取人工核验定稿（adopted_human），否则 agent 采纳（adopted）
-        adopted_human = next((doc for doc in docs if doc.get("status") == "adopted_human"), None)
-        adopted = adopted_human or next((doc for doc in docs if doc.get("status") == "adopted"), None)
-        candidates = [doc for doc in docs if doc.get("status") in ("candidate", "active")]
-        candidates.sort(key=lambda doc: doc.get("revision_number", 0), reverse=True)
+        adopted, adopted_human, candidates = _document_revision_state(docs)
         plan.append({
             "chapter_id": chapter_id,
             "title": chapter.get("title"),
@@ -5125,9 +5157,7 @@ def novel_orchestrate(
         for chapter in volume.get("chapters", []):
             cid = str(chapter["id"])
             docs = [d for d in documents if d.get("chapter_id") == cid]
-            adopted = next((d for d in docs if d.get("status") == "adopted"), None)
-            candidates = [d for d in docs if d.get("status") in ("candidate", "active")]
-            candidates.sort(key=lambda d: d.get("revision_number", 0), reverse=True)
+            adopted, adopted_human, candidates = _document_revision_state(docs)
             plan.append({
                 "chapter_id": cid,
                 "title": chapter.get("title"),
@@ -5135,6 +5165,7 @@ def novel_orchestrate(
                 "target_words": chapter.get("target_words"),
                 "state": {
                     "adopted_revision": adopted.get("revision_number") if adopted else None,
+                    "adopted_human": adopted_human is not None,
                     "candidate_revisions": [d.get("revision_number") for d in candidates],
                     "needs_generation": adopted is None and not candidates,
                 },
@@ -5466,21 +5497,21 @@ def scene_group(ctx: click.Context) -> None:
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def scene_list(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """List scenes (alias of script scene-list)."""
+    """List scenes (alias of script scene-list; adopted includes adopted_human)."""
     script_scene_list.callback(project_id, json_output)
 
 
 @scene_group.command("show")
 @click.argument("project_id")
 @click.argument("scene_id")
-@click.option("--revision", default=None, help="Revision id or number; defaults to adopted, else latest candidate")
+@click.option("--revision", default=None, help="Revision id or number; defaults to adopted/adopted_human, else latest candidate")
 @click.option("--plain", is_flag=True, help="Emit only the script text for direct reading")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def scene_show(
     ctx: click.Context, project_id: str, scene_id: str, revision: str | None, plain: bool, json_output: bool
 ) -> None:
-    """Show a scene (alias of script scene-show)."""
+    """Show a scene (alias of script scene-show; adopted includes adopted_human)."""
     script_scene_show.callback(project_id, scene_id, revision, plain, json_output)
 
 
@@ -5857,14 +5888,13 @@ def script_scene_list(ctx: click.Context, project_id: str, json_output: bool) ->
         for scene in episode.get("scenes") or []:
             scene_id = str(scene["id"])
             docs = [doc for doc in documents if doc.get("scene_id") == scene_id]
-            adopted = next((doc for doc in docs if doc.get("status") == "adopted"), None)
-            candidates = [doc for doc in docs if doc.get("status") in ("candidate", "active")]
-            candidates.sort(key=lambda doc: doc.get("revision_number", 0), reverse=True)
+            adopted, adopted_human, candidates = _document_revision_state(docs)
             rows.append({
                 "scene_id": scene_id,
                 "title": scene.get("title"),
                 "episode": episode.get("title"),
                 "adopted_revision": adopted.get("revision_number") if adopted else None,
+                "adopted_human": adopted_human is not None,
                 "candidate_revisions": [doc.get("revision_number") for doc in candidates],
                 "latest_candidate_id": candidates[0].get("id") if candidates else None,
             })
@@ -5874,7 +5904,7 @@ def script_scene_list(ctx: click.Context, project_id: str, json_output: bool) ->
 @script_group.command("scene-show")
 @click.argument("project_id")
 @click.argument("scene_id")
-@click.option("--revision", default=None, help="Revision id or number; defaults to adopted, else latest candidate")
+@click.option("--revision", default=None, help="Revision id or number; defaults to adopted/adopted_human, else latest candidate")
 @click.option("--plain", is_flag=True, help="Emit only the script text for direct reading")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -5890,6 +5920,7 @@ def script_scene_show(
     docs = [doc for doc in documents if doc.get("scene_id") == scene_id]
     if not docs:
         raise click.ClickException(f"no documents for scene {scene_id}")
+    adopted, adopted_human, candidates = _document_revision_state(docs)
     chosen = None
     if revision:
         chosen = next(
@@ -5899,15 +5930,9 @@ def script_scene_show(
         if chosen is None:
             raise click.ClickException(f"revision {revision} not found for scene {scene_id}")
     else:
-        adopted = next((doc for doc in docs if doc.get("status") == "adopted"), None)
         if adopted:
             chosen = adopted
         else:
-            candidates = sorted(
-                [doc for doc in docs if doc.get("status") in ("candidate", "active")],
-                key=lambda doc: doc.get("revision_number", 0),
-                reverse=True,
-            )
             chosen = candidates[0] if candidates else docs[0]
     blocks = chosen.get("blocks") or []
     if state.get("script_format") == "chinese-short":
@@ -5989,6 +6014,7 @@ def script_scene_show(
             "revision_number": chosen.get("revision_number"),
             "source": chosen.get("source"),
             "status": chosen.get("status"),
+            "adopted_human": adopted_human is not None,
             "text": text,
             "block_count": len(blocks),
             "revisions": revision_summary,
@@ -5996,7 +6022,7 @@ def script_scene_show(
                 item for item in revision_summary if item["status"] in ("candidate", "active")
             ],
             "adopted_revision": next(
-                (item for item in revision_summary if item["status"] == "adopted"), None
+                (item for item in revision_summary if adopted and item["revision_id"] == adopted.get("id")), None
             ),
         },
         json_output,

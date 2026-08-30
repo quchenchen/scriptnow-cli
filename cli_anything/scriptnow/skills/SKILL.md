@@ -80,6 +80,12 @@ completion. Explain the missing prerequisite and wait.
 
 - The platform is the only project fact source. Do not invent project IDs,
   paths, status, JSON schemas, or completion states.
+- State aggregation is authoritative: `adopted` and `adopted_human` both mean
+  finalized content, with `adopted_human` preferred when both exist.
+  `chapter list`/`book` and `scene list`/`scene show` report that revision as
+  `adopted_revision`, expose `adopted_human`, and list only `candidate`/
+  `active` revisions as pending candidates. Use `--revision` to inspect a
+  pending candidate explicitly.
 - Keep creative writes for one project serial to avoid candidate/version
   conflicts. Different projects may run concurrently; the CLI safely
   coordinates automatic refresh for a shared login session on macOS/Linux.

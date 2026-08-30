@@ -53,17 +53,17 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.77-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.78-py3-none-any.whl
 
 # Fixed-version source archive (zip)
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.77.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.78.zip
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # Fixed GitHub tag
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.77"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.78"
 ```
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
@@ -155,6 +155,11 @@ scriptnow run status <run_id>                                    # poll until do
 scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <adoption-review-token>
 # Adapted draft return: script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <submission-review-token>
 ```
+
+`chapter list`/`book` and `scene list`/`scene show` treat both `adopted_human`
+and legacy `adopted` as finalized. The human-finalized revision is preferred
+for `adopted_revision`; pending lists contain only `candidate`/`active`. Pass
+`--revision` to inspect a newer candidate explicitly.
 
 **Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1` →
 `export download -o book.docx`. Script `--form working` adds per-scene production

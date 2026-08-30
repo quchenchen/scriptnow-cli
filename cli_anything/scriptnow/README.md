@@ -38,16 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.77-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.78-py3-none-any.whl
 # 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.77.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.78.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # GitHub 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.77"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.78"
 ```
 
 ## 登录
@@ -119,6 +119,10 @@ scriptnow script scene <pid> scene-1-1 --feedback "你的意见"  # 后台，run
 scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定稿审阅凭证>
 # 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <提交审阅凭证>
 ```
+
+`chapter list`/`book` 与 `scene list`/`scene show` 将 `adopted_human` 和旧版
+`adopted` 都视为已定稿；人工定稿优先作为 `adopted_revision`，候选清单只含
+`candidate`/`active`。需要阅读较新的候选时显式传 `--revision`。
 
 **交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1` → `export download -o 书.docx`。
 剧本 `--form working` 输出每场制作信息；内部制作契约暂不作为编剧交付文件导出。
