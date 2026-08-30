@@ -160,6 +160,9 @@ completion. Explain the missing prerequisite and wait.
   Chinese fallback is generic; `--json` failures use
   `{ok:false,error:{type,status,detail}}` without a traceback. Do not substitute
   an unvalidated structure or silently retry with invented data.
+- For Novel `chapter propose`, each `block.text` is only that block's prose: never
+  embed another `blocks` JSON document in it. Ordinary JSON text is allowed; if
+  the platform rejects embedded Novel blocks, repair from its detail and regenerate.
 - Skill delivery is progressive: use `skill mounts` and normal `skill detail`
   summaries first. Full personal instructions require an explicit user request
   and `skill detail --include-instructions`; never fetch them speculatively.

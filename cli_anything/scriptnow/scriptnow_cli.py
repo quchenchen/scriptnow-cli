@@ -854,7 +854,7 @@ _AGENT_CONTRACT = {
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
-    "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。propose 前可用 --help-format 查看精确 JSON 规格。",
+    "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。Novel 每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON（普通 JSON 文本允许）；被拒绝时按 detail 修正后重新生成。propose 前可用 --help-format 查看精确 JSON 规格。",
 }
 
 # The installed Skill calls `agent-guide --json` before the first action. Keep
@@ -878,6 +878,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "审阅凭证只绑定用户实际阅读的可读 JSON；解析器默认值不得制造内容变化。",
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
+        "Novel 正文回填中每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON；普通 JSON 文本允许。遇到该校验失败时按返回 detail 修正后重新生成，不得绕过。",
         "同一项目的创作写操作必须串行，避免版本和候选冲突；不同项目可并发，CLI 会安全协调共享登录会话的自动续期。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
