@@ -166,6 +166,13 @@ completion. Explain the missing prerequisite and wait.
   Chinese fallback is generic; `--json` failures use
   `{ok:false,error:{type,status,detail}}` without a traceback. Do not substitute
   an unvalidated structure or silently retry with invented data.
+- CLI quality diagnostics are human opt-in only. An Agent must never run
+  `doctor --enable-diagnostics`, `feedback --send`, or `feedback --send --yes`
+  on its own. Only after the user explicitly requests diagnostics may the Agent
+  enable a short window; sending still requires the user's separate confirmation.
+  `doctor --disable-diagnostics` stops collection and `doctor --clear-errors`
+  deletes local v2 events. v2 never contains arguments, details, notes, paths,
+  identifiers, or creative content; legacy v1 files are never uploaded.
 - For Novel `chapter propose`, each `block.text` is only that block's prose: never
   embed another `blocks` JSON document in it. Ordinary JSON text is allowed; if
   the platform rejects embedded Novel blocks, repair from its detail and regenerate.

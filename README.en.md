@@ -53,17 +53,17 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.78-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.80-py3-none-any.whl
 
 # Fixed-version source archive (zip)
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.78.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # Fixed GitHub tag
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.78"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.80"
 ```
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
@@ -189,7 +189,7 @@ as a writer-facing export file yet.
 | skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
-| feedback | Collect a CLI diagnostics bundle (version / recent errors / command trail); local-only by default, `--send` uploads to the platform (no passwords, tokens, or prose) |
+| feedback | Send strict content-free v2 quality events. Local diagnostics are off by default; enable them temporarily with `doctor --enable-diagnostics MINUTES`, then confirm again before `--send`. Arguments, details, notes, paths, IDs, and prose are never collected. |
 | version / self-upgrade / config | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) / `config on|off` toggles automatic upgrade on new versions (off by default; when on, upgrades in the background and notifies you, never blocking commands) |
 
 **Isolated StoryMap rebuild (the storymap-rebuild-* chain on novel/script)**: the domain rough

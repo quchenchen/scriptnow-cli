@@ -667,11 +667,11 @@ def creative_review_claim(ctx: click.Context, packet_id: str, json_output: bool)
 
 
 @main.command("feedback")
-@click.option("--note", default="", help="补充说明（可选，例如你遇到的场景描述）")
 @click.option("--send", is_flag=True, help="发送诊断包到平台（默认只本地生成，不发送）")
+@click.option("--yes", is_flag=True, help="确认发送当前无内容诊断包")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def feedback_cmd(ctx: click.Context, note: str, send: bool, json_output: bool) -> None:
+def feedback_cmd(ctx: click.Context, send: bool, yes: bool, json_output: bool) -> None:
     """收集 CLI 诊断包（版本/近期错误/命令记录），供针对性修复。
 
     默认只生成本地诊断包并展示；--send 才发送到平台（需已登录）。
@@ -682,12 +682,17 @@ def feedback_cmd(ctx: click.Context, note: str, send: bool, json_output: bool) -
 
     errors = recent_errors(50)
     package = {
+        "schema_version": "2",
         "cli_version": _VERSION,
-        "note": note[:500],
-        "error_count": len(errors),
-        "errors": errors,
+        "events": errors,
     }
     if send:
+        if not errors:
+            raise click.ClickException("没有可发送的 v2 诊断事件；请先限时启用本地诊断。")
+        if not yes and not click.confirm(
+            f"发送 {len(errors)} 条无内容诊断事件到平台？", default=False, err=True
+        ):
+            raise click.ClickException("已取消发送")
         try:
             result = _session(ctx).request(
                 "POST", "/cli-feedback", json_body=package, write=True
@@ -701,23 +706,39 @@ def feedback_cmd(ctx: click.Context, note: str, send: bool, json_output: bool) -
     if not json_output:
         click.echo(ui.section("=== CLI 诊断包（本地）==="), err=True)
         click.echo(ui.kv("CLI 版本", package["cli_version"]), err=True)
-        click.echo(ui.kv("错误条数", package["error_count"]), err=True)
+        click.echo(ui.kv("错误条数", len(errors)), err=True)
         for e in errors[:5]:
-            click.echo(f"  [{e.get('error_code','?')}] {e.get('iso','?')} {e.get('command','?')}", err=True)
-            click.echo(ui.dim(f"      {str(e.get('detail',''))[:100]}"), err=True)
-        if note:
-            click.echo(ui.dim(f"备注：{note}"), err=True)
+            click.echo(
+                f"  [{e.get('error_code','?')}] {e.get('command_key','unknown')} "
+                f"phase={e.get('phase','unknown')}",
+                err=True,
+            )
         click.echo("", err=True)
-        click.echo(ui.dim("确认后运行 scriptnow feedback --send 发送到平台（需已登录）。"), err=True)
+        if errors:
+            click.echo(ui.dim("确认后运行 scriptnow feedback --send 发送到平台（需已登录）。"), err=True)
+        else:
+            click.echo(
+                ui.dim("本地诊断默认关闭；仅在你明确需要时运行 doctor --enable-diagnostics 60。"),
+                err=True,
+            )
         return
     _emit(package, json_output)
 
 
 @main.command("doctor")
 @click.option("--clear-errors", is_flag=True, help="清空本地 CLI 错误日志（errors.jsonl）")
+@click.option("--enable-diagnostics", type=click.IntRange(1, 1440), default=None,
+              metavar="MINUTES", help="限时启用无内容本地诊断（最长 1440 分钟）")
+@click.option("--disable-diagnostics", is_flag=True, help="立即停用本地诊断")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> None:
+def doctor_cmd(
+    ctx: click.Context,
+    clear_errors: bool,
+    enable_diagnostics: int | None,
+    disable_diagnostics: bool,
+    json_output: bool,
+) -> None:
     """诊断：当前 CLI 版本、配置/会话位置、登录账号、平台连通性。
 
     Agent 排查「登录失败 / 找不到配置 / 409 权限」时先跑本命令，一眼看到
@@ -726,17 +747,27 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
     from cli_anything.scriptnow import __version__ as _VERSION
     from cli_anything.scriptnow.utils.session import _config_path
 
-    if clear_errors:
-        from cli_anything.scriptnow.utils.diag import clear_errors as _clear
+    if sum((clear_errors, enable_diagnostics is not None, disable_diagnostics)) > 1:
+        raise click.ClickException("诊断 enable/disable/clear 一次只能执行一个")
+    if clear_errors or enable_diagnostics is not None or disable_diagnostics:
+        from cli_anything.scriptnow.utils.diag import (
+            clear_errors as _clear,
+            disable_diagnostics as _disable,
+            enable_diagnostics as _enable,
+        )
 
-        cleared = _clear()
-        if not json_output:
-            if cleared:
-                click.echo(ui.ok("CLI 错误日志已清空。"), err=True)
-            else:
-                click.echo(ui.error("清空失败（文件可能被占用或无权限）。"), err=True)
+        if enable_diagnostics is not None:
+            enabled_until = _enable(enable_diagnostics)
+            result = {"enabled": True, "enabled_until": enabled_until}
+        elif disable_diagnostics:
+            _disable()
+            result = {"enabled": False}
         else:
-            _emit({"cleared": cleared}, json_output)
+            result = {"cleared": _clear()}
+        if not json_output:
+            click.echo(ui.ok("本地诊断设置已更新。"), err=True)
+        else:
+            _emit(result, json_output)
         return
     config = _config_path()
     report: dict[str, object] = {
@@ -757,9 +788,10 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
     except Exception as error:  # noqa: BLE001 — 诊断命令要展示任何失败
         report["logged_in"] = False
         report["login_error"] = str(error)[:240]
-    from cli_anything.scriptnow.utils.diag import recent_errors
+    from cli_anything.scriptnow.utils.diag import diagnostics_enabled_until, recent_errors
 
     report["recent_errors"] = recent_errors(20)
+    report["diagnostics_enabled_until"] = diagnostics_enabled_until()
     if not json_output:
         click.echo(ui.section("=== scriptnow doctor ==="), err=True)
         click.echo(ui.kv("CLI 版本", report["version"]), err=True)
@@ -776,6 +808,13 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
             click.echo(ui.dim("修复：scriptnow login --host <平台地址> --email <账号>（交互输入密码）"), err=True)
         click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json + errors.jsonl）"), err=True)
         click.echo(ui.dim("可用环境变量 SCRIPTNOW_CLI_CONFIG 覆盖会话文件位置"), err=True)
+        if report["diagnostics_enabled_until"]:
+            click.echo(
+                ui.warn(f"本地无内容诊断已限时启用，截止 {report['diagnostics_enabled_until']}"),
+                err=True,
+            )
+        else:
+            click.echo(ui.ok("本地诊断已关闭（默认）"), err=True)
         # 近期错误诊断
         from cli_anything.scriptnow.utils.diag import recent_errors
 
@@ -785,11 +824,10 @@ def doctor_cmd(ctx: click.Context, clear_errors: bool, json_output: bool) -> Non
             click.echo(ui.section("=== 近期 CLI 错误（最近 5 条）==="), err=True)
             for e in errs:
                 click.echo(
-                    f"  {e.get('iso','?')} [{e.get('error_code','?')}] "
-                    f"{e.get('command','?')} {''.join(e.get('args') or [])[:40]}",
+                    f"  [{e.get('error_code','?')}] {e.get('command_key','unknown')} "
+                    f"phase={e.get('phase','unknown')}",
                     err=True,
                 )
-                click.echo(ui.dim(f"      {str(e.get('detail',''))[:90]}"), err=True)
             click.echo(ui.dim("可用 scriptnow feedback 发送诊断包；scriptnow doctor --clear-errors 清空。"), err=True)
         else:
             click.echo(ui.ok("近期无 CLI 错误记录 ✅"), err=True)
@@ -922,6 +960,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
         "Novel 正文回填中每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON；普通 JSON 文本允许。遇到该校验失败时按返回 detail 修正后重新生成，不得绕过。",
         "同一项目的创作写操作必须串行，避免版本和候选冲突；不同项目可并发，CLI 会安全协调共享登录会话的自动续期。",
+        "CLI 质量诊断只能由用户主动开启：Agent 不得自行执行 doctor --enable-diagnostics、feedback --send 或 --yes；即使用户要求限时开启，发送前仍须取得单独明确确认。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
         "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",

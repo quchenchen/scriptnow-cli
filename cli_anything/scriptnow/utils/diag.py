@@ -1,22 +1,32 @@
-"""CLI 诊断日志与错误遥测：自动记录失败命令，供针对性修复。
-
-设计目标：
-- 零打扰：命令失败自动写一条结构化记录，用户无感
-- 可诊断：每条含 命令 / 参数（脱敏）/ 错误码 / 详情 / 时间 / CLI 版本
-- 可上报：`scriptnow feedback` 收集诊断包发给平台
-- 可轮转：只保留最近 N 条，不无限增长
-- 隐私：绝不记录密码、令牌、Cookie、正文内容
-"""
+"""Opt-in, content-free CLI quality diagnostics (schema v2)."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
+from contextlib import suppress
 from pathlib import Path
 
-
-MAX_ERROR_ENTRIES = 50  # 轮转上限：只保留最近 50 条
+MAX_ERROR_ENTRIES = 50
+MAX_ENABLE_MINUTES = 24 * 60
+_EVENT_KEYS = {"ts", "command_key", "error_code", "phase"}
+COMMAND_KEY_ALLOWLIST = frozenset(
+    {
+        "unknown", "login", "doctor", "feedback", "project.create", "project.list",
+        "chapter.generate", "chapter.propose", "chapter.adopt", "scene.generate",
+        "scene.propose", "scene.adopt", "storymap.propose", "storymap.adopt",
+        "run.status", "run.events", "export.create",
+    }
+)
+ERROR_CODE_ALLOWLIST = frozenset(
+    {
+        "CLI_UNKNOWN", "CLI_AUTH_EXPIRED", "CLI_USAGE_UNKNOWN_OPTION",
+        "CLI_USAGE_UNKNOWN_COMMAND", "CLI_HTTP_409", "CLI_HTTP_4XX",
+        "CLI_HTTP_5XX", "CLI_NETWORK",
+    }
+)
 
 
 def _config_dir() -> Path:
@@ -27,143 +37,127 @@ def _config_dir() -> Path:
 
 
 def _errors_path() -> Path:
-    return _config_dir() / "errors.jsonl"
+    return _config_dir() / "errors-v2.jsonl"
 
 
-# ── 脱敏：从命令参数里剔除敏感值（密码/令牌/CSRF/正文） ──
+def _state_path() -> Path:
+    return _config_dir() / "diagnostics-v2.json"
 
 
-_SENSITIVE_OPTIONS = ("--password", "--token", "x-decision-token", "--evidence", "--csrf", "--email")
+def diagnostics_enabled_until() -> int | None:
+    try:
+        enabled_until = int(
+            json.loads(_state_path().read_text(encoding="utf-8")).get("enabled_until", 0)
+        )
+        if enabled_until > int(time.time()):
+            return enabled_until
+        _state_path().unlink(missing_ok=True)
+        _errors_path().unlink(missing_ok=True)
+        return None
+    except (OSError, ValueError, TypeError):
+        return None
 
 
-def _sanitize_args(args: tuple[str, ...]) -> list[str]:
-    """保留命令名与位置参数，剔除长内容与明显敏感值。
-
-    敏感选项（--password/--token/--evidence 等）连同其值一起脱敏：
-    `--password secret` → `--password=<redacted>`；等号形式同样处理。
-    超长值截断。绝不记录密码/令牌/Cookie/正文。
-    """
-    out: list[str] = []
-    skip_next = False
-    for arg in args:
-        low = str(arg).lower()
-        if skip_next:
-            skip_next = False
-            out.append("<redacted>")
-            continue
-        # 等号形式：--password=secret
-        if "=" in low:
-            opt, _, val = low.partition("=")
-            if any(opt == o for o in _SENSITIVE_OPTIONS):
-                out.append(f"{opt}=<redacted>")
-                continue
-        # 分离形式：--password secret
-        if any(low == o or low.startswith(o + "=") for o in _SENSITIVE_OPTIONS):
-            out.append(low.split("=")[0] + "=<redacted>")
-            skip_next = True
-            continue
-        # 超长值（正文/JSON）截断
-        if len(str(arg)) > 120:
-            out.append(str(arg)[:60] + "…<truncated>")
-            continue
-        out.append(str(arg))
-    return out
+def enable_diagnostics(minutes: int = 60) -> int:
+    if minutes < 1 or minutes > MAX_ENABLE_MINUTES:
+        raise ValueError(f"minutes must be between 1 and {MAX_ENABLE_MINUTES}")
+    path = _state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    enabled_until = int(time.time()) + minutes * 60
+    path.write_text(json.dumps({"schema_version": 2, "enabled_until": enabled_until}), encoding="utf-8")
+    with suppress(OSError):
+        path.chmod(0o600)
+    return enabled_until
 
 
-def _sanitize_detail(detail: str) -> str:
-    """净化错误详情：剔除可能被服务端回显的敏感片段（token/cookie 形态）。"""
-    import re as _re
-
-    text = str(detail)
-    # JWT（eyJ...两段点号）与常见令牌形态
-    text = _re.sub(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", "<jwt-redacted>", text)
-    text = _re.sub(r"(?i)(token|csrf|cookie)[=: ]+[A-Za-z0-9_-]{12,}", r"\1=<redacted>", text)
-    return text[:300]
+def disable_diagnostics() -> None:
+    _state_path().unlink(missing_ok=True)
 
 
 def _error_code(detail: str) -> str:
-    """从错误详情提取 machine-readable 错误码，便于 CLI 给专属指引。
-
-    规则：优先识别已知模式 → CLI_<AREA>_<KIND>；未知 → CLI_UNKNOWN。
-    """
-    d = str(detail)
-    dl = d.lower()
-    if "已不可采纳" in d or "candidate is unavailable" in dl:
-        return "CLI_ADOPT_REVISION_UNAVAILABLE"
-    if "该版本（rev" in d and "无需重复采纳" in d:
-        return "CLI_ADOPT_ALREADY_FINALIZED"
-    if "superseded" in dl or "已过期" in d:
-        return "CLI_ADOPT_SUPERSEDED"
-    if "定稿必须由人亲自决策" in d:
-        return "CLI_ADOPT_REQUIRES_HUMAN"
-    if "登录状态已失效" in d or "401" in dl:
+    value = str(detail).lower()
+    if "401" in value or "登录状态已失效" in str(detail):
         return "CLI_AUTH_EXPIRED"
-    if "decision token" in dl or "授权令牌" in d:
-        return "CLI_TOKEN_INVALID"
-    if "No such option" in d:
+    if "no such option" in value:
         return "CLI_USAGE_UNKNOWN_OPTION"
-    if "No such command" in d:
+    if "no such command" in value:
         return "CLI_USAGE_UNKNOWN_COMMAND"
-    if dl.startswith("http 409"):
+    if value.startswith("http 409"):
         return "CLI_HTTP_409"
-    if dl.startswith("http 4"):
+    if value.startswith("http 4"):
         return "CLI_HTTP_4XX"
-    if dl.startswith("http 5"):
+    if value.startswith("http 5"):
         return "CLI_HTTP_5XX"
-    if "network error" in dl or "max retries" in dl or "connection" in dl:
+    if "network error" in value or "connection" in value:
         return "CLI_NETWORK"
     return "CLI_UNKNOWN"
 
 
+def _command_key(command: str) -> str:
+    value = command.strip().lower()
+    if not value or len(value) > 80 or any(marker in value for marker in "/:="):
+        return "unknown"
+    words = value.split()
+    if len(words) > 3 or any(not re.fullmatch(r"[a-z0-9_.-]{1,32}", word) for word in words):
+        return "unknown"
+    candidate = ".".join(words)
+    return candidate if candidate in COMMAND_KEY_ALLOWLIST else "unknown"
+
+
+def _phase(error_code: str) -> str:
+    if error_code.startswith("CLI_AUTH"):
+        return "auth"
+    if error_code.startswith("CLI_USAGE"):
+        return "validation"
+    if error_code == "CLI_NETWORK":
+        return "transport"
+    if error_code.startswith("CLI_HTTP"):
+        return "platform"
+    return "unknown"
+
+
 def record_error(*, command: str, args: tuple[str, ...], detail: str) -> str:
-    """记录一条失败命令（自动轮转）。返回错误码。"""
+    del args
+    error_code = _error_code(detail)
+    if diagnostics_enabled_until() is None:
+        return error_code
     try:
         path = _errors_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         entry = {
             "ts": int(time.time()),
-            "iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
-            "command": command,
-            "args": _sanitize_args(args),
-            "error_code": _error_code(detail),
-            "detail": _sanitize_detail(detail),
+            "command_key": _command_key(command),
+            "error_code": error_code,
+            "phase": _phase(error_code),
         }
-        # 追加 + 轮转（保留最近 N 条）
-        lines = []
-        if path.exists():
-            lines = path.read_text(encoding="utf-8").splitlines()
-        lines.append(json.dumps(entry, ensure_ascii=False))
-        lines = lines[-MAX_ERROR_ENTRIES:]
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        try:
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        lines.append(json.dumps(entry, separators=(",", ":")))
+        path.write_text("\n".join(lines[-MAX_ERROR_ENTRIES:]) + "\n", encoding="utf-8")
+        with suppress(OSError):
             path.chmod(0o600)
-        except OSError:
-            pass
-        return entry["error_code"]
     except Exception:
-        return "CLI_UNKNOWN"  # 记录失败不影响主流程
+        pass
+    return error_code
 
 
 def recent_errors(limit: int = 20) -> list[dict[str, object]]:
-    """读取最近 N 条错误记录（供 doctor 与 feedback 使用）。"""
-    path = _errors_path()
-    if not path.exists():
+    if diagnostics_enabled_until() is None or not _errors_path().exists():
         return []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    out = []
-    for line in lines[-limit:]:
+    output: list[dict[str, object]] = []
+    for line in _errors_path().read_text(encoding="utf-8").splitlines()[-limit:]:
         try:
-            out.append(json.loads(line))
+            value = json.loads(line)
         except ValueError:
-            # 单条损坏跳过（不整体失败），保留其余
             continue
-    return out
+        if isinstance(value, dict) and set(value) == _EVENT_KEYS:
+            output.append(value)
+    return output
 
 
 def clear_errors() -> bool:
-    """清空错误日志。返回是否成功（失败不静默）。"""
     try:
         _errors_path().unlink(missing_ok=True)
+        (_config_dir() / "errors.jsonl").unlink(missing_ok=True)
         return True
-    except Exception:
+    except OSError:
         return False

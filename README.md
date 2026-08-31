@@ -54,9 +54,9 @@
 
 ```bash
 # 固定版本
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.78-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.80-py3-none-any.whl
 # 源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.78.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
 ```
 
 **GitHub 兜底（生产源不可达时）**：
@@ -71,7 +71,7 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.78"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.80"
 ```
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
@@ -214,7 +214,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅解除本项目挂载，需 --confirm）** / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
-| feedback | CLI 诊断包收集：版本 / 近期错误 / 命令记录；默认仅本地生成，--send 才发送平台（不含密码、令牌、正文） |
+| feedback | 发送严格无内容的 v2 质量事件；本地诊断默认关闭，须先 `doctor --enable-diagnostics MINUTES` 限时开启，`--send` 前再次交互确认；不采集参数、详情、备注、路径、ID 或正文 |
 | version / self-upgrade / config | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版）/ `config on|off` 开启或关闭「有新版本时自动升级」（默认关闭；开启后后台自动升级并在升级前后通知，不阻塞命令） |
 
 **StoryMap 隔离重建（novel/script 的 storymap-rebuild-* 链）**：必须先采纳该域粗纲；

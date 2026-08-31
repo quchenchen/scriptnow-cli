@@ -577,30 +577,76 @@ def test_doctor_reports_session_location_and_login_state():
     assert ".config" in r2.output or "session.json" in r2.output
 
 
-def test_diag_sanitizes_secrets_and_detail():
-    """诊断日志隐私：敏感选项连值脱敏、JWT/令牌净化、超长截断。"""
-    from cli_anything.scriptnow.utils.diag import (
-        _sanitize_args,
-        _sanitize_detail,
-    )
+def test_diag_sanitizes_secrets_and_detail(monkeypatch, tmp_path):
+    """v2 默认关闭，启用后仍不落参数、详情、路径或内容。"""
+    from cli_anything.scriptnow.utils import diag
 
-    # 分离形式：--password secret → 选项与值都脱敏
-    args = _sanitize_args(("chapter", "adopt", "--password", "hunter2", "--token", "tok123", "c1"))
-    assert "--password=<redacted>" in args
-    assert "hunter2" not in args
-    assert "--token=<redacted>" in args
-    assert "tok123" not in args
-    # 等号形式
-    args2 = _sanitize_args(("--password=abc123", "x"))
-    assert "--password=<redacted>" in args2 and "abc123" not in args2
-    # 超长截断
-    args3 = _sanitize_args(("x" * 300,))
-    assert len(args3[0]) < 100 and "truncated" in args3[0]
-    # detail 净化 JWT 与 token
-    d = _sanitize_detail("detail with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.abcd1234EFGH and token=supersecret12345 cookie=abcDEF123456")
-    assert "jwt-redacted" in d
-    assert "supersecret12345" not in d
-    assert "abcDEF123456" not in d
-    # 前缀必须保留（r"\1" 反向引用生效），值被替换为 <redacted>
-    assert "token=<redacted>" in d
-    assert "cookie=<redacted>" in d
+    monkeypatch.setenv("SCRIPTNOW_CLI_CONFIG", str(tmp_path / "session.json"))
+
+    assert diag.record_error(
+        command="chapter adopt /private/work/p1",
+        args=("--password", "hunter2", "正文内容"),
+        detail="token=supersecret HTTP 409 /private/work/p1",
+    ) == "CLI_UNKNOWN"
+    assert diag.recent_errors() == []
+    diag.enable_diagnostics(1)
+    diag.record_error(
+        command="chapter adopt",
+        args=("--password", "hunter2", "正文内容"),
+        detail="HTTP 409: token=supersecret /private/work/p1",
+    )
+    events = diag.recent_errors()
+    assert events == [
+        {
+            "ts": events[0]["ts"],
+            "command_key": "chapter.adopt",
+            "error_code": "CLI_HTTP_409",
+            "phase": "platform",
+        }
+    ]
+    serialized = __import__("json").dumps(events, ensure_ascii=False)
+    for forbidden in ("args", "detail", "note", "path", "hunter2", "正文", "supersecret"):
+        assert forbidden not in serialized
+    enabled_until = diag.diagnostics_enabled_until()
+    assert enabled_until is not None
+    monkeypatch.setattr(diag.time, "time", lambda: enabled_until + 1)
+    assert diag.diagnostics_enabled_until() is None
+    assert not diag._state_path().exists()
+    assert not diag._errors_path().exists()
+
+
+def test_feedback_requires_confirmation_and_sends_only_v2_events(
+    runner, monkeypatch, tmp_path
+):
+    from cli_anything.scriptnow import scriptnow_cli as cli_mod
+    from cli_anything.scriptnow.utils import diag
+
+    monkeypatch.setenv("SCRIPTNOW_CLI_CONFIG", str(tmp_path / "session.json"))
+    diag.enable_diagnostics(1)
+    diag.record_error(
+        command="chapter generate",
+        args=("secret-project-id", "正文"),
+        detail="HTTP 409: private detail",
+    )
+    fake = Mock()
+    fake.request = Mock(return_value={"received": True, "bundle_id": "bundle-1"})
+    monkeypatch.setattr(cli_mod, "_session", lambda _ctx: fake)
+
+    cancelled = runner.invoke(main, ["feedback", "--send"], input="n\n")
+    assert cancelled.exit_code != 0
+    fake.request.assert_not_called()
+
+    sent = runner.invoke(main, ["feedback", "--send", "--yes", "--json"])
+    assert sent.exit_code == 0, sent.output
+    body = fake.request.call_args.kwargs["json_body"]
+    assert body["schema_version"] == "2"
+    assert set(body) == {"schema_version", "cli_version", "events"}
+    assert set(body["events"][0]) == {"ts", "command_key", "error_code", "phase"}
+    assert "secret-project-id" not in json.dumps(body)
+    assert "private detail" not in json.dumps(body)
+    guide = runner.invoke(main, ["agent-guide", "--json"])
+    assert guide.exit_code == 0
+    assert any(
+        "不得自行执行 doctor --enable-diagnostics" in rule
+        for rule in json.loads(guide.output)["rules"]
+    )

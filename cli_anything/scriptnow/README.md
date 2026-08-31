@@ -38,16 +38,16 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.78-py3-none-any.whl
+pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.80-py3-none-any.whl
 # 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.78.zip
+curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # GitHub 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.78"
+pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.80"
 ```
 
 ## 登录
@@ -149,7 +149,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
-| feedback | CLI 诊断包收集：版本 / 近期错误 / 命令记录；默认仅本地生成，--send 才发送平台（不含密码、令牌、正文） |
+| feedback | 严格无内容 v2 质量事件；默认关闭，先用 `doctor --enable-diagnostics MINUTES` 限时开启，发送前再次确认；不含参数、详情、备注、路径、ID 或正文 |
 | version / self-upgrade / config | 版本查看与强制检查（--check）/ 自动升级（确认后执行）/ `config on|off` 开启或关闭「有新版本时后台自动升级 + 通知」（默认关闭） |
 
 **StoryMap 隔离重建（novel/script 的 storymap-rebuild-* 链）**：必须先采纳该域粗纲；
