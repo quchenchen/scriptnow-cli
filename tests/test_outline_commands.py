@@ -797,3 +797,66 @@ def test_script_rough_outline_finalize_requires_and_forwards_review_token(monkey
     assert session.request.call_args.kwargs["headers"] == {
         "X-Review-Token": "review-final",
     }
+
+
+def test_rough_outline_phase_normalization_matches_server_defaults():
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    normalized = cli._normalize_rough_outline_phase({
+        "ordinal": 1,
+        "phase_key": "act1",
+        "phase_title_zh": "第一幕",
+        "range_start": 1,
+        "range_end": 3,
+        "summary": "具体剧情",
+        "key_beats": [{"title": "证据出现", "description": "主角找到被删除的录音"}],
+    })
+    assert normalized["phase_title_en"] == ""
+    assert normalized["purpose"] == ""
+    assert normalized["anchor_ids"] == []
+    assert normalized["key_beats"][0]["anchor_ids"] == []
+
+
+def test_rough_outline_phase_continue_stops_while_waiting_for_human(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.return_value = {
+        "packet_id": "packet-1",
+        "project_id": "p1",
+        "resource_kind": "rough_outline_phase",
+        "status": "previewed",
+        "preview": {"title": "第一幕", "content": {"summary": "阶段剧情"}},
+    }
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(
+        main, ["script", "rough-outline-phase-continue", "p1", "packet-1", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "waiting_for_human"
+    assert payload["allowed_next_commands"] == ["scriptnow review status packet-1 --json"]
+    assert session.request.call_count == 1
+
+
+def test_rough_outline_phase_continue_claims_and_submits_active_packet(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    phase = {"ordinal": 1, "phase_key": "act1", "phase_title_zh": "第一幕",
+             "phase_title_en": "", "purpose": "", "range_start": 1, "range_end": 3,
+             "summary": "阶段剧情", "key_beats": [], "anchor_ids": []}
+    session = Mock()
+    session.request.side_effect = [
+        {"packet_id": "packet-1", "project_id": "p1", "resource_kind": "rough_outline_phase",
+         "status": "active", "preview": {"title": "第一幕", "content": phase}},
+        {"token": "review-token"},
+        {"current_phase_key": "act2"},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(
+        main, ["script", "rough-outline-phase-continue", "p1", "packet-1", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    submit = session.request.call_args_list[2]
+    assert submit.kwargs["json_body"]["phase"] == phase
+    assert submit.kwargs["headers"] == {"X-Review-Token": "review-token"}

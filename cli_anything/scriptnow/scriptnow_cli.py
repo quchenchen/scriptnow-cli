@@ -536,6 +536,45 @@ def creative_review_group(ctx: click.Context) -> None:
     """人类可读预览 → 明确决定 → 一次性提交凭证。"""
 
 
+def _conversation_review(title: str, content: object) -> str:
+    """Render planning content for conversation instead of exposing raw JSON."""
+    if not isinstance(content, dict):
+        return f"## {title}\n\n{content}"
+    if isinstance(content.get("text"), str):
+        return f"## {title}\n\n{content['text'].strip()}"
+    sections = [f"## {title}"]
+    phases = content.get("phases")
+    if isinstance(phases, list):
+        for index, phase in enumerate(phases, 1):
+            if not isinstance(phase, dict):
+                continue
+            heading = phase.get("phase_title_zh") or phase.get("phase_title_en") or phase.get("title") or f"阶段 {index}"
+            range_text = f"（{phase.get('range_start')}–{phase.get('range_end')}）" if phase.get("range_start") is not None else ""
+            sections.append(f"\n### {heading}{range_text}\n\n{phase.get('summary') or ''}")
+            for beat in phase.get("key_beats") or []:
+                if isinstance(beat, dict):
+                    sections.append(f"- **{beat.get('title') or '关键事件'}**：{beat.get('description') or ''}")
+        return "\n".join(sections)
+    drafts = content.get("drafts")
+    if isinstance(drafts, list):
+        for index, draft in enumerate(drafts, 1):
+            if not isinstance(draft, dict):
+                continue
+            sections.append(f"\n### 方向 {index} · {draft.get('title') or '未命名'}\n\n{draft.get('concept') or draft.get('premise') or ''}")
+            sections.extend(f"- {angle}" for angle in (draft.get("angles") or []))
+        return "\n".join(sections)
+    return f"## {title}\n\n请在可选长内容页面查看完整排版。"
+
+
+def _attach_conversation_review(result: dict[str, Any], title: str) -> None:
+    preview = result.get("preview") if isinstance(result.get("preview"), dict) else {}
+    result["human_preview"] = _conversation_review(title, preview.get("content"))
+    result["required_user_decision"] = ["保留", "调整", "换方向"]
+    result["wait_for_user_input"] = True
+    result["status"] = "waiting_for_human"
+    result["review_url_optional"] = True
+
+
 @creative_review_group.command("preview")
 @click.argument("project_id")
 @click.argument("resource_kind")
@@ -571,6 +610,7 @@ def creative_review_preview(ctx: click.Context, project_id: str, resource_kind: 
         json_body={"project_id": project_id, "resource_kind": resource_kind,
                    "resource_id": resource_id, "content_digest": digest, "preview": preview}, write=True)
     result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    _attach_conversation_review(result, title)
     if json_output:
         _emit(result, True)
         return
@@ -644,6 +684,7 @@ def creative_review_candidate_preview(
         write=True,
     )
     result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    _attach_conversation_review(result, title)
     if json_output:
         _emit(result, True)
         return
@@ -719,6 +760,7 @@ def creative_review_propose_preview(
         write=True,
     )
     result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    _attach_conversation_review(result, title)
     submit_command = (
         f"scriptnow {medium} outline {project_id} --file {path} --review-token <token>"
         if kind == "outline"
@@ -1053,7 +1095,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "CLI 质量诊断只能由用户主动开启：Agent 不得自行执行 doctor --enable-diagnostics、feedback --send 或 --yes；即使用户要求限时开启，发送前仍须取得单独明确确认。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
-        "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",
+        "粗纲是集纲/章纲之前的叙事阶段层。Script 必须先读取 rough-outline-example（其中含可复制的 key_beats[{title,description,anchor_ids}] 模板），再 start。每阶段固定 rough-outline-phase-preview → 在对话展示 human_preview 并等待人 → rough-outline-phase-continue；continue 在 previewed 状态只返回 waiting_for_human，active 后自动 claim+回填。禁止把 packet_id 当 token，也禁止重复 preview 未变化内容。",
         "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填300–500字梗概候选，不跳到粗纲、集纲/章纲或正文。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
         "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
@@ -3288,6 +3330,21 @@ def _rough_outline_phase_issues(
     }
     issues.extend(_rough_outline_issues([normalized], synthetic, range_label="集"))
     return issues
+
+
+def _normalize_rough_outline_phase(phase: dict[str, object]) -> dict[str, object]:
+    """Mirror RoughOutlinePhaseDraft defaults for preview and submit digests."""
+    import copy
+
+    normalized = copy.deepcopy(phase)
+    normalized.setdefault("phase_title_en", "")
+    normalized.setdefault("purpose", "")
+    normalized.setdefault("key_beats", [])
+    normalized.setdefault("anchor_ids", [])
+    for beat in normalized.get("key_beats") or []:
+        if isinstance(beat, dict):
+            beat.setdefault("anchor_ids", [])
+    return normalized
 
 
 def _thin_bible_profiles(bibles: object) -> list[str]:
@@ -6717,6 +6774,7 @@ def script_rough_outline_phase(ctx: click.Context, project_id: str, phase_key: s
     phase = next((item for item in phases if str(item.get("phase_key")) == phase_key), None)
     if phase is None:
         raise click.ClickException(f"文件中没有阶段 {phase_key}")
+    phase = _normalize_rough_outline_phase(phase)
     result = _session(ctx).request("POST", f"/script/projects/{project_id}/rough-outline/build/phase",
         json_body={"phase": phase, "restart_from": restart_from}, write=True,
         headers={"X-Review-Token": review_token})
@@ -6750,6 +6808,7 @@ def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phas
     phase = next((item for item in phases if str(item.get("phase_key")) == phase_key), None)
     if phase is None:
         raise click.ClickException(f"文件中没有阶段 {phase_key}")
+    phase = _normalize_rough_outline_phase(phase)
     session = _session(ctx)
     example = session.request("GET", f"/script/projects/{project_id}/rough-outline/example")
     progress = session.request("GET", f"/script/projects/{project_id}/rough-outline/build")
@@ -6768,6 +6827,18 @@ def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phas
                                "content": phase, "human_action": packet["human_action"]}}, write=True)
     packet["packet_id"] = registered.get("packet_id")
     packet["review_url"] = session.base_url + str(registered.get("review_path") or "")
+    packet["human_preview"] = _conversation_review(
+        str(phase.get("phase_title_zh") or phase_key), phase
+    )
+    packet["required_user_decision"] = ["保留", "调整", "换方向"]
+    packet["wait_for_user_input"] = True
+    packet["status"] = "waiting_for_human"
+    packet["allowed_next_commands"] = [f"scriptnow review status {packet['packet_id']} --json"]
+    packet["continue_command"] = (
+        f"scriptnow script rough-outline-phase-continue {project_id} "
+        f"{packet['packet_id']} --json"
+    )
+    packet["review_url_optional"] = True
     if json_output:
         _emit(packet, True)
         return
@@ -6778,8 +6849,55 @@ def script_rough_outline_phase_preview(ctx: click.Context, project_id: str, phas
         click.echo(f"- {beat.get('title')}：{beat.get('description')}")
     click.echo(ui.dim(f"内容指纹：{digest}"), err=False)
     click.echo(ui.kv("review_packet", registered.get("packet_id")))
-    click.echo(ui.kv("一键查看", packet["review_url"]))
-    click.echo(ui.warn("请先让人完整阅读并明确选择：保留 / 调整 / 换方向。此命令没有写入平台。"), err=False)
+    click.echo(ui.kv("一键查看（可选）", packet["review_url"]))
+    click.echo(ui.warn("请在当前对话展示内容并等待人明确选择：保留 / 调整 / 换方向。此命令没有写入平台。"), err=False)
+
+
+@script_group.command("rough-outline-phase-continue")
+@click.argument("project_id")
+@click.argument("packet_id")
+@click.option("--restart-from", is_flag=True, help="替换该阶段并使下游失效")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_phase_continue(
+    ctx: click.Context, project_id: str, packet_id: str,
+    restart_from: bool, json_output: bool,
+) -> None:
+    """按 packet 状态继续：等待人时停下；已确认时自动 claim 并回填阶段。"""
+    session = _session(ctx)
+    packet = session.request("GET", f"/creative-reviews/{packet_id}")
+    if packet.get("project_id") != project_id or packet.get("resource_kind") != "rough_outline_phase":
+        raise click.ClickException("packet 不属于本项目的粗纲阶段")
+    if packet.get("status") == "previewed":
+        result = {
+            "status": "waiting_for_human",
+            "packet_id": packet_id,
+            "human_preview": _conversation_review(
+                str((packet.get("preview") or {}).get("title") or "粗纲阶段审阅"),
+                (packet.get("preview") or {}).get("content"),
+            ),
+            "required_user_decision": ["保留", "调整", "换方向"],
+            "allowed_next_commands": [f"scriptnow review status {packet_id} --json"],
+        }
+        _emit(result, json_output)
+        return
+    if packet.get("status") != "active":
+        raise click.ClickException(f"packet 当前状态 {packet.get('status')}，不能继续回填")
+    phase = (packet.get("preview") or {}).get("content")
+    if not isinstance(phase, dict):
+        raise click.ClickException("packet 缺少可回填的粗纲阶段内容")
+    claimed = session.request("POST", f"/creative-reviews/{packet_id}/claim", write=True)
+    result = session.request(
+        "POST",
+        f"/script/projects/{project_id}/rough-outline/build/phase",
+        json_body={"phase": phase, "restart_from": restart_from},
+        write=True,
+        headers={"X-Review-Token": claimed["token"]},
+    )
+    result["status"] = "submitted"
+    result["packet_id"] = packet_id
+    result["server_confirmed"] = True
+    _emit(result, json_output)
 
 
 @script_group.command("rough-outline-propose")
