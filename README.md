@@ -188,7 +188,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 # 改编稿本地回传：script scene-propose <pid> scene-1-1 --file @blocks.json --review-token <提交审阅凭证>
 ```
 
-**交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1` → `export download -o 书.docx`。
+**交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1 --sections synopsis,characters,rough_outline,story_map,manuscript`（固定按梗概→人物小传→粗纲→章纲/集纲→正文）→ `export download -o 书.docx`。
 剧本使用 `--form working` 时 DOCX 带每场预计时长、发声数量与转场信息；内部制作契约暂不作为编剧交付文件导出。
 
 ## 命令组
@@ -198,7 +198,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | guide | 聚焦式新手创作向导（outline-first 逐层深入）：`--step 1..12 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图；`--complete/--status` 完成标记与完成状态 |
 | agent-guide | **Agent 操作契约**：连接平台唯一准则（--json 结构化输出） |
 | authorize | 签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿 |
-| review | 人类审阅回路：`preview` 展示本地候选 / `candidate-preview` 展示平台规划候选 / `status` 读取决定与意见 / `confirm` 登记一次决定 / `claim` 由 Agent 领取凭证；页面可选 |
+| review | 人类审阅回路：用户在对话或平台页明确决定后，Agent 以 `confirm` 原样登记，再 `status` / `claim`；不得推断或伪造决定 |
 | project | 项目管理：创建 / 列表 / **files（项目文件）** / 上传素材 / **use（设为默认项目）** / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
@@ -262,20 +262,23 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 `rough-outline-start/progress/phase` 每次都回显「阶段 X / 共 N 阶段」、当前阶段和已完成阶段，
 不得让阶段 JSON 只在后台推进。
 
-下面的命令通常由 Agent 在后台完成，不要求用户离开当前对话：
+Agent 先生成可读审阅包；用户在对话或平台页面明确输入决定：
 
 ```bash
 # 登记并展示完整候选；不写入创作内容
-scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
-# 用户在对话中给出一次决定后，Agent 登记原话并领取一次性凭证
+scriptnow review propose-preview script <pid> outline @outline.txt
+scriptnow review propose-preview script <pid> cores @cores.json
 scriptnow review confirm <packet-id> --decision retain --evidence "采用这一版，继续下一阶段。"
+scriptnow review status <packet-id> --json
 scriptnow review claim <packet-id> --json
+# 将 claim 返回的 token 字段传入；不是 packet_id。文件内容改过则必须重新 preview。
+scriptnow script propose <pid> cores cores.json --review-token <token>
 # 调整时读取用户意见，修订后重新 preview；不复用旧凭证
 scriptnow review status <packet-id> --json
 ```
 
-`review status` 让 Agent 直接读取用户反馈，不要求用户再说一遍；`--evidence` 应保留用户原话，
-不能用 Agent 自己的总结替代。`--json` 只服务于 Agent 编排，不能替代用户看到的完整内容。
+`review confirm` 的 evidence 必须逐字来自用户明确输入，不能由 Agent 总结、推断或伪造。
+`--json` 只服务于编排，不能替代用户看到的完整内容和真实决定。
 
 ```bash
 scriptnow guide --step 1 --medium novel --json
@@ -352,6 +355,8 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   原始领域 detail；`--json` 失败统一返回 `{ok:false,error:{type,status,detail}}`，不输出 traceback。
   运行失败按 `run status` 的 `error/detail` 修正，再用 `run events <run_id> --json` 读取事件；无事件固定为
   `events=[]`。Agent 必须按其中的可行动提示修正，不能把中文通用兜底当作修复指令。
+  `run status` 同时返回持久化 operation 的 `stage` 与 `progress`；平台后备 StoryMap 生成按
+  Script 每批最多 3 集、Novel 每批最多 5 章保存 checkpoint，刷新或服务重启后继续跟踪原 run。
 - **Novel blocks 防污染**：`chapter propose` 的每个 `block.text` 只能提交该块正文，不能内嵌
   另一份 `blocks` JSON；普通 JSON 文本允许。被拒绝时按返回的 detail 修正后重新生成，不能绕过校验。
 - **报告完成以服务器回读为据**：写操作成功 = 服务器返回 id（project_id/candidate_id/revision_id/run_id）且回读确认落盘；

@@ -22,7 +22,7 @@
   一律不纳入 CLI。
 - **Token 预算控制**：本地导入（propose / scene-propose / interpret local）带 `--budget` 预估拦截。
 - **会话自动续期**：一次 login 后 access 过期自动 refresh 续期（30 天），Agent 长会话无需反复登录。
-- **Agent 操作契约**：`scriptnow agent-guide`（--json）输出连接平台唯一准则——平台是事实源、规划回填优先、集纲/章纲质量门禁、生成后台轮询、StoryMap 修订需用户明确授权。
+- **Agent 操作契约**：`scriptnow agent-guide`（--json）输出连接平台唯一准则——平台是事实源、规划回填优先、集纲/章纲质量门禁、生成后台轮询（含持久化 stage/progress 与分批 checkpoint）、StoryMap 修订需用户明确授权。
 - **双域阶段语义**：叙事阶段不决定小说卷边界；剧本 `volume_two` 表示每集场数，阶段比例据此按每集场数解释。
 - **新增卷章 = 纯追加**：`storymap append-volume` / `append-chapters` 只尾部新增，已有卷章完全不动；旧结构自动归档可回溯。
 - **审读是 Agent 自身能力**：平台不提供固定 rubric，Agent 读正文、自行判断、用 `--feedback` 驱动修正。
@@ -124,7 +124,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 `adopted` 都视为已定稿；人工定稿优先作为 `adopted_revision`，候选清单只含
 `candidate`/`active`。需要阅读较新的候选时显式传 `--revision`。
 
-**交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1` → `export download -o 书.docx`。
+**交付**：`cover generate` 封面 → `export create --units chapter-1-1|scene-1-1 --sections synopsis,characters,rough_outline,story_map,manuscript`（梗概→人物小传→粗纲→章纲/集纲→正文）→ `export download -o 书.docx`。
 剧本 `--form working` 输出每场制作信息；内部制作契约暂不作为编剧交付文件导出。
 
 ## 命令组
@@ -132,7 +132,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | 组 | 用途 |
 |----|------|
 | guide | 聚焦式新手创作（outline-first 逐层深入）：--step 1..12 / --medium novel\|script / --pulse / --resume / --steps / --complete / --status |
-| review | 人类审阅：preview（本地候选）/ candidate-preview（平台规划候选）/ status（读取反馈）/ confirm（登记一次决定）/ claim（Agent 领取凭证）；长内容页面可选 |
+| review | 人类审阅：用户在对话或平台页明确决定后，Agent 用 confirm 原样登记，再 status / claim；不得推断或伪造 |
 | authorize | 签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿 |
 | project | 项目管理：创建 / 列表 / **files（项目文件）** / 上传素材 / **use（设为默认项目）** / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
@@ -243,8 +243,9 @@ Agent 负责执行，作者/编辑负责观察和决定。方向、故事核心�
 
 ```bash
 scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
-# 用户在当前 Agent 对话中决定后，由 Agent 执行：
+# 用户在对话或平台页明确决定后，由 Agent 原样登记：
 scriptnow review confirm <packet-id> --decision retain --evidence "采用这一版，继续下一阶段。"
+scriptnow review status <packet-id> --json
 scriptnow review claim <packet-id> --json
 # 调整时由 Agent 读取原话，修订后重新 preview；不复用旧凭证
 scriptnow review status <packet-id> --json

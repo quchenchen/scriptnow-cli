@@ -8,6 +8,7 @@ the `--adopt` second request.
 from __future__ import annotations
 
 import json
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -45,6 +46,52 @@ def _write(tmp_path, name: str, content: str) -> str:
     path = tmp_path / name
     path.write_text(content, encoding="utf-8")
     return f"@{path}"
+
+
+@pytest.mark.parametrize("medium", ["novel", "script"])
+def test_project_direction_inspiration_uses_project_medium(monkeypatch, medium):
+    session = Mock()
+
+    def request(method, path, **kwargs):
+        if method == "GET" and path == "/projects":
+            return [{"id": "project-1", "medium": medium, "direction": {}}]
+        if method == "POST" and path == "/creative-inspiration":
+            assert kwargs["json_body"]["medium"] == medium
+            return {
+                "title": "方向",
+                "premise": "一个完整设想",
+                "tone": "克制",
+                "world_setting": "城市规则",
+                "genre_suggestions": ["悬疑"],
+                "model_key": "test-model",
+            }
+        if method == "PATCH" and path == "/projects/project-1/direction":
+            return {"direction": kwargs["json_body"]["direction"]}
+        raise AssertionError((method, path))
+
+    session.request = Mock(side_effect=request)
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda ctx: session)
+    result = CliRunner().invoke(
+        main,
+        ["project", "direction", "project-1", "--inspire", "城市每天缩小一米", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_story_core_help_examples_use_concrete_angles():
+    novel_help = CliRunner().invoke(main, ["novel", "propose", "--help"]).output
+    script_help = CliRunner().invoke(main, ["script", "propose", "--help"]).output
+    expected_order = ("主角欲望", "对抗阻力", "情感承诺", "道德困境", "结局代价")
+    for output in (novel_help, script_help):
+        normalized = "".join(output.split())
+        match = re.search(r'"angles":\[(.*?)\]', normalized)
+        assert match is not None
+        angles = re.findall(r'"([^"]+)"', match.group(1))
+        assert len(angles) == 5
+        assert all(8 <= len(angle.strip()) <= 60 for angle in angles)
+        assert tuple(angle.split("：", 1)[0] for angle in angles) == expected_order
 
 
 def test_append_volume_object_input_payload(fake_session, runner, tmp_path):

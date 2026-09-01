@@ -13,6 +13,7 @@ import hashlib
 import json
 from unittest.mock import Mock
 
+import pytest
 from click.testing import CliRunner
 
 from cli_anything.scriptnow.scriptnow_cli import main
@@ -168,7 +169,7 @@ def test_review_status_translates_active_packet_for_human(monkeypatch):
     assert "bbbbbbbbbbbb" in result.output
 
 
-def test_review_confirm_records_decision_and_original_words(monkeypatch):
+def test_review_confirm_records_explicit_human_words(monkeypatch):
     session = Mock()
     session.request.return_value = {
         "packet_id": "packet-1",
@@ -193,20 +194,17 @@ def test_review_confirm_records_decision_and_original_words(monkeypatch):
     )
 
     assert result.exit_code == 0, result.output
-    body = session.request.call_args.kwargs["json_body"]
-    assert body == {"decision": "retain", "evidence": "采用这一版，继续下一阶段。"}
-    assert session.request.call_args.args[:2] == (
-        "POST",
-        "/creative-reviews/packet-1/confirm",
-    )
-    assert session.request.call_args.kwargs["write"] is True
+    assert session.request.call_args.kwargs["json_body"] == {
+        "decision": "retain",
+        "evidence": "采用这一版，继续下一阶段。",
+    }
 
 
 def test_review_claim_is_agent_only_credential_handoff(monkeypatch):
     session = Mock()
     session.request.return_value = {
         "packet_id": "packet-1",
-        "review_token": "one-time-token",
+        "token": "one-time-token",
         "expires_in": 900,
     }
     import cli_anything.scriptnow.scriptnow_cli as cli
@@ -215,7 +213,7 @@ def test_review_claim_is_agent_only_credential_handoff(monkeypatch):
     result = CliRunner().invoke(main, ["review", "claim", "packet-1", "--json"])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["review_token"] == "one-time-token"
+    assert json.loads(result.output)["token"] == "one-time-token"
     session.request.assert_called_once_with(
         "POST", "/creative-reviews/packet-1/claim", write=True
     )
@@ -248,6 +246,47 @@ def test_candidate_preview_uses_canonical_platform_candidate(monkeypatch):
         "/script/projects/p1/creative-reviews/planning-candidate-preview"
     )
     assert json.loads(result.output)["review_url"].endswith("packet-candidate")
+
+
+@pytest.mark.parametrize(
+    ("medium", "kind", "payload", "expected_resource"),
+    [
+        ("script", "outline", "这是同一个未经修改的故事梗概文本。", "synopsis_outline"),
+        ("script", "cores", {"drafts": [{"title": "方向"}]}, "story_cores"),
+        ("novel", "blueprint", {"anchors": [{"id": "world:a"}]}, "blueprint"),
+        ("script", "storymap", {"episodes": [{"id": "episode-1"}]}, "storymap"),
+        ("novel", "storymap", {"volumes": [{"id": "volume-1"}]}, "storymap"),
+    ],
+)
+def test_propose_preview_derives_review_scope(
+    monkeypatch, tmp_path, medium, kind, payload, expected_resource
+):
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {
+        "packet_id": "packet-1",
+        "review_path": "/projects/p1/reviews/packet-1",
+    }
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    candidate = tmp_path / "candidate.json"
+    candidate.write_text(
+        payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        main,
+        ["review", "propose-preview", medium, "p1", kind, str(candidate), "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args.kwargs["json_body"]
+    assert body["resource_kind"] == expected_resource
+    assert body["resource_id"] == "p1"
+    if kind == "outline":
+        assert body["preview"]["content"] == {"text": payload}
+    response = json.loads(result.output)
+    assert "token 字段" in " ".join(response["next_steps"])
 
 
 def test_review_help_exposes_conversation_first_commands():

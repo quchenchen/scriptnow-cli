@@ -38,6 +38,8 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > 再由作者用 `rough-outline-adopt` 采纳。分集大纲稿导出：
 > `scriptnow export create <pid> --domain script --units <全集场次> --form planning
 > --front-matter outline`（剧名→故事梗概→人物小传→粗纲→集纲）。
+> 完整交付可用 `--sections synopsis,characters,rough_outline,story_map,manuscript`；
+> 平台固定按梗概→人物小传→粗纲→小说章纲/剧本集纲→正文排序，缺少已采纳材料时先补齐再导出。
 
 > **StoryMap 隔离重建（script，替代一次生成完整80集）**：已有 StoryMap 需要重建时，
 > 不要一次生成全集。用 `script storymap-rebuild-start <pid>` 开启隔离会话（冻结阶段计划），
@@ -76,6 +78,12 @@ workflow from memory and do not treat local files as ScriptNow projects.
 If the bootstrap cannot be run, do not create, mutate, adopt, export, or claim
 completion. Explain the missing prerequisite and wait.
 
+For outline, cores, blueprint, or StoryMap files, always use `review propose-preview`
+before confirmation. It derives the exact review resource kind and id. Never
+guess those values. After the human explicitly decides, record the exact words,
+run `review claim`, and pass its `token` field (not `packet_id`) to propose. If
+the reviewed content changes, preview it again.
+
 ## Non-negotiable behavior
 
 - The platform is the only project fact source. Do not invent project IDs,
@@ -98,7 +106,7 @@ completion. Explain the missing prerequisite and wait.
   angles, and either Novel narrative constraints or at least two concrete
   entries in each Script details dimension. Blueprints must cover world,
   character, relationship, character_arc, plot, and foreshadow anchors with a
-  concrete 20–120 character description for every anchor. Both `propose` and
+  concrete, actionable description for every anchor (typically 50–200 characters; guidance only, not a hard gate). Both `propose` and
   `adopt` require `planning-quality=pass`; revise/block must be repaired first.
 - Character bibles must be substantive at creation: profile with at least
   desire/fear/weakness/goal/inner_need, plus background/traits/arc/key_relationship/
@@ -161,6 +169,9 @@ completion. Explain the missing prerequisite and wait.
 - Background generation returns a `run_id`; poll `scriptnow run status` instead
   of long blocking waits. On failure, repair from `status.error/detail`, then
   inspect `scriptnow run events <run_id> --json` (`events=[]` means no events).
+  Run status also exposes persisted operation stage/progress. Fallback platform
+  StoryMap generation checkpoints at most three Script episodes or five Novel
+  chapters per batch and resumes tracking the same run after a service restart.
 - Follow each command's returned actionable error detail exactly. Agent CLI
   requests preserve the sanitized original domain detail when the public
   Chinese fallback is generic; `--json` failures use
@@ -202,9 +213,10 @@ activate a one-time token bound to the exact human-readable JSON content digest;
 parser-added defaults must not manufacture a content change. Changed content must
 be shown again. JSON stays backstage and never substitutes for the preview.
 
-Conversation is the default human channel. After the user gives one clear
-decision, record the original words with `review confirm`, claim the one-time
-credential with `review claim`, and pass it to the target write command. Use
+Any explicit decision typed by the human in conversation or on the platform is a human
+decision. The Agent may call `review confirm` only to record those exact words; it must
+never infer or fabricate them. Then use `review status`, claim the one-time credential with
+`review claim`, and pass it to the target write command. Use
 `review status` to read a user's later adjustment without asking them to repeat
 it. `review preview` may return a `review_url` for long content, but opening the
 page is optional; a user edit saved directly in the frontend is already a human

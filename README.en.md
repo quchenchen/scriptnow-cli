@@ -161,7 +161,7 @@ and legacy `adopted` as finalized. The human-finalized revision is preferred
 for `adopted_revision`; pending lists contain only `candidate`/`active`. Pass
 `--revision` to inspect a newer candidate explicitly.
 
-**Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1` →
+**Delivery**: `cover generate` → `export create --units chapter-1-1|scene-1-1 --sections synopsis,characters,rough_outline,story_map,manuscript` (synopsis → character bios → rough outline → chapter/episode outline → manuscript) →
 `export download -o book.docx`. Script `--form working` adds per-scene production
 metadata to DOCX. The internal production contract is intentionally not exposed
 as a writer-facing export file yet.
@@ -256,7 +256,9 @@ These commands are normally run by the Agent behind the conversation:
 # Show and register the complete candidate; this does not write creative content
 scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
 # After the user's one clear decision, record the words and claim a one-time credential
-scriptnow review confirm <packet-id> --decision retain --evidence "Keep this version and continue."
+# Human-only interactive terminal confirmation; automation/--json is rejected.
+scriptnow review confirm <packet-id>
+scriptnow review status <packet-id> --json
 scriptnow review claim <packet-id> --json
 # On adjustment, read the feedback, revise, and preview again; never reuse the old credential
 scriptnow review status <packet-id> --json
@@ -323,6 +325,9 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   the background (poll `run status`, never block with `--wait`), and StoryMap restructuring is a
   super high-risk operation that requires explicit user authorization (`--confirm`) — an agent must
   NEVER adopt a storymap on the user's behalf.
+- `run status` also reports the persisted operation stage and progress. Fallback platform StoryMap
+  generation checkpoints at most three Script episodes or five Novel chapters per batch and keeps
+  the original run trackable across refreshes and service restarts.
 - **MANDATORY: Skill is a pre-writing gate with a robustness-honing duty** — once the
   intent is clear and the project exists, plan the methodology with the user (multi-round),
   then harden it (test-drive a sample chapter/scene against its rules, diagnose gaps, iterate),

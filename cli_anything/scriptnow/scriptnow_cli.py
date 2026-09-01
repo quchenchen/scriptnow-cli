@@ -542,7 +542,11 @@ def creative_review_group(ctx: click.Context) -> None:
 @click.pass_context
 def creative_review_preview(ctx: click.Context, project_id: str, resource_kind: str,
                             resource_id: str, file_path: str, title: str, json_output: bool) -> None:
-    """完整展示内容并把精确预览登记到平台；不提交创作候选。"""
+    """高级通用预览；普通 cores/blueprint/storymap 回填请用 propose-preview 自动绑定作用域。
+
+    RESOURCE_KIND / RESOURCE_ID 必须逐字匹配目标写接口的内部作用域，不允许猜测。
+    待 propose 文件应使用：review propose-preview <medium> <project_id> <kind> <file>。
+    """
     import hashlib as _hashlib
     import json as _json
     path = Path(file_path[1:] if file_path.startswith("@") else file_path)
@@ -644,6 +648,85 @@ def creative_review_candidate_preview(
     click.echo(ui.warn("请决定：保留 / 调整 / 换方向。此处尚未采纳候选。"))
 
 
+@creative_review_group.command("propose-preview")
+@click.argument("medium", type=click.Choice(["novel", "script"]))
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(["outline", "cores", "blueprint", "storymap"]))
+@click.argument("file_path", type=str)
+@click.option("--title", default="待回填创作候选")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def creative_review_propose_preview(
+    ctx: click.Context,
+    medium: str,
+    project_id: str,
+    kind: str,
+    file_path: str,
+    title: str,
+    json_output: bool,
+) -> None:
+    """预览待 propose 文件并自动绑定正确授权作用域；无需填写 resource_id。"""
+    import hashlib as _hashlib
+    import json as _json
+
+    path = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    raw = path.read_text(encoding="utf-8")
+    if kind == "outline":
+        outline = raw.strip()
+        if not outline:
+            raise click.ClickException("outline 文件不能为空")
+        content: dict[str, Any] = {"text": outline}
+    else:
+        try:
+            parsed = _json.loads(raw)
+        except _json.JSONDecodeError as error:
+            raise click.ClickException(f"JSON 解析失败：{error}") from error
+        if not isinstance(parsed, dict):
+            raise click.ClickException("待回填文件的 JSON 根必须是对象")
+        content = parsed
+        required_key = {"cores": "drafts", "blueprint": "anchors", "storymap": "volumes" if medium == "novel" else "episodes"}[kind]
+        if not isinstance(content.get(required_key), list) or not content[required_key]:
+            raise click.ClickException(f"{kind} 文件必须包含非空 {required_key} 数组")
+    resource_kind = {
+        "outline": "synopsis_outline",
+        "cores": "story_cores",
+        "blueprint": "blueprint",
+        "storymap": "storymap",
+    }[kind]
+    digest = _hashlib.sha256(
+        _json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    session = _session(ctx)
+    result = session.request(
+        "POST",
+        "/creative-reviews/preview",
+        json_body={
+            "project_id": project_id,
+            "resource_kind": resource_kind,
+            "resource_id": project_id,
+            "content_digest": digest,
+            "preview": {
+                "title": title,
+                "content": content,
+                "human_action": "请完整阅读并明确输入：保留 / 调整 / 换方向。",
+            },
+        },
+        write=True,
+    )
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    submit_command = (
+        f"scriptnow {medium} outline {project_id} --file {path} --review-token <token>"
+        if kind == "outline"
+        else f"scriptnow {medium} propose {project_id} {kind} {path} --review-token <token>"
+    )
+    result["next_steps"] = [
+        "用户明确输入决定后，用 review confirm 原样登记",
+        "运行 review claim <packet_id> --json，取返回的 token 字段",
+        f"将 token 传给 {submit_command}",
+    ]
+    _emit(result, json_output)
+
+
 @creative_review_group.command("confirm")
 @click.argument("packet_id")
 @click.option("--decision", type=click.Choice(["retain", "adjust", "change_direction"]), default="retain")
@@ -651,9 +734,11 @@ def creative_review_candidate_preview(
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def creative_review_confirm(ctx: click.Context, packet_id: str, decision: str, evidence: str, json_output: bool) -> None:
-    """人明确保留预览内容后，激活一次性提交凭证。"""
-    result = _session(ctx).request("POST", f"/creative-reviews/{packet_id}/confirm",
-        json_body={"decision": decision, "evidence": evidence}, write=True)
+    """用户明确决定后记录原话；不得从沉默或泛泛称赞推断。"""
+    result = _session(ctx).request(
+        "POST", f"/creative-reviews/{packet_id}/confirm",
+        json_body={"decision": decision, "evidence": evidence}, write=True,
+    )
     _emit(result, json_output)
 
 
@@ -900,7 +985,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
-        "创意方向与蓝图不得只交付几句占位文本：cores 可提交 1–3 组供人选择，但每组都必须展开完整前提/戏剧概念、五类差异化角度；小说 narrative_constraints 为 3–8 条，剧本 narrative_engine/viewpoint_anchor/pacing_recipe/market_judgement 四类 details 各至少 2 条具体判断。blueprint 必须覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点且每项有 20–120 字具体 description。服务端在 propose 与 adopt 双重强制 planning-quality=pass，revise/block 一律按 detail 修正后重传。",
+        "创意方向与蓝图不得只交付占位文本：cores 必须展开完整前提、五类差异化角度与领域细节。blueprint 覆盖六类锚点；description 应说明主体、机制/变化与后果，通常 50–200 字、复杂内容可更长。字数仅作指导，不参与强制门禁。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
@@ -919,7 +1004,7 @@ _AGENT_CONTRACT = {
         "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 `scriptnow script rough-outline-start` 开隔离链，逐阶段 `rough-outline-phase` 回填并 `rough-outline-progress` 回读，上游返工用 --restart-from 使下游失效，全部完成后 `rough-outline-propose` 形成完整候选。最低篇幅和事件数由 `rough-outline-example` 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链（`scriptnow novel rough-outline-example` → `rough-outline-check` → `rough-outline` 回填 → `rough-outline-adopt`），无分阶段隔离链；novel 的隔离重建走 storymap-rebuild-* 镜像链。",
         "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间，比例按每集场数即 volume_two 解释）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
-        "人机协作铁律（逐章/逐场定稿必须来自人的明确决定）：禁止 Agent 自行定稿。候选产出后展示全文；用户明确表达『定稿』『采用这版』『可以进入下一章/场』后，Agent 在后台执行 review confirm → claim，并把 --review-token 传给 chapter/scene adopt --human，平台记录 adopted_human。用户不复制凭证、不操作终端或页面。没有明确表达时才追问一次，不得从沉默或泛泛称赞推断定稿。",
+        "人机协作铁律：任何用户明确输入的『保留 / 调整 / 换方向』都属于人类决定，无论发生在对话还是平台页面。Agent 可以用 review confirm 原样登记这句话，再 status/claim 并执行授权写入；但严禁自行推断、伪造决定，或把沉默、泛泛称赞当作保留。",
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
@@ -927,7 +1012,7 @@ _AGENT_CONTRACT = {
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --point-of-view <视角> --chapter-target-words 1200；script 项目另设 --volume-one 总集数 --volume-two 每集场数 --volume-three 单集目标分钟（默认 3）（创建后立即 scriptnow project list 回读核对项目存在）",
         "规划链逐层（梗概 → 粗纲 → 集纲/章纲+storymap 一体）：novel 先 novel outline（梗概）采纳，再 novel rough-outline 平铺链（rough-outline-example → rough-outline-check → rough-outline → rough-outline-adopt）；script 用 script outline 采纳后 script rough-outline-start 分阶段链（-phase/-progress/-propose）。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
-        "逐章/逐场创作双模式（正文，用户必须明确选择，平台侧不阻塞）：默认平台主笔——scriptnow chapter|scene generate <pid> ...（后台，run status 轮询） → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → chapter/scene adopt --human --review-token <token>；平台建议优先平台主笔。仅当用户明确选择本地创作时，Agent 本地写好正文 → chapter propose / script scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时一律平台主笔。",
+        "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → adopt --human。没有明确决定不得继续。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
@@ -942,11 +1027,11 @@ _AGENT_CONTRACT = {
 # available through `--full` for a human or a deliberate deep inspection.
 _AGENT_RUNTIME_CONTRACT = {
     "guide": "scriptnow-agent-runtime-contract",
-    "contract_version": "2",
+    "contract_version": "3",
     "title": "ScriptNow Agent 运行契约",
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
-        "先读取平台状态和本契约；不确定命令或 JSON 结构时先运行对应 --help，不猜测。",
+        "任何平台操作前先运行 scriptnow agent-guide --json，并运行 scriptnow guide --status --json；新手模式未完成时按 guide --step <n> 一幕一幕推进，不得跳过引导后自行乱跑。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
@@ -954,9 +1039,9 @@ _AGENT_RUNTIME_CONTRACT = {
         "创意方向与蓝图必须充分：cores 展开完整前提/概念、五类差异化角度及领域方法细节；blueprint 覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点并写具体 description。propose/adopt 均强制 planning-quality=pass，revise/block 必须修正后重传。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
-        "先让用户作一个明确决定，再做一次对应动作；不得自行采纳章节、场次或 StoryMap。",
+        "回填 outline/cores/blueprint/storymap 时禁止手填或猜测 review preview 的 resource_kind/resource_id；固定使用 review propose-preview <novel|script> <project_id> <outline|cores|blueprint|storymap> <file> 自动绑定。用户明确决定后原样 confirm，再 claim；--review-token 使用 claim 返回的 token 字段，不是 packet_id。预览后内容若有实质修改，必须重新 preview。",
         "审阅凭证只绑定用户实际阅读的可读 JSON；解析器默认值不得制造内容变化。",
-        "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。",
+        "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。run status 同时返回持久化 operation stage/progress；平台后备 StoryMap 按 Script 最多 3 集、Novel 最多 5 章分批 checkpoint，刷新或服务重启后继续跟踪同一 run。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
         "Novel 正文回填中每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON；普通 JSON 文本允许。遇到该校验失败时按返回 detail 修正后重新生成，不得绕过。",
         "同一项目的创作写操作必须串行，避免版本和候选冲突；不同项目可并发，CLI 会安全协调共享登录会话的自动续期。",
@@ -964,6 +1049,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
         "粗纲是集纲/章纲之前的叙事阶段层。Script Agent 必须先读取 `scriptnow script rough-outline-example` 的 agent_guidance 与 phase_requirements，按阶段覆盖集数满足动态篇幅和事件链密度；summary 展开入口、行动、阻力、状态变化、转折、代价和出口，禁止一句话粗纲与套话。`scriptnow script rough-outline-check` 通过后才可回填候选（长篇走 `script rough-outline-start` 隔离链）。",
+        "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填300–500字梗概候选，不跳到粗纲、集纲/章纲或正文。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
         "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
     ],
@@ -1183,12 +1269,12 @@ _GUIDE_STEPS = [
         "step": 9,
         "title": "逐章共创正文",
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
-        "why": "创作搭档递来手稿，你可以通读、局部审阅、批注或直接表达采用。只要你在对话中明确决定定稿，Agent 就会记录这次决定并继续；不要求你重复操作命令或页面。",
+        "why": "创作搭档递来手稿，你可以通读、局部审阅或批注。最终决定可在可视化审阅页完成，也可由你本人在交互式终端确认；Agent 不会代替你确认。",
         "downstream": "正文成为候选，经审读与修订后由你明确定稿（adopted_human），是后续质量审读与导出的素材。",
         "command": (
             "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
             "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "用户明确采用 → Agent 后台 confirm/claim → chapter adopt --human --review-token <凭证> <作品号> <章节号> <版本号>"
+            "用户在平台页或本人终端确认 → Agent 后台 status/claim → chapter adopt --human --review-token <凭证> <作品号> <章节号> <版本号>"
         ),
         "verify": "每一章都有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复确认或处理凭证。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
@@ -1339,7 +1425,7 @@ _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
         "downstream": "新集带完整集纲并通过 planning-quality 后，逐场写作才开放；历史集（已有正文）可读可写不受阻。",
     },
     9: {
-        "command": "scriptnow scene list <作品号> → scene generate/propose → review preview 呈现正文 → 用户明确采用 → Agent 后台 confirm/claim → scene adopt --human --review-token <凭证>",
+        "command": "scriptnow scene list <作品号> → scene generate/propose → review preview → 用户在平台页或本人终端确认 → Agent 后台 status/claim → scene adopt --human --review-token <凭证>",
         "verify": "当前场有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复终端、页面或凭证操作。",
     },
     10: {
@@ -1939,8 +2025,15 @@ def project_direction(
         if not json_output:
             click.echo(f"已读取客户端梳理方向：{sorted(parsed.keys())}", err=True)
     if inspire:
+        projects = session.request("GET", "/projects")
+        project = next((item for item in projects if item.get("id") == project_id), None)
+        if project is None:
+            raise click.ClickException(f"project {project_id} not found")
+        medium = str(project.get("medium") or "").strip()
+        if medium not in {"novel", "script"}:
+            raise click.ClickException(f"project {project_id} has unsupported medium: {medium}")
         body: dict[str, Any] = {
-            "medium": "novel",
+            "medium": medium,
             "seed": inspire,
             "language": language or "zh-CN",
             "genres": [g.strip() for g in (genres or "").split(",") if g.strip()],
@@ -3555,7 +3648,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
         raise click.ClickException(
             "旧版 --token 已停用；请只使用 --review-token，不能同时发送两类凭证。"
         )
-    # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
+    # --human 仅表示已经存在平台页或人类交互式终端产生的有效审阅凭证。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
@@ -3568,7 +3661,7 @@ def chapter_adopt(ctx: click.Context, project_id: str, chapter_id: str, revision
         else:
             raise click.ClickException(
                 "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
-                "Agent 应先在后台 confirm/claim，再用 chapter adopt --human --review-token <token>。"
+                "用户应先在平台页或本人交互式终端确认；Agent 再 status/claim，并用 chapter adopt --human --review-token <token>。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid，
@@ -4814,7 +4907,7 @@ def novel_bootstrap(
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=str)
 @click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
-@click.option("--review-token", required=True, help="人类确认当前可读预览后由Agent后台取得")
+@click.option("--review-token", required=True, help="review propose-preview → confirm → claim 后，使用 claim 返回的 token 字段（不是 packet_id）")
 @click.option("--budget", type=int, default=None, help="导入内容 token 预算上限；超限拒绝（如 20000）。中文≈1 token/字，英文≈1 token/4 字符")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -4826,7 +4919,7 @@ def novel_propose(
 
     kind:
       cores      — 1 到 3 个故事方向候选（可只给 1 个主推，直接采纳）：{"drafts":[{"title","premise","point_of_view",
-                   "narrative_constraints":[],"angles":["欲望","阻力","情感承诺","道德困境","结局代价"]}]}
+                   "narrative_constraints":[],"angles":["主角欲望：保护家人与身份","对抗阻力：记录持续被删除","情感承诺：母女重新建立信任","道德困境：公开真相会伤及无辜","结局代价：主角失去职业身份"]}]}
       blueprint  — 蓝图锚点：{"anchors":[{"id":"kind:key","kind":"world|character|relationship|
                    character_arc|plot|foreshadow|motif","name","payload":{}}]}
       storymap   — 卷章结构：{"volumes":[{"id","ordinal","title","chapters":[
@@ -5139,7 +5232,7 @@ def novel_orchestrate(
     """只读展示 StoryMap 候选与全书创作计划，不连续调整或采纳。
 
     候选全文使用 review candidate-preview 展示；人明确决定后，Agent 后台
-    confirm/claim，再用 storymap adopt --review-token 独立采纳。
+    由用户在平台页或本人交互式终端确认，Agent 再 status/claim，并用 storymap adopt --review-token 独立采纳。
     """
     if accept or adjust_file:
         raise click.ClickException(
@@ -6267,7 +6360,7 @@ def script_planning_quality(
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
 @click.argument("file_path", type=str)
 @click.option("--adopt", is_flag=True, help="已停用：候选提交与采纳必须分开审阅")
-@click.option("--review-token", required=True, help="人类确认当前可读预览后由Agent后台取得")
+@click.option("--review-token", required=True, help="review propose-preview → confirm → claim 后，使用 claim 返回的 token 字段（不是 packet_id）")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def script_propose(
@@ -6278,7 +6371,7 @@ def script_propose(
 
     kind:
       cores      — 1 到 3 个故事方向候选（可只给 1 个主推，直接采纳）：{"drafts":[
-                   {"title","concept","angles":["欲望","阻力","情感承诺","道德困境","结局代价"],
+                   {"title","concept","angles":["主角欲望：保护家人与身份","对抗阻力：记录持续被删除","情感承诺：盟友重新建立信任","道德困境：公开真相会伤及无辜","结局代价：主角失去职业身份"],
                    "details":{"narrative_engine":[],"viewpoint_anchor":[],"pacing_recipe":[],
                    "market_judgement":[]}}]}
       blueprint  — 蓝图锚点：{"anchors":[{"id":"kind:key","kind":"world|character|relationship|
@@ -7138,7 +7231,7 @@ def script_adopt_scene(
         raise click.ClickException(
             "旧版 --token 已停用；请只使用 --review-token，不能同时发送两类凭证。"
         )
-    # --human 既可表示用户本人执行，也可表示 Agent 已收到用户在对话中的明确决定。
+    # --human 仅表示已经存在平台页或人类交互式终端产生的有效审阅凭证。
     if not decision_token and not human_decision:
         if not json_output:
             if not click.confirm(
@@ -7151,7 +7244,7 @@ def script_adopt_scene(
         else:
             raise click.ClickException(
                 "尚未收到人工决定。请先向用户呈现内容；用户在对话中明确表示定稿/采用后，"
-                "Agent 应先在后台 confirm/claim，再用 scene adopt --human --review-token <token>。"
+                "用户应先在平台页或本人交互式终端确认；Agent 再 status/claim，并用 scene adopt --human --review-token <token>。"
             )
     # 前置检查：revision 定位 + 已定稿拦截（避免重复采纳撞 409）。
     # revision_id 支持 uuid 或版本号（rev1/1）——版本号自动从 state 解析为 uuid。
@@ -9210,6 +9303,7 @@ def export_options(ctx: click.Context, project_id: str, domain: str, json_output
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--sections", default="", help="逗号分隔：synopsis,characters,rough_outline,story_map,manuscript")
 @click.option("--review-token", required=True)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -9222,6 +9316,7 @@ def export_create(
     translation_mode: str,
     target_language: str | None,
     front_matter: str,
+    sections: str,
     review_token: str,
     json_output: bool,
 ) -> None:
@@ -9233,6 +9328,7 @@ def export_create(
         "form": form,
         "translation_mode": translation_mode,
         "front_matter": front_matter,
+        "sections": tuple(item.strip() for item in sections.split(",") if item.strip()),
         "idempotency_key": f"cli-export-{__import__('time').time_ns()}",
     }
     if target_language:
@@ -9254,18 +9350,20 @@ def export_create(
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None)
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--sections", default="")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def export_preview(ctx: click.Context, project_id: str, domain: str, units: str, form: str,
                    translation_mode: str, target_language: str | None, front_matter: str,
-                   json_output: bool) -> None:
+                   sections: str, json_output: bool) -> None:
     """展示本次交付范围与形式，返回一键审阅地址；不创建导出。"""
     import hashlib as _hashlib
     import json as _json
     key = "chapter_ids" if domain == "novel" else "scene_ids"
     content = {key: [item.strip() for item in units.split(",") if item.strip()],
                "form": form, "translation_mode": translation_mode,
-               "target_language": target_language, "front_matter": front_matter}
+               "target_language": target_language, "front_matter": front_matter,
+               "sections": [item.strip() for item in sections.split(",") if item.strip()]}
     digest = _hashlib.sha256(_json.dumps(content, ensure_ascii=False, sort_keys=True,
         separators=(",", ":")).encode()).hexdigest()
     session = _session(ctx)
@@ -9308,6 +9406,7 @@ def export_download(
 @click.option("--translation-mode", type=click.Choice(["none", "faithful"]), default="none")
 @click.option("--target-language", default=None, help="翻译目标语言（translation-mode=faithful 时必填）")
 @click.option("--front-matter", type=click.Choice(["none", "outline"]), default="none")
+@click.option("--sections", default="", help="逗号分隔：synopsis,characters,rough_outline,story_map,manuscript")
 @click.option("--output", "-o", default=None, help="保存到本地 zip 文件路径（默认取响应文件名）")
 @click.pass_context
 def export_zip(
@@ -9319,6 +9418,7 @@ def export_zip(
     translation_mode: str,
     target_language: str | None,
     front_matter: str,
+    sections: str,
     output: str | None,
 ) -> None:
     """下载整部作品 ZIP 包（docx + 封面 + manifest.json）到本地。"""
@@ -9332,6 +9432,7 @@ def export_zip(
         "form": form,
         "translation_mode": translation_mode,
         "front_matter": front_matter,
+        "sections": tuple(item.strip() for item in sections.split(",") if item.strip()),
         "idempotency_key": f"cli-export-zip-{__import__('time').time_ns()}",
     }
     if target_language:
