@@ -215,8 +215,6 @@ def test_chapter_generate_help_lists_preview():
 
 def test_storymap_phases_outputs_phase_plan(monkeypatch):
     """storymap phases 只读预览叙事结构推导的阶段计划。"""
-    import json as _json
-
     from unittest.mock import Mock
 
     from click.testing import CliRunner
@@ -250,7 +248,7 @@ def test_storymap_phases_outputs_phase_plan(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(main, ["storymap", "phases", "p1", "--json"])
     assert result.exit_code == 0, result.output
-    payload = _json.loads(result.output)
+    payload = json.loads(result.output)
     assert payload["structure_key"] == "three_act"
     assert len(payload["phases"]) == 3
     assert payload["phases"][0]["start_chapter"] == 1
@@ -528,8 +526,6 @@ def _rough_example(total: int = 10, keys: tuple[str, ...] = ("act1", "act2", "ac
 
 
 def test_script_rough_outline_rejects_implicit_adoption(monkeypatch, tmp_path):
-    import json as _json
-
     from unittest.mock import Mock
 
     from click.testing import CliRunner
@@ -799,6 +795,29 @@ def test_script_rough_outline_finalize_requires_and_forwards_review_token(monkey
     }
 
 
+def test_script_blueprint_extend_submits_sparse_patch_for_server_merge(monkeypatch, tmp_path):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    patch_file = tmp_path / "blueprint-patch.json"
+    patch_file.write_text(json.dumps({"anchors": [{
+        "id": "event:new-clue", "kind": "event", "name": "新线索",
+        "payload": {"description": "该线索跨阶段改变调查方向"},
+    }]}), encoding="utf-8")
+    session = Mock()
+    session.request.return_value = {"id": "candidate-merged", "status": "active"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, [
+        "script", "blueprint-extend", "p1", str(patch_file),
+        "--review-token", "patch-token", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    call = session.request.call_args
+    assert call.args[1] == "/script/projects/p1/blueprints/extend"
+    assert call.kwargs["headers"] == {"X-Review-Token": "patch-token"}
+    assert call.kwargs["json_body"]["anchors"][0]["id"] == "event:new-clue"
+    assert json.loads(result.output)["merged_full_blueprint"] is True
+
+
 def test_rough_outline_phase_normalization_matches_server_defaults():
     import cli_anything.scriptnow.scriptnow_cli as cli
 
@@ -815,6 +834,40 @@ def test_rough_outline_phase_normalization_matches_server_defaults():
     assert normalized["purpose"] == ""
     assert normalized["anchor_ids"] == []
     assert normalized["key_beats"][0]["anchor_ids"] == []
+
+
+def test_rough_outline_prepare_returns_exact_task_packet(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    session.request.side_effect = [
+        {
+            "phases": [{"ordinal": 2, "phase_key": "false-answer",
+                        "phase_title_zh": "错误答案", "range_start": 17, "range_end": 40}],
+            "generation_batches": [
+                {"phase_key": "false-answer", "ordinal": 1, "start": 17, "end": 21},
+                {"phase_key": "false-answer", "ordinal": 2, "start": 22, "end": 26},
+            ],
+        },
+        {"current_phase_key": "false-answer", "current_phase_ordinal": 2,
+         "total_phases": 4, "completed_phases": ["clue"]},
+        {"blueprint": {"anchors": [{"id": "character:lin", "kind": "character", "name": "林澄"}]}},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(
+        main, ["script", "rough-outline-prepare", "p1", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["status"] == "ready_to_write"
+    assert payload["schema"]["key_beats"][0] == {
+        "title": "关键事件标题",
+        "description": "人物行动、阻力及造成的状态变化",
+        "anchor_ids": [],
+    }
+    assert payload["generation_batches"][0]["start"] == 17
+    assert payload["allowed_anchors"][0]["id"] == "character:lin"
+    assert "rough-outline-phase-preview" in payload["next_command"]
 
 
 def test_rough_outline_phase_continue_stops_while_waiting_for_human(monkeypatch):

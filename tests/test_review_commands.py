@@ -254,6 +254,12 @@ def test_candidate_preview_uses_canonical_platform_candidate(monkeypatch):
         ("script", "outline", "这是同一个未经修改的故事梗概文本。", "synopsis_outline"),
         ("script", "cores", {"drafts": [{"title": "方向"}]}, "story_cores"),
         ("novel", "blueprint", {"anchors": [{"id": "world:a"}]}, "blueprint"),
+        (
+            "script",
+            "blueprint-extension",
+            {"anchors": [{"id": "event:new", "kind": "event"}]},
+            "blueprint_extension",
+        ),
         ("script", "storymap", {"episodes": [{"id": "episode-1"}]}, "storymap"),
         ("novel", "storymap", {"volumes": [{"id": "volume-1"}]}, "storymap"),
     ],

@@ -697,7 +697,7 @@ def creative_review_candidate_preview(
 @creative_review_group.command("propose-preview")
 @click.argument("medium", type=click.Choice(["novel", "script"]))
 @click.argument("project_id")
-@click.argument("kind", type=click.Choice(["outline", "cores", "blueprint", "storymap"]))
+@click.argument("kind", type=click.Choice(["outline", "cores", "blueprint", "blueprint-extension", "storymap"]))
 @click.argument("file_path", type=str)
 @click.option("--title", default="待回填创作候选")
 @click.option("--json", "json_output", is_flag=True)
@@ -730,13 +730,37 @@ def creative_review_propose_preview(
         if not isinstance(parsed, dict):
             raise click.ClickException("待回填文件的 JSON 根必须是对象")
         content = parsed
-        required_key = {"cores": "drafts", "blueprint": "anchors", "storymap": "volumes" if medium == "novel" else "episodes"}[kind]
+        if kind == "blueprint-extension" and medium != "script":
+            raise click.ClickException("blueprint-extension 当前仅适用于 Script")
+        required_key = {
+            "cores": "drafts",
+            "blueprint": "anchors",
+            "blueprint-extension": "anchors",
+            "storymap": "volumes" if medium == "novel" else "episodes",
+        }[kind]
         if not isinstance(content.get(required_key), list) or not content[required_key]:
             raise click.ClickException(f"{kind} 文件必须包含非空 {required_key} 数组")
+        if kind == "blueprint-extension":
+            aliases = {"arc": "character_arc", "worldview": "world", "event": "plot"}
+            allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
+            normalized: list[dict[str, Any]] = []
+            for index, anchor in enumerate(content[required_key]):
+                if not isinstance(anchor, dict):
+                    raise click.ClickException(f"anchors[{index}] 必须是对象")
+                item = dict(anchor)
+                item["kind"] = aliases.get(str(item.get("kind") or ""), item.get("kind"))
+                if item["kind"] not in allowed:
+                    raise click.ClickException(
+                        f"anchors[{index}].kind 不支持：{item['kind']}；可用 "
+                        + "|".join(sorted(allowed))
+                    )
+                normalized.append(item)
+            content[required_key] = normalized
     resource_kind = {
         "outline": "synopsis_outline",
         "cores": "story_cores",
         "blueprint": "blueprint",
+        "blueprint-extension": "blueprint_extension",
         "storymap": "storymap",
     }[kind]
     digest = _hashlib.sha256(
@@ -764,6 +788,8 @@ def creative_review_propose_preview(
     submit_command = (
         f"scriptnow {medium} outline {project_id} --file {path} --review-token <token>"
         if kind == "outline"
+        else f"scriptnow script blueprint-extend {project_id} {path} --review-token <token>"
+        if kind == "blueprint-extension"
         else f"scriptnow {medium} propose {project_id} {kind} {path} --review-token <token>"
     )
     result["next_steps"] = [
@@ -3265,12 +3291,6 @@ def _rough_outline_issues(phases: object, example: object, range_label: str = "�
             issues.append(f"阶段 {key} 的区间必须为整数")
             continue
         unit_count = max(0, end - start + 1)
-        minimum = max(800, unit_count * 100) if range_label == "集" else 80
-        if len(summary) < minimum:
-            issues.append(
-                f"阶段 {key}（{phase.get('phase_title_zh')}）粗纲过短：{len(summary)} 字，"
-                f"覆盖 {unit_count} {range_label}至少需要 {minimum} 字连续剧情"
-            )
         import re as _re
         event_count = len([item for item in _re.split(r"[。！？!?\n]+", summary) if item.strip()])
         event_minimum = max(8, unit_count) if range_label == "集" else 1
@@ -6759,6 +6779,89 @@ def script_rough_outline_progress(ctx: click.Context, project_id: str, json_outp
     click.echo(ui.kv("已完成", "、".join(result.get("completed_phases") or []) or "（无）"))
 
 
+@script_group.command("rough-outline-prepare")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_rough_outline_prepare(
+    ctx: click.Context, project_id: str, json_output: bool
+) -> None:
+    """Return the current phase writing packet before the Agent writes any JSON."""
+    session = _session(ctx)
+    example = session.request("GET", f"/script/projects/{project_id}/rough-outline/example")
+    progress = session.request("GET", f"/script/projects/{project_id}/rough-outline/build")
+    state = session.request("GET", f"/script/projects/{project_id}/state")
+    current_key = (progress or {}).get("current_phase_key")
+    if not current_key:
+        raise click.ClickException(
+            "没有待写阶段；请先 rough-outline-start，或当前阶段已全部完成"
+        )
+    phase = next(
+        (
+            item for item in (example.get("phases") or [])
+            if isinstance(item, dict) and item.get("phase_key") == current_key
+        ),
+        None,
+    )
+    if phase is None:
+        raise click.ClickException(f"模板中找不到当前阶段 {current_key}")
+    batches = [
+        item for item in (example.get("generation_batches") or [])
+        if isinstance(item, dict) and item.get("phase_key") == current_key
+    ]
+    blueprint = (state or {}).get("blueprint") or {}
+    anchors = blueprint.get("anchors") or [] if isinstance(blueprint, dict) else []
+    packet = {
+        "status": "ready_to_write",
+        "project_id": project_id,
+        "phase": phase,
+        "progress": {
+            "current_phase_ordinal": (progress or {}).get("current_phase_ordinal"),
+            "total_phases": (progress or {}).get("total_phases"),
+            "completed_phases": (progress or {}).get("completed_phases") or [],
+        },
+        "generation_batches": batches,
+        "writing_method": [
+            "先确认阶段入口状态和迫切目标",
+            "按 generation_batches 给出的本项目批次展开连续行动与阻力升级",
+            "每批至少产生一项信息、关系、资源或风险变化",
+            "写出本批转折、代价和下一批可继承的出口状态",
+            "最后检查宏观阶段出口是否满足下一阶段入口",
+        ],
+        "schema": {
+            "ordinal": phase.get("ordinal"),
+            "phase_key": current_key,
+            "phase_title_zh": phase.get("phase_title_zh"),
+            "phase_title_en": phase.get("phase_title_en") or "",
+            "purpose": phase.get("purpose") or "",
+            "range_start": phase.get("range_start"),
+            "range_end": phase.get("range_end"),
+            "summary": "按上述批次连续讲述的宏观阶段剧情",
+            "key_beats": [{
+                "title": "关键事件标题",
+                "description": "人物行动、阻力及造成的状态变化",
+                "anchor_ids": [],
+            }],
+            "anchor_ids": [],
+        },
+        "allowed_anchors": [
+            {"id": item.get("id"), "kind": item.get("kind"), "name": item.get("name")}
+            for item in anchors if isinstance(item, dict)
+        ],
+        "quality_checks": [
+            "字段名严格服从 schema，不新增 unit/beat 等猜测字段",
+            "禁止推进矛盾、留下钩子等元话语",
+            "anchor_ids 只能来自 allowed_anchors；无合适锚点时使用空数组",
+            "字数仅作参考，不以凑字通过质量检查",
+        ],
+        "next_command": (
+            f"scriptnow script rough-outline-phase-preview {project_id} "
+            f"{current_key} <phase.json> --json"
+        ),
+    }
+    _emit(packet, json_output)
+
+
 @script_group.command("rough-outline-phase")
 @click.argument("project_id")
 @click.argument("phase_key")
@@ -6937,7 +7040,7 @@ def script_rough_outline_example(ctx: click.Context, project_id: str, json_outpu
         click.echo(ui.kv(f"阶段{phase['ordinal']} {phase['phase_title_zh']}", f"第 {phase['range_start']}–{phase['range_end']} 集 · 目的：{phase.get('purpose')}"))
         req = requirements.get(str(phase.get("phase_key") or ""), {})
         click.echo(ui.dim(
-            f"  summary：至少 {req.get('recommended_min_chars', '动态')} 字、"
+            f"  summary：建议约 {req.get('recommended_min_chars', '动态')} 字（不作硬门禁）、"
             f"{req.get('recommended_min_events', '动态')} 个可辨认事件段；禁止套话与事件清单式压缩。"
         ), err=False)
 
@@ -6971,6 +7074,58 @@ def script_blueprint(
     if wait and result.get("run_id"):
         _wait_for_run(session, project_id, str(result["run_id"]), json_output, domain="script")
         return
+    _emit(result, json_output)
+
+
+@script_group.command("blueprint-extend")
+@click.argument("project_id")
+@click.argument("file_path")
+@click.option("--review-token", required=True, help="review propose-preview 的 blueprint-extension 经用户确认后，由 claim 返回的 token")
+@click.option("--feedback", default=None)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_blueprint_extend(
+    ctx: click.Context, project_id: str, file_path: str,
+    review_token: str, feedback: str | None, json_output: bool,
+) -> None:
+    """Extend the adopted blueprint from a sparse anchor patch; server merges the full candidate."""
+    import json as _json
+
+    path = Path(file_path[1:] if file_path.startswith("@") else file_path)
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"JSON 解析失败：{error}") from error
+    anchors = data.get("anchors") if isinstance(data, dict) else None
+    if not isinstance(anchors, list) or not anchors:
+        raise click.ClickException("蓝图扩展文件必须包含非空 anchors 数组")
+    aliases = {"arc": "character_arc", "worldview": "world", "event": "plot"}
+    allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
+    normalized_anchors: list[dict[str, Any]] = []
+    for index, anchor in enumerate(anchors):
+        if not isinstance(anchor, dict):
+            raise click.ClickException(f"anchors[{index}] 必须是对象")
+        item = dict(anchor)
+        item["kind"] = aliases.get(str(item.get("kind") or ""), item.get("kind"))
+        if item["kind"] not in allowed:
+            raise click.ClickException(f"anchors[{index}].kind 不支持：{item['kind']}")
+        normalized_anchors.append(item)
+    result = _session(ctx).request(
+        "POST",
+        f"/script/projects/{project_id}/blueprints/extend",
+        json_body={
+            "idempotency_key": f"cli-blueprint-extend-{__import__('time').time_ns()}",
+            "anchors": normalized_anchors,
+            "feedback": feedback,
+        },
+        write=True,
+        headers={"X-Review-Token": review_token},
+    )
+    result["next_action"] = (
+        f"scriptnow review candidate-preview script {project_id} "
+        f"blueprint_candidate {result.get('id')} --json"
+    )
+    result["merged_full_blueprint"] = True
     _emit(result, json_output)
 
 

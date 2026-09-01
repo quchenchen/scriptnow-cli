@@ -295,7 +295,7 @@ def maybe_warn_in_background() -> None:
                     )
                 else:
                     print(
-                        f"[scriptnow] 自动升级未完成，请运行 `scriptnow self-upgrade` 手动升级。",
+                        "[scriptnow] 自动升级未完成，请运行 `scriptnow self-upgrade` 手动升级。",
                         file=sys.stderr,
                     )
                 return
