@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -187,6 +188,16 @@ def _install_command(version: str | None = None) -> tuple[str, list[str]] | None
     ]
 
 
+def is_editable_install() -> bool:
+    try:
+        import importlib.metadata as md
+
+        dist = md.distribution("scriptnow-cli")
+    except md.PackageNotFoundError:
+        return False
+    return any("__editable__" in str(file) for file in (dist.files or []))
+
+
 def _upgrade_fallback() -> list[str] | None:
     """备选升级命令：git+https（当 codeload 被拦时）。"""
     return [
@@ -204,14 +215,27 @@ def upgrade(quiet: bool = False) -> bool:
 
     Attempts sources in priority order: production wheel (sn.igeewa.com) →
     codeload tar.gz (GitHub) → git+https (last resort)."""
-    if _install_command() is None:
-        if not quiet:
-            print(
-                "检测到本地 editable 安装（开发模式）。请手动升级："
-                "pip install -e /path/to/scriptnow-cli 后重新运行。"
-            )
-        return False
     latest = latest_version()
+    if is_editable_install():
+        target = latest or VERSION
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--force-reinstall",
+                _PROD_WHEEL_TMPL.format(version=target),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            return True
+        if not quiet:
+            print((result.stderr or "同版本补丁刷新失败。")[-500:])
+        return False
     attempts: list[tuple[str, list[str]] | None] = []
     if latest:
         attempts.append(_install_command(latest))  # 生产源 wheel

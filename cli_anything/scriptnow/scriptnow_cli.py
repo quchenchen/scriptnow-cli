@@ -33,6 +33,7 @@ from cli_anything.scriptnow.utils.upgrade import (
     latest_version,
     maybe_warn_in_background,
     set_config,
+    is_editable_install,
     upgrade as _upgrade_cli,
 )
 
@@ -380,19 +381,22 @@ def self_upgrade_cmd(assume_yes: bool, json_output: bool) -> None:
         if not json_output:
             click.echo(ui.warn("无法连接版本源，稍后再试。"))
         return
-    if latest == VERSION:
+    editable = is_editable_install()
+    if latest == VERSION and not editable:
         _emit({"ok": True, "current": VERSION, "upgraded": False}, json_output)
         if not json_output:
             click.echo(ui.ok(f"当前已是最新版本 v{VERSION}"))
         return
     if not json_output and not assume_yes:
         if not click.confirm(
-            f"将把 CLI 从 v{VERSION} 升级到 v{latest}。是否继续？", default=True
+            (f"将刷新 CLI v{VERSION} 的同版本补丁。是否继续？" if editable
+             else f"将把 CLI 从 v{VERSION} 升级到 v{latest}。是否继续？"), default=True
         ):
             click.echo("已取消。")
             return
     success = _upgrade_cli(quiet=json_output)
-    _emit({"ok": success, "current": VERSION, "latest": latest, "upgraded": success}, json_output)
+    _emit({"ok": success, "current": VERSION, "latest": latest, "upgraded": success,
+           "refreshed_editable": bool(success and editable)}, json_output)
     if not json_output:
         if success:
             click.echo(ui.ok("升级完成，请重新运行 scriptnow --version 确认。"))
@@ -607,6 +611,7 @@ def creative_review_status(ctx: click.Context, packet_id: str, json_output: bool
     "resource_kind",
     type=click.Choice([
         "story_core_candidate",
+        "synopsis_outline_candidate",
         "blueprint_candidate",
         "rough_outline_candidate",
         "storymap_candidate",
@@ -4431,11 +4436,56 @@ def novel_outline_status(ctx: click.Context, project_id: str | None, json_output
     if result is None:
         click.echo(ui.warn('尚无梗概大纲——先写一句 ≤500 字的梗概：novel outline <作品号> --text "……"'), err=True)
         return
+    if result.get("status") == "candidate":
+        result["next_action"] = (
+            f"scriptnow novel outline-adopt-preview {pid} --json → 用户决定 → "
+            "review confirm/claim → novel outline-adopt --review-token <token>"
+        )
     if not json_output:
         mark = ui.ok("已采纳") if result.get("status") == "adopted" else ui.warn("候选待审")
         click.echo(f"{ui.kv('状态', mark)}（v{result.get('version')}）", err=True)
         click.echo(result.get("content"), err=True)
         return
+    _emit(result, json_output)
+
+
+@novel_group.command("outline-adopt-preview")
+@click.argument("project_id", required=False)
+@click.option("--reuse-confirmed-packet", default=None, help="继承同一内容上一轮已确认的 packet；digest 不同会拒绝")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_outline_adopt_preview(
+    ctx: click.Context, project_id: str | None, reuse_confirmed_packet: str | None,
+    json_output: bool
+) -> None:
+    """展开当前故事梗概候选并自动绑定采纳凭证作用域。"""
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    result = session.request(
+        "POST",
+        f"/novel/projects/{pid}/creative-reviews/planning-candidate-preview",
+        json_body={
+            "resource_kind": "synopsis_outline_candidate",
+            "candidate_id": pid,
+            "title": "故事梗概候选审阅",
+        },
+        write=True,
+    )
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    if reuse_confirmed_packet:
+        inherited = session.request(
+            "POST",
+            f"/creative-reviews/{result['packet_id']}/inherit",
+            json_body={"source_packet_id": reuse_confirmed_packet},
+            write=True,
+        )
+        result.update(inherited)
+    result["next_steps"] = [
+        ("已继承相同内容的原人工决定，无需再次 confirm"
+         if reuse_confirmed_packet else "用户明确决定后原样 review confirm"),
+        "review claim <packet_id> --json，取 token 字段",
+        f"scriptnow novel outline-adopt {pid} --review-token <token>",
+    ]
     _emit(result, json_output)
 
 
@@ -6956,6 +7006,11 @@ def script_storymap_rebuild(ctx: click.Context, project_id: str, json_output: bo
     if result is None:
         click.echo(ui.dim("暂无进行中的重建会话；可用 storymap rebuild-start 开始。"), err=False)
         return
+    if result.get("status") == "candidate":
+        result["next_action"] = (
+            f"scriptnow script outline-adopt-preview {pid} --json → 用户决定 → "
+            "review confirm/claim → script outline-adopt --review-token <token>"
+        )
     if json_output:
         _emit(result, json_output)
         return
@@ -7018,6 +7073,46 @@ def script_storymap_rebuild_phase(
         else:
             click.echo(ui.dim("  全部阶段完成：请审阅后 storymap rebuild-propose 形成替换候选（采纳仍走 storymap adopt，需明确确认）。"), err=True)
         return
+    _emit(result, json_output)
+
+
+@script_group.command("outline-adopt-preview")
+@click.argument("project_id", required=False)
+@click.option("--reuse-confirmed-packet", default=None, help="继承同一内容上一轮已确认的 packet；digest 不同会拒绝")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_outline_adopt_preview(
+    ctx: click.Context, project_id: str | None, reuse_confirmed_packet: str | None,
+    json_output: bool
+) -> None:
+    """展开当前故事梗概候选并自动绑定采纳凭证作用域。"""
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    result = session.request(
+        "POST",
+        f"/script/projects/{pid}/creative-reviews/planning-candidate-preview",
+        json_body={
+            "resource_kind": "synopsis_outline_candidate",
+            "candidate_id": pid,
+            "title": "故事梗概候选审阅",
+        },
+        write=True,
+    )
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    if reuse_confirmed_packet:
+        inherited = session.request(
+            "POST",
+            f"/creative-reviews/{result['packet_id']}/inherit",
+            json_body={"source_packet_id": reuse_confirmed_packet},
+            write=True,
+        )
+        result.update(inherited)
+    result["next_steps"] = [
+        ("已继承相同内容的原人工决定，无需再次 confirm"
+         if reuse_confirmed_packet else "用户明确决定后原样 review confirm"),
+        "review claim <packet_id> --json，取 token 字段",
+        f"scriptnow script outline-adopt {pid} --review-token <token>",
+    ]
     _emit(result, json_output)
 
 

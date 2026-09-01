@@ -52,7 +52,16 @@ def test_check_for_update_same_version_returns_none(isolated) -> None:
         assert upg.check_for_update(force=True) is None
 
 
-def test_install_command_editable_returns_none(isolated) -> None:
-    """Editable installs must never be auto-upgraded."""
-    with patch.object(upg, "_install_command", return_value=None):
-        assert upg.upgrade(quiet=True) is False
+def test_editable_install_refreshes_from_production_wheel(isolated) -> None:
+    """Editable installs are replaced in the active Python environment."""
+    completed = type("Completed", (), {"returncode": 0, "stderr": ""})()
+    with (
+        patch.object(upg, "is_editable_install", return_value=True),
+        patch.object(upg, "latest_version", return_value=upg.VERSION),
+        patch.object(upg.subprocess, "run", return_value=completed) as run,
+    ):
+        assert upg.upgrade(quiet=True) is True
+    command = run.call_args.args[0]
+    assert command[:4] == [upg.sys.executable, "-m", "pip", "install"]
+    assert "--force-reinstall" in command
+    assert f"scriptnow_cli-{upg.VERSION}-py3-none-any.whl" in command[-1]

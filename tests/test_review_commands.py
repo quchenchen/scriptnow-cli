@@ -296,3 +296,28 @@ def test_review_help_exposes_conversation_first_commands():
     assert "confirm" in output
     assert "claim" in output
     assert "candidate-preview" in output
+
+
+@pytest.mark.parametrize("medium", ["novel", "script"])
+def test_outline_adopt_preview_derives_candidate_scope(monkeypatch, medium):
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {
+        "packet_id": "packet-outline",
+        "review_path": "/projects/p1/reviews/packet-outline",
+    }
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(
+        main, [medium, "outline-adopt-preview", "p1", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    body = session.request.call_args.kwargs["json_body"]
+    assert body == {
+        "resource_kind": "synopsis_outline_candidate",
+        "candidate_id": "p1",
+        "title": "故事梗概候选审阅",
+    }
+    assert f"/{medium}/projects/p1/creative-reviews/planning-candidate-preview" == session.request.call_args.args[1]
+    assert "token 字段" in " ".join(json.loads(result.output)["next_steps"])
