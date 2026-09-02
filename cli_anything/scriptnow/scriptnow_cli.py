@@ -1094,6 +1094,7 @@ _AGENT_CONTRACT = {
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
         "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 长篇必须用 `scriptnow script rough-outline-start <作品号> --json` 开隔离链；每阶段依次执行 `scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json`、用户明确决定后的完整 review confirm 和 review claim 命令、`scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json`，再以 `scriptnow script rough-outline-progress <作品号> --json` 回读。全部完成后先审阅汇总，再执行 `scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json` 形成完整候选。上游返工用 --restart-from 使下游失效。最低篇幅和事件数由 rough-outline-example 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链，无分阶段隔离链。",
         "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间，比例按每集场数即 volume_two 解释）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
+        "新增卷/章 = 纯追加通道（服务端形状硬门禁）：已有 StoryMap 的新增（新卷/新章/新阶段）只允许 `storymap append-volume <作品号> @volumes.json` / `storymap append-chapters <作品号> <卷号> @chapters.json` / `storymap append-phase <作品号>`，已有单元 id/序号/标题完全不动；用全量 `novel/script propose storymap` 提交纯追加形状（仅尾部新增、已有单元全不动）会被服务端拒绝并指引追加通道（首次创建空结构不受限）。全量替换仅限合并/重排/删除卷等真重构：`storymap adopt` 采纳前会显示「将移除 N 单元」警告，removed>0 即重构意图。事故回滚可用 `novel storymap-restore <作品号> <归档号>` / `script storymap-restore <作品号> <归档号>` 把归档卷章/集场导出为恢复候选 JSON（覆盖式=重构，仍须走完整 review 链与 --confirm 采纳）。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
         "人机协作铁律：任何用户明确输入的『保留 / 调整 / 换方向』都属于人类决定，无论发生在对话还是平台页面。Agent 只能用带 packet_id、decision 与 evidence 的完整 review confirm 命令原样登记这句话，再用完整 review claim 命令取得凭证并执行授权写入；严禁自行推断、伪造决定，或把沉默、泛泛称赞当作保留。",
     ],
@@ -1108,6 +1109,7 @@ _AGENT_CONTRACT = {
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
+        "新增卷/章走追加通道（append-volume / append-chapters / append-phase），严禁用全量替换承载新增；服务端形状门禁拦截，纯追加全量提案会返回追加通道指引。全量替换仅限真重构（合并/重排/删除卷），storymap adopt 采纳前显示「将移除 N 单元」警告。事故回滚：novel/script storymap-restore <作品号> <归档号> 导出恢复候选（覆盖式=重构，走完整 review 链）。",
         "scriptnow export create <pid> --units chapter-1-1",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。Novel 每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON（普通 JSON 文本允许）；被拒绝时按 detail 修正后重新生成。propose 前可用 --help-format 查看精确 JSON 规格。",
@@ -1147,6 +1149,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选（建议 300–500 字、以因果完整为准，复杂项目硬上限 1000 字），不跳到粗纲、集纲/章纲或正文。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
         "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
+        "新增卷/章 = 纯追加通道（服务端硬门禁）：已有 StoryMap 的新增只允许 `storymap append-volume <pid> @volumes.json` / `storymap append-chapters <pid> <volume_id> @chapters.json` / `storymap append-phase <pid>`，已有单元 id/序号/标题完全不动；全量 `novel/script propose storymap` 提交纯追加形状会被服务端拒绝并指引追加通道（首次创建空结构不受限）。全量替换仅限合并/重排/删除卷等真重构，storymap adopt 采纳前显示「将移除 N 单元」警告；事故回滚用 `novel storymap-restore <pid> <archive_id>` / `script storymap-restore <pid> <archive_id>` 导出恢复候选（覆盖式=重构，走完整 review 链后确认采纳）。",
     ],
     "quickstart": [
         "scriptnow --help",
@@ -4313,6 +4316,25 @@ def storymap_adopt(ctx: click.Context, project_id: str, candidate_id: str | None
         candidate_id = active_candidates[0]
         if not json_output:
             click.echo(ui.dim(f"采用最新 active 候选：{candidate_id}"), err=True)
+    # 影响面核对：采纳前必须把「将移除 N 个单元」摆到明面上。
+    # 纯新增（新增卷/章）由服务端硬门禁拦截并指引 append 通道；此处展示删除影响，
+    # 提醒主编确认这是合并/重排/删除卷等重构意图，而非『新增卷/章』误走全量替换。
+    state = _novel_state(_session(ctx), project_id)
+    candidates = {str(item["id"]): item for item in (state.get("story_map_candidates") or [])}
+    impact = (candidates.get(candidate_id) or {}).get("impact") or {}
+    removed = int(impact.get("removed_units") or 0)
+    added = int(impact.get("added_units") or 0)
+    retained = int(impact.get("retained_units") or 0)
+    if not json_output and removed > 0:
+        click.echo(
+            ui.warn(
+                f"本候选将覆盖现行结构：新增 {added} / 移除 {removed} / 保留 {retained} 个单元。"
+                "移除的章节正文将脱离现行结构（正文本身保留于文档库与结构归档，可在「结构历史」查看导出）。"
+                "请确认这是合并/重排/删除卷等重构意图——纯新增（新增卷/章）必须走 "
+                "append-volume / append-chapters / append-phase 追加通道。"
+            ),
+            err=True,
+        )
     _emit(
         _session(ctx).request(
             "POST",
@@ -4696,9 +4718,45 @@ def novel_planning_status(ctx: click.Context, project_id: str | None, json_outpu
         for ch in (graph.get("chapters") or [])
     }
     graph_missing = [d["chapter_id"] for d in adopted if d["chapter_id"] not in graph_chapters]
+
+    def _size(value: object) -> int | None:
+        try:
+            parsed = int(str(value or "").strip())
+            return parsed if parsed >= 1 else None
+        except (TypeError, ValueError):
+            return None
+
+    # 三向对账：direction 计划 ↔ 现行结构 ↔ 候选影响（防「方向陈旧误导结构漂移」复发）。
+    direction = _api_request(ctx, "GET", f"/projects/{pid}/direction") or {}
+    dir_volumes = _size(direction.get("volume_one"))
+    dir_chapters = _size(direction.get("volume_two"))
+    drift: list[str] = []
+    if dir_volumes is not None and dir_volumes != len(volumes):
+        drift.append(f"方向计划 {dir_volumes} 卷 vs 现行结构 {len(volumes)} 卷")
+    if (
+        dir_volumes is not None
+        and dir_chapters is not None
+        and dir_volumes * dir_chapters != len(chapters)
+    ):
+        drift.append(f"方向计划共 {dir_volumes * dir_chapters} 章 vs 现行结构 {len(chapters)} 章")
+    candidate_notes: list[str] = []
+    for item in (state.get("story_map_candidates") or []):
+        if item.get("status") != "active":
+            continue
+        impact = item.get("impact") or {}
+        removed = int(impact.get("removed_units") or 0)
+        if removed > 0:
+            candidate_notes.append(
+                f"候选 {str(item.get('id'))[:8]} 将移除 {removed} 个单元（结构重构，需主编确认）"
+            )
+        elif int(impact.get("added_units") or 0) > 0:
+            candidate_notes.append(
+                f"候选 {str(item.get('id'))[:8]} 仅新增（纯追加形状将被门禁拦截，应走 append 通道）"
+            )
     if not json_output:
         click.echo(ui.kv("梗概大纲", f"{'v' + str(outline.get('version')) if outline else '—'} {'已采纳' if outline and outline.get('status') == 'adopted' else ('待复审' if outline and outline.get('status') == 'candidate' else '缺失')}"))
         click.echo(ui.kv("StoryMap", f"v{sm.get('version') or 1} · {len(volumes)} 卷 / {len(chapters)} 章"))
+        click.echo(ui.kv("方向↔结构", "一致" if not drift and not candidate_notes else ("漂移：" + "；".join(drift + candidate_notes))))
         click.echo(ui.kv("章纲/集纲", f"{len(with_outline)}/{len(chapters)} 已采纳{'' if len(with_outline) == len(chapters) else '（缺 ' + str(len(chapters) - len(with_outline)) + '）'}"))
         click.echo(ui.kv("故事图谱", f"{len(adopted) - len(graph_missing)}/{len(adopted)} 已同步{('，落后 ' + str(len(graph_missing))) if graph_missing else ''}"))
         click.echo(ui.kv("建议", "章纲缺失 → chapter outline-batch；图谱落后 → novel graph status（会触发补齐）" if (len(with_outline) < len(chapters) or graph_missing) else "各层已就绪"))
@@ -4706,6 +4764,8 @@ def novel_planning_status(ctx: click.Context, project_id: str | None, json_outpu
     _emit({
         "synopsis": {"version": outline.get("version") if outline else None, "status": outline.get("status") if outline else None},
         "story_map": {"version": sm.get("version") or 1, "volumes": len(volumes), "chapters": len(chapters)},
+        "direction": {"volumes": dir_volumes, "chapters": dir_chapters},
+        "alignment": {"consistent": not drift and not candidate_notes, "drift": drift, "candidates": candidate_notes},
         "outline": {"adopted": len(with_outline), "total": len(chapters), "missing": [c.get('id') for c in chapters if not c.get('outline')]},
         "story_graph": {"adopted": len(adopted), "synced": len(adopted) - len(graph_missing), "missing": graph_missing},
     }, json_output)
@@ -5670,6 +5730,64 @@ def novel_storymap_archive(ctx: click.Context, project_id: str, archive_id: str,
     _emit(result, json_output)
 
 
+@novel_group.command("storymap-restore")
+@click.argument("project_id")
+@click.argument("archive_id")
+@click.option("--output", "output_path", default=None, help="恢复候选 JSON 输出路径（默认当前目录）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def novel_storymap_restore(
+    ctx: click.Context, project_id: str, archive_id: str, output_path: str | None, json_output: bool
+) -> None:
+    """从结构归档重建全量恢复候选 JSON（不写平台；恢复须走完整 review 链后采纳）。
+
+    事故恢复通道：被替换的结构自动归档（含各章正文快照）。本命令把归档卷章
+    导出为全量恢复候选文件，供完整人机审阅链采纳：
+      review preview → confirm/claim → novel propose storymap @候选 --review-token
+      → review candidate-preview → confirm/claim → storymap adopt --confirm
+
+    归档恢复是把现行结构覆盖回旧版（removed>0 的重构），走高危确认链并自动
+    生成新归档；若目标结构与当前结构相比只是尾部新增（纯追加形状），服务端
+    硬门禁会拦截并指引 append 通道。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/novel/projects/{pid}/structure-archives/{archive_id}")
+    volumes = result.get("volumes") or []
+    if not volumes:
+        raise click.ClickException(f"归档 {archive_id} 没有可恢复的卷章结构数据")
+    payload = {"volumes": volumes}
+    import json as _json
+
+    chapters = sum(len(v.get("chapters") or []) for v in volumes)
+    if output_path:
+        target = Path(output_path)
+    else:
+        target = Path.cwd() / f"storymap-restore-{archive_id[:8]}.json"
+    target.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not json_output:
+        click.echo(ui.section(f"恢复候选已生成：{target}"))
+        click.echo(ui.kv("归档", f"{archive_id} · StoryMap v{result.get('version')}"))
+        click.echo(ui.kv("结构", f"{len(volumes)} 卷 / {chapters} 章"))
+        click.echo(ui.warn("恢复=覆盖现行结构（高危重构）：必须走完整 review 链"))
+        click.echo(ui.dim("下一步：review preview <作品号> storymap <作品号> @<文件> --json → confirm/claim → "
+                          "novel propose storymap @<文件> --review-token <凭证> --json → review candidate-preview → "
+                          "confirm/claim → storymap adopt <作品号> <候选号> --confirm --review-token <凭证> --json"), err=True)
+        return
+    _emit({
+        "archive_id": archive_id,
+        "archive_version": result.get("version"),
+        "output_file": str(target),
+        "volumes": len(volumes),
+        "chapters": chapters,
+        "next_commands": [
+            f"scriptnow review preview {pid} storymap {pid} @{target} --title \"StoryMap 恢复审阅\" --json",
+            f"scriptnow novel propose {pid} storymap {target} --review-token <凭证> --json",
+            f"scriptnow review candidate-preview novel {pid} storymap_candidate <候选号> --title \"StoryMap 恢复采纳审阅\" --json",
+            f"scriptnow storymap adopt {pid} <候选号> --confirm --review-token <凭证> --json",
+        ],
+    }, json_output)
+
+
 # ------------------------------------------------------------------------ script
 
 
@@ -5729,6 +5847,64 @@ def script_storymap_archive(ctx: click.Context, project_id: str, archive_id: str
         click.echo(ui.dim("用 --json 查看完整集场结构、场次快照与修订 ID 列表。"), err=True)
         return
     _emit(result, json_output)
+
+
+@script_group.command("storymap-restore")
+@click.argument("project_id")
+@click.argument("archive_id")
+@click.option("--output", "output_path", default=None, help="恢复候选 JSON 输出路径（默认当前目录）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def script_storymap_restore(
+    ctx: click.Context, project_id: str, archive_id: str, output_path: str | None, json_output: bool
+) -> None:
+    """从结构归档重建恢复候选 JSON（script 域；不写平台；恢复须走完整 review 链后采纳）。
+
+    事故恢复通道：被替换的结构自动归档（含各场正文快照）。本命令把归档集场
+    导出为全量恢复候选文件（{"episodes": [...]}），供完整人机审阅链采纳：
+      review preview → confirm/claim → script propose storymap @候选 --review-token
+      → review candidate-preview → confirm/claim → script adopt-storymap --review-token
+
+    归档恢复是把现行结构覆盖回旧版（removed>0 的重构），走高危确认链并自动
+    生成新归档；若目标结构与当前结构相比只是尾部新增（纯追加形状），服务端
+    硬门禁会拦截并指引追加通道。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    result = _api_request(ctx, "GET", f"/script/projects/{pid}/story-map/structure-archives/{archive_id}")
+    episodes = result.get("episodes") or []
+    if not episodes:
+        raise click.ClickException(f"归档 {archive_id} 没有可恢复的集场结构数据")
+    payload = {"episodes": episodes}
+    import json as _json
+
+    scenes = sum(len(ep.get("scenes") or []) for ep in episodes)
+    if output_path:
+        target = Path(output_path)
+    else:
+        target = Path.cwd() / f"storymap-restore-{archive_id[:8]}.json"
+    target.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not json_output:
+        click.echo(ui.section(f"恢复候选已生成：{target}"))
+        click.echo(ui.kv("归档", f"{archive_id} · StoryMap v{result.get('version')}"))
+        click.echo(ui.kv("结构", f"{len(episodes)} 集 / {scenes} 场"))
+        click.echo(ui.warn("恢复=覆盖现行结构（高危重构）：必须走完整 review 链"))
+        click.echo(ui.dim("下一步：review preview <作品号> storymap <作品号> @<文件> --json → confirm/claim → "
+                          "script propose storymap @<文件> --review-token <凭证> --json → review candidate-preview → "
+                          "confirm/claim → script adopt-storymap <作品号> <候选号> --review-token <凭证> --json"), err=True)
+        return
+    _emit({
+        "archive_id": archive_id,
+        "archive_version": result.get("version"),
+        "output_file": str(target),
+        "episodes": len(episodes),
+        "scenes": scenes,
+        "next_commands": [
+            f"scriptnow review preview {pid} storymap {pid} @{target} --title \"StoryMap 恢复审阅\" --json",
+            f"scriptnow script propose {pid} storymap {target} --review-token <凭证> --json",
+            f"scriptnow review candidate-preview script {pid} storymap_candidate <候选号> --title \"StoryMap 恢复采纳审阅\" --json",
+            f"scriptnow script adopt-storymap {pid} <候选号> --review-token <凭证> --json",
+        ],
+    }, json_output)
 
 
 @main.group("scene")

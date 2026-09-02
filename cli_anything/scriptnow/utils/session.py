@@ -56,6 +56,15 @@ class _SessionFileError(RuntimeError):
     """The local session file cannot safely participate in a refresh."""
 
 
+class _SessionFilePermissionError(RuntimeError):
+    """The session lock/config area is not writable (EPERM/EACCES).
+
+    Distinct from file corruption: a sandbox or directory-permission denial
+    must produce an actionable fix (relocate the session via
+    ``SCRIPTNOW_CLI_CONFIG``), never a misleading "re-login" hint.
+    """
+
+
 class _SessionLockTimeout(RuntimeError):
     """Another CLI process held the session-refresh lock for too long."""
 
@@ -82,6 +91,8 @@ class _SessionFileLock:
             except OSError:
                 pass
         except OSError as error:
+            if error.errno in (errno.EPERM, errno.EACCES):
+                raise _SessionFilePermissionError("无法创建本地登录续期锁（目录写入被拒绝）") from error
             raise _SessionFileError("无法创建本地登录续期锁") from error
 
         deadline = time.monotonic() + self.timeout
@@ -378,6 +389,12 @@ class Session:
         except _SessionLockTimeout as error:
             raise ScriptNowError(
                 "等待另一条 ScriptNow CLI 命令完成登录续期超时；请等待该命令结束后重试"
+            ) from error
+        except _SessionFilePermissionError as error:
+            raise ScriptNowError(
+                "无法写入本地登录会话锁文件（目录权限受限或沙箱拦截），"
+                "不是会话损坏：请将 SCRIPTNOW_CLI_CONFIG 指向可写路径"
+                "（如 <工作区>/.cli-session/session.json，把现有 session 复制过去并 chmod 600）后重试"
             ) from error
         except _SessionFileError as error:
             raise ScriptNowError(

@@ -72,6 +72,18 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > 查看单份（含旧卷章结构与各章正文快照）；script 镜像 `script storymap-archives` /
 > `script storymap-archive`，两域归档均用于重建影响审阅与回滚决策。
 
+> **新增卷/章 = 纯追加通道（服务端硬门禁，禁止用全量替换承载新增）**：
+> 已有 StoryMap 需要新增卷/章时，只允许追加通道 `storymap append-volume <pid> @volumes.json`
+> / `storymap append-chapters <pid> <volume_id> @chapters.json` / `storymap append-phase
+> <pid>`（按阶段计划追加），已有卷章的 id/序号/标题完全不动。服务端按候选形状硬门禁：
+> `novel propose storymap` / `script propose storymap` 提交纯追加形状（仅尾部新增、已有单元
+> 全不动）会被拒绝并指引追加通道；真正重构（合并/重排/删除卷、改标题）仍走全量 propose →
+> `storymap adopt --confirm` 高危确认链（被替换结构自动归档）。`storymap adopt` 采纳前会显示
+> 「将移除 N 单元」警告——移除存在即重构意图，纯新增必须走追加通道。
+> 事故回滚：`novel storymap-restore <pid> <archive_id>` / `script storymap-restore <pid> <archive_id>`
+> 把归档卷章/集场导出为恢复候选 JSON（服务端已拦截纯追加恢复，恢复=覆盖回旧结构，
+> 走完整 review 链后 `storymap adopt --confirm` / `script adopt-storymap` 确认采纳）。
+
 ## Mandatory bootstrap — before any ScriptNow action
 
 1. Run `scriptnow agent-guide --json`.

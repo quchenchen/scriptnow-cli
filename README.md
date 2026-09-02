@@ -32,7 +32,7 @@
   规划三件套回填优先（cores/blueprint/storymap 默认本地生成后 propose 回填）、固定创作顺序（核心与蓝图→梗概→
   粗纲→StoryMap 与集纲/章纲一体→正文）、生成命令后台轮询、StoryMap 修订需用户明确授权。
 - **双域阶段语义**：叙事阶段不决定小说卷边界；剧本 `volume_two` 表示每集场数，阶段比例据此按每集场数解释。
-- **新增卷章 = 纯追加**：`storymap append-volume` / `storymap append-chapters` 只尾部新增，已有卷章
+- **新增卷章 = 纯追加（服务端硬门禁）**：`storymap append-volume` / `storymap append-chapters` / `storymap append-phase` 只尾部新增，已有卷章
   id/序号/标题/字数完全不动；被替换的旧结构自动归档，平台「结构历史」可查看导出。
 - **集纲 / 章纲先于正文**：StoryMap 不能只提供 episode/scene 或 volume/chapter 容器。剧本每个
   `episode` 需填写平铺字段 `logline`、`active_goal`、`conflict`、`turn`、`state_changes`、`anchor_ids`；可用
@@ -243,8 +243,8 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
 | chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | scene | 剧本场次（chapter 的剧本侧对称）：list / show / generate / adopt（alias of script adopt-scene）/ propose（本地回传）/ batch（批量串行）/ quality / diff |
-| storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，Novel 按全书章区间）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；隔离重建走各域 storymap-rebuild-* 链 |
-| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
+| storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，Novel 按全书章区间）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete** / **restore（归档导出恢复候选，走完整 review 链）**；隔离重建走各域 storymap-rebuild-* 链 |
+| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
 | script | 剧本创作链：outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
@@ -261,7 +261,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 先 `rebuild-check` 确定性预检再 `rebuild-phase` 累积；全部完成后 `rebuild-propose` 合并为
 完整替换候选，不自动采纳；用户明确确认后才经 `storymap adopt --confirm` 替换，旧结构与正文
 快照自动归档可回溯（novel：`storymap-archives <pid>` 列出、`storymap-archive <pid> <归档ID>` 查看
-单份；script 镜像：`script storymap-archives <pid>`、`script storymap-archive <pid> <归档ID>`，
+单份；script 镜像：`script storymap-archives <pid>`、`script storymap-archive <pid> <归档ID>`；事故回滚用 `novel storymap-restore <pid> <归档ID>` / `script storymap-restore <pid> <归档ID>` 导出恢复候选（覆盖式=重构，仍走完整 review 链与确认采纳）。
 均含被替换的完整集场/卷章结构与各章/场正文快照）。
 
 场次规划板的视觉代理参数显式传递给平台：`--layout auto|2x2|2x3|3x3|3x4|4x4` 与
@@ -402,7 +402,7 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 - **报告完成以服务器回读为据**：写操作成功 = 服务器返回 id（project_id/candidate_id/revision_id/run_id）且回读确认落盘；
   没有 id 与回读确认不得向用户报告“已完成”；`project create` 会自动回读并输出含 `verified` 的 receipt。
 - **StoryMap 修订是超级高危操作**：`storymap adopt` 必须 `--confirm`（平台需勾选知情确认）；
-  新增卷/章请用 `append-volume` / `append-chapters`（纯追加，不动已有卷章）；
+  新增卷/章请用 `append-volume` / `append-chapters` / `append-phase`（纯追加，不动已有卷章；服务端按形状硬门禁，纯追加形状的全量提案会被拒绝并指引追加通道）；
   被替换的旧结构与正文快照自动归档，平台「结构历史」可查看导出。
 - 版本管理：创作基准 = 最新「已采纳 + 人工修订（未采纳也算）」，未采纳的 Agent 候选不进入基准。
 - 审读是 Agent 自身能力：读正文 → 判断 → `--feedback` 驱动修正。
