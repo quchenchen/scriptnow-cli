@@ -30,6 +30,7 @@ from cli_anything.scriptnow.utils.session import (
 )
 from cli_anything.scriptnow.utils.upgrade import (
     auto_upgrade_enabled,
+    is_newer_version,
     latest_version,
     maybe_warn_in_background,
     set_config,
@@ -395,7 +396,9 @@ def self_upgrade_cmd(assume_yes: bool, json_output: bool) -> None:
             click.echo(ui.warn("无法连接版本源，稍后再试。"))
         return
     editable = is_editable_install()
-    if latest == VERSION and not editable:
+    if (latest != VERSION and not is_newer_version(latest)) or (
+        latest == VERSION and not editable
+    ):
         _emit({"ok": True, "current": VERSION, "upgraded": False}, json_output)
         if not json_output:
             click.echo(ui.ok(f"当前已是最新版本 v{VERSION}"))

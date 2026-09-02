@@ -9,7 +9,9 @@ frequency (once per 24h, cached locally, silent on failure) and offers
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -31,6 +33,23 @@ _PROD_WHEEL_TMPL = (
     "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-{version}-py3-none-any.whl"
 )
 _CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+
+
+def _version_tuple(value: str) -> tuple[int, int, int] | None:
+    parts = value.strip().split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
+
+
+def is_newer_version(candidate: str, current: str = VERSION) -> bool:
+    candidate_tuple = _version_tuple(candidate)
+    current_tuple = _version_tuple(current)
+    return bool(
+        candidate_tuple is not None
+        and current_tuple is not None
+        and candidate_tuple > current_tuple
+    )
 
 
 def _state_path() -> Path:
@@ -147,13 +166,35 @@ def check_for_update(force: bool = False) -> str | None:
         return None
     latest = latest_version()
     _record_check()
-    if latest is None or latest == VERSION:
+    if latest is None or not is_newer_version(latest):
         return None
     return latest
 
 
+def _environment_install_command(
+    source: str, *, upgrade_only: bool = False
+) -> tuple[str, list[str]] | None:
+    """Install into the interpreter that is running this CLI.
+
+    Virtual environments must never receive ``--user``. A base interpreter may
+    need a user install; ``--break-system-packages`` is POSIX-only. If a uv-made
+    environment has no pip module, target it explicitly through ``uv pip``.
+    """
+    action = "--upgrade" if upgrade_only else "--force-reinstall"
+    if importlib.util.find_spec("pip") is not None:
+        flags: list[str] = []
+        if sys.prefix == getattr(sys, "base_prefix", sys.prefix):
+            flags.append("--user")
+            if os.name != "nt":
+                flags.append("--break-system-packages")
+        return sys.executable, ["-m", "pip", "install", *flags, action, source]
+    if shutil.which("uv"):
+        return "uv", ["pip", "install", "--python", sys.executable, action, source]
+    return None
+
+
 def _install_command(version: str | None = None) -> tuple[str, list[str]] | None:
-    """Resolve the upgrade command (production wheel preferred) for the current installation method."""
+    """Resolve an upgrade command for the current installed environment."""
     try:
         import importlib.metadata as md
 
@@ -164,28 +205,12 @@ def _install_command(version: str | None = None) -> tuple[str, list[str]] | None
     for file in dist.files or []:
         if "__editable__" in str(file):
             return None
-    import shutil
-
-    if shutil.which("uv"):
-        return "uv", ["tool", "upgrade", "scriptnow-cli"]
-    # 优先生产源（sn.igeewa.com）直装对应版本 wheel：不依赖 git，不受部分克隆被掐影响。
-    # scriptnow-cli 不在 PyPI——生产源与 GitHub 独立仓库是唯二分发渠道。
-    if version:
-        return "pip", [
-            "install",
-            "--user",
-            "--break-system-packages",
-            "--force-reinstall",
-            _PROD_WHEEL_TMPL.format(version=version),
-        ]
-    # 无版本信息时退回 codeload tar.gz（GitHub 源码包，不依赖 git）。
-    return "pip", [
-        "install",
-        "--user",
-        "--break-system-packages",
-        "--force-reinstall",
-        "https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main",
-    ]
+    source = (
+        _PROD_WHEEL_TMPL.format(version=version)
+        if version
+        else "https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main"
+    )
+    return _environment_install_command(source)
 
 
 def is_editable_install() -> bool:
@@ -198,16 +223,11 @@ def is_editable_install() -> bool:
     return any("__editable__" in str(file) for file in (dist.files or []))
 
 
-def _upgrade_fallback() -> list[str] | None:
+def _upgrade_fallback() -> tuple[str, list[str]] | None:
     """备选升级命令：git+https（当 codeload 被拦时）。"""
-    return [
-        "pip",
-        "install",
-        "--user",
-        "--break-system-packages",
-        "--upgrade",
-        "git+https://github.com/quchenchen/scriptnow-cli.git",
-    ]
+    return _environment_install_command(
+        "git+https://github.com/quchenchen/scriptnow-cli.git", upgrade_only=True
+    )
 
 
 def upgrade(quiet: bool = False) -> bool:
@@ -216,17 +236,19 @@ def upgrade(quiet: bool = False) -> bool:
     Attempts sources in priority order: production wheel (sn.igeewa.com) →
     codeload tar.gz (GitHub) → git+https (last resort)."""
     latest = latest_version()
+    if latest is not None and not is_newer_version(latest) and latest != VERSION:
+        return True  # Never downgrade a newer local/dev build to an older feed.
     if is_editable_install():
         target = latest or VERSION
+        candidate = _environment_install_command(
+            _PROD_WHEEL_TMPL.format(version=target)
+        )
+        if candidate is None:
+            if not quiet:
+                print("当前 Python 环境无 pip 且未找到 uv，无法自动升级。")
+            return False
         result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--force-reinstall",
-                _PROD_WHEEL_TMPL.format(version=target),
-            ],
+            [candidate[0], *candidate[1]],
             capture_output=True,
             text=True,
             timeout=300,
@@ -245,8 +267,7 @@ def upgrade(quiet: bool = False) -> bool:
     for candidate in attempts:
         if not candidate:
             continue
-        # _install_command 返回 (program, args) 元组；_upgrade_fallback 返回扁平行 list。
-        cmd = [candidate[0], *candidate[1]] if isinstance(candidate, tuple) else list(candidate)
+        cmd = [candidate[0], *candidate[1]]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode == 0:
             return True

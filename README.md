@@ -77,6 +77,15 @@ python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip
 ```
 
 **Windows PowerShell**：建议使用 Python 3.10+ 虚拟环境，命令与平台契约与 macOS/Linux 完全相同。
+推荐下载并检查仓库内的 `install.ps1` 后执行；它会检测 Python 3.10+、在
+`%LOCALAPPDATA%\ScriptNow\cli` 创建独立环境、安装生产最新 wheel，并写入用户 PATH：
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/quchenchen/scriptnow-cli/main/install.ps1 -OutFile install-scriptnow.ps1
+powershell -ExecutionPolicy Bypass -File .\install-scriptnow.ps1
+```
+
+手工安装时：
 
 ```powershell
 py -3 -m venv .venv
@@ -88,6 +97,9 @@ scriptnow --version
 
 如 PowerShell 禁止执行本地激活脚本，可不激活环境，直接执行
 `.\.venv\Scripts\python.exe -m pip install ...` 和 `.\.venv\Scripts\scriptnow.exe --version`。
+安装后 `scriptnow self-upgrade` 会自动锁定当前 CLI 所在 Python：虚拟环境不使用
+`--user`，Windows 不使用 `--break-system-packages`；当前环境没有 pip 时会自动改用
+`uv pip --python <当前解释器>`。
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
 或 `scriptnow config on` 开启「有新版本时后台自动升级 + 通知」。

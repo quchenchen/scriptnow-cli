@@ -54,6 +54,9 @@ python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip
 Windows PowerShell 使用 `py -3 -m venv .venv` 创建 Python 3.10+ 环境，通过
 `.\.venv\Scripts\Activate.ps1` 激活，再用同一生产 wheel URL 安装。如禁止激活脚本，
 直接调用 `.\.venv\Scripts\python.exe` 和 `.\.venv\Scripts\scriptnow.exe`，无需修改系统执行策略。
+仓库 `install.ps1` 可自动检测 Python、创建 `%LOCALAPPDATA%\ScriptNow\cli`、安装最新 wheel 并
+登记用户 PATH。`self-upgrade` 始终定位当前 CLI 解释器；Windows 不传
+`--break-system-packages`，虚拟环境不传 `--user`，无 pip 的 uv 环境改用 `uv pip --python`。
 
 ## 登录
 

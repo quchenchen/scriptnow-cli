@@ -72,6 +72,17 @@ python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip
 **Windows PowerShell** uses the same CLI and platform contract; only the environment
 and executable paths differ:
 
+The recommended automatic installer checks Python 3.10+, creates an isolated
+environment under `%LOCALAPPDATA%\ScriptNow\cli`, installs the latest production
+wheel, and adds its Scripts directory to the user PATH:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/quchenchen/scriptnow-cli/main/install.ps1 -OutFile install-scriptnow.ps1
+powershell -ExecutionPolicy Bypass -File .\install-scriptnow.ps1
+```
+
+Manual installation:
+
 ```powershell
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -82,6 +93,10 @@ scriptnow --version
 
 If local activation scripts are disabled, call `.\.venv\Scripts\python.exe` and
 `.\.venv\Scripts\scriptnow.exe` directly instead of changing the execution policy.
+After installation, `scriptnow self-upgrade` targets the interpreter that is running
+the CLI. It omits `--user` inside virtual environments, never sends
+`--break-system-packages` on Windows, and falls back to
+`uv pip --python <current interpreter>` when that environment has no pip module.
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
 wheel host and fall back to codeload → git+https.

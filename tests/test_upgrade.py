@@ -52,6 +52,18 @@ def test_check_for_update_same_version_returns_none(isolated) -> None:
         assert upg.check_for_update(force=True) is None
 
 
+def test_older_release_feed_never_triggers_downgrade(isolated) -> None:
+    assert upg.is_newer_version("0.3.84", "0.3.85") is False
+    with patch.object(upg, "latest_version", return_value="0.3.84"):
+        assert upg.check_for_update(force=True) is None
+    with (
+        patch.object(upg, "latest_version", return_value="0.3.84"),
+        patch.object(upg.subprocess, "run") as run,
+    ):
+        assert upg.upgrade(quiet=True) is True
+    run.assert_not_called()
+
+
 def test_editable_install_refreshes_from_production_wheel(isolated) -> None:
     """Editable installs are replaced in the active Python environment."""
     completed = type("Completed", (), {"returncode": 0, "stderr": ""})()
@@ -65,3 +77,44 @@ def test_editable_install_refreshes_from_production_wheel(isolated) -> None:
     assert command[:4] == [upg.sys.executable, "-m", "pip", "install"]
     assert "--force-reinstall" in command
     assert f"scriptnow_cli-{upg.VERSION}-py3-none-any.whl" in command[-1]
+
+
+def test_windows_base_python_uses_current_interpreter_without_posix_flag() -> None:
+    with (
+        patch.object(upg.importlib.util, "find_spec", return_value=object()),
+        patch.object(upg.os, "name", "nt"),
+        patch.object(upg.sys, "prefix", r"C:\Python312"),
+        patch.object(upg.sys, "base_prefix", r"C:\Python312"),
+    ):
+        command = upg._environment_install_command("https://example.test/cli.whl")
+    assert command is not None
+    program, args = command
+    assert program == upg.sys.executable
+    assert args[:3] == ["-m", "pip", "install"]
+    assert "--user" in args
+    assert "--break-system-packages" not in args
+
+
+def test_virtualenv_upgrade_never_uses_user_install() -> None:
+    with (
+        patch.object(upg.importlib.util, "find_spec", return_value=object()),
+        patch.object(upg.sys, "prefix", "/venv"),
+        patch.object(upg.sys, "base_prefix", "/usr"),
+    ):
+        command = upg._environment_install_command("https://example.test/cli.whl")
+    assert command is not None
+    assert "--user" not in command[1]
+    assert "--break-system-packages" not in command[1]
+
+
+def test_uv_environment_without_pip_targets_current_python() -> None:
+    with (
+        patch.object(upg.importlib.util, "find_spec", return_value=None),
+        patch.object(upg.shutil, "which", return_value="/usr/bin/uv"),
+    ):
+        command = upg._environment_install_command("https://example.test/cli.whl")
+    assert command == (
+        "uv",
+        ["pip", "install", "--python", upg.sys.executable,
+         "--force-reinstall", "https://example.test/cli.whl"],
+    )
