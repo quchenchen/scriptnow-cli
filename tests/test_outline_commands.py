@@ -16,6 +16,29 @@ def _write(tmp_path, name: str, payload: dict) -> str:
     return f"@{path}"
 
 
+def test_synopsis_outline_cli_matches_platform_hard_ceiling(monkeypatch):
+    session = Mock()
+    session.request.return_value = {"id": "outline-1", "version": 1, "status": "active"}
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+    for medium in ("novel", "script"):
+        accepted = runner.invoke(
+            main,
+            [medium, "outline", "p1", "--text", "故" * 1_000,
+             "--review-token", "review-1", "--json"],
+        )
+        assert accepted.exit_code == 0, (medium, accepted.output)
+        rejected = runner.invoke(
+            main,
+            [medium, "outline", "p1", "--text", "故" * 1_001,
+             "--review-token", "review-1", "--json"],
+        )
+        assert rejected.exit_code == 1
+        assert "1000" in rejected.output
+
+
 def test_episode_outline_backfill_uses_server_storymap_version(monkeypatch, tmp_path):
     session = Mock()
     session.request.side_effect = [

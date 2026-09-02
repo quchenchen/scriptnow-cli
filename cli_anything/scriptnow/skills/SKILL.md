@@ -25,18 +25,22 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > <key>` 或设入 direction 后 `storymap phases` 自动解析。未知 key 不报错，按 custom 兜底。
 
 > **粗纲（分集/分章大纲·粗纲，双域）**：在集纲/章纲之前，按叙事结构阶段写一段具体剧情
-> 纲要（竖屏剧规范「分集大纲·粗纲」）。先取模板 `scriptnow script|novel
-> rough-outline-example <pid>`（叙事结构只提供阶段与范围建议；作者可调整边界，须连续覆盖全集），逐阶段填写
+> 纲要（竖屏剧规范「分集大纲·粗纲」）。剧本先执行
+> `scriptnow script rough-outline-example <pid> --json`，小说执行
+> `scriptnow novel rough-outline-example <pid> --json`。叙事结构只提供阶段与范围建议；作者可调整边界，须连续覆盖全集。
 > Script 先统筹全剧与宏观阶段，再严格按 `rough-outline-example` 返回的
 > `generation_batches` 分批深化；批次大小来自项目策略，不得自行假定总集数或固定 5 集。
 > summary 按动态篇幅与事件数建议展开入口、连续行动、
 > 阻力升级、证据/关系变化、转折、代价和出口；禁止一句话粗纲。再填写 key_beats（标题|描述）+ anchor_ids（须为已
-> 采纳蓝图锚点）。长篇剧本优先 `rough-outline-start` 开隔离链，每阶段用
-> `rough-outline-phase <pid> <phase_key> @file.json` 回填，`rough-outline-progress` 回读；
-> `rough-outline-phase-preview` 会先按当前构建进度检查单阶段连续边界、因果链与事件密度，
+> 采纳蓝图锚点）。长篇剧本执行 `scriptnow script rough-outline-start <pid> --json`
+> 开隔离链；每阶段先执行 `scriptnow script rough-outline-phase-preview <pid> <phase_key> @file.json --json`，
+> 经用户明确决定和完整 confirm/claim 链取得凭证后，执行
+> `scriptnow script rough-outline-phase <pid> <phase_key> @file.json --review-token <token> --json`，
+> 再用 `scriptnow script rough-outline-progress <pid> --json` 回读。`rough-outline-phase-preview` 会先检查单阶段连续边界、因果链与事件密度，
 > 通过后才登记审阅包；完整 `rough-outline-check` 仅用于十阶段汇总文件；
 > 每次回读必须向人显示“阶段 X / 共 N 阶段”、当前阶段与已完成阶段，不得只在后台维护 JSON；
-> 上游返工加 `--restart-from` 使下游失效。全部完成后 `rough-outline-propose` 形成完整候选，
+> 上游返工加 `--restart-from` 使下游失效。全部完成并取得汇总审阅凭证后，执行
+> `scriptnow script rough-outline-propose <pid> --review-token <aggregate_token> --json` 形成完整平台候选，
 > 再由作者用 `rough-outline-adopt` 采纳。分集大纲稿导出：
 > `scriptnow export create <pid> --domain script --units <全集场次> --form planning
 > --front-matter outline`（剧名→故事梗概→人物小传→粗纲→集纲）。
@@ -80,10 +84,16 @@ workflow from memory and do not treat local files as ScriptNow projects.
 If the bootstrap cannot be run, do not create, mutate, adopt, export, or claim
 completion. Explain the missing prerequisite and wait.
 
-For outline, cores, blueprint, or StoryMap files, always use `review propose-preview`
-before confirmation. It derives the exact review resource kind and id. Never
-guess those values. After the human explicitly decides, record the exact words,
-run `review claim`, and pass its `token` field (not `packet_id`) to propose. If
+For outline, cores, blueprint, or StoryMap files, always use the matching complete
+command before confirmation: `scriptnow review propose-preview novel <project_id>
+<kind> <file> --json` or `scriptnow review propose-preview script <project_id>
+<kind> <file> --json`, where `<kind>` is one of `outline`, `cores`, `blueprint`,
+or `storymap`. It derives the exact review resource kind and id. Never
+guess those values. After the human explicitly decides, run
+`scriptnow review confirm <packet_id> --decision retain --evidence "<exact human words>" --json`,
+then `scriptnow review status <packet_id> --json` and
+`scriptnow review claim <packet_id> --json`. Pass claim's `token` field (not
+`packet_id`) to the target write command. If
 the reviewed content changes, preview it again.
 
 ## Non-negotiable behavior
@@ -157,10 +167,17 @@ the reviewed content changes, preview it again.
   candidate via `chapter propose` / `scene propose`, then `review preview` →
   `adopt --human`. Without an explicit choice, platform-led applies; never
   default to or steer the user toward local-led writing.
-- Creative flow is outline-first and layer-by-layer: adopt a synopsis outline
-  (`novel outline`/`script outline` + `outline-adopt`) before StoryMap planning;
-  adopt the StoryMap; then backfill complete chapter/episode outlines before new
-  prose. Each gate is enforced by the backend.
+- Creative flow is layer-by-layer in a fixed order: adopt story cores and blueprint
+  (`novel propose cores` → `adopt-core`; `novel propose blueprint` →
+  `adopt-blueprint`) first, then the synopsis outline (`novel outline` +
+  `outline-adopt`), then the rough outline (`rough-outline-example` →
+  `rough-outline-check` → `novel rough-outline` → `rough-outline-adopt`;
+  Script uses its `rough-outline-start` isolated chain), and only then plan the
+  StoryMap where episode/chapter outlines are delivered together (`propose
+  storymap` → `adopt`, `planning-quality` must pass). Cores/blueprint must
+  precede the synopsis; the rough outline depends on adopted cores/blueprint
+  anchors and the synopsis, and must precede StoryMap. Each gate is enforced by
+  the backend.
 - Legacy projects remain readable/exportable, but a missing chapter/episode
   outline must be backfilled before new prose. Use `chapter outline PROJECT
   CHAPTER @outline.json` for one Novel chapter, `chapter outline-batch PROJECT

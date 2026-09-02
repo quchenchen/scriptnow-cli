@@ -206,6 +206,31 @@ def test_refresh_reports_lock_timeout_without_refreshing(tmp_path, monkeypatch) 
     assert http.post.call_count == 0
 
 
+def test_session_lock_uses_windows_msvcrt_when_fcntl_is_unavailable(
+    tmp_path, monkeypatch
+) -> None:
+    import cli_anything.scriptnow.utils.session as session_module
+
+    calls: list[tuple[int, int]] = []
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+        LK_UNLCK = 2
+
+        @staticmethod
+        def locking(_fd: int, mode: int, length: int) -> None:
+            calls.append((mode, length))
+
+    monkeypatch.setattr(session_module, "_fcntl", None)
+    monkeypatch.setattr(session_module, "_msvcrt", FakeMsvcrt)
+
+    with session_module._SessionFileLock(tmp_path / "session.json", timeout=0.1):
+        pass
+
+    assert calls == [(FakeMsvcrt.LK_NBLCK, 1), (FakeMsvcrt.LK_UNLCK, 1)]
+    assert (tmp_path / "session.json.refresh.lock").read_bytes() == b"\0"
+
+
 def test_refresh_leaves_corrupt_session_file_untouched(tmp_path, monkeypatch) -> None:
     import cli_anything.scriptnow.utils.session as session_module
 

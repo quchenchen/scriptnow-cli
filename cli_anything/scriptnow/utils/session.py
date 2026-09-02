@@ -18,10 +18,19 @@ import sys
 import time
 import re
 import errno
-import fcntl
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+try:  # POSIX inter-process refresh lock.
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised on Windows.
+    _fcntl = None
+
+try:  # Windows inter-process refresh lock.
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - exercised on POSIX.
+    _msvcrt = None
 
 import requests
 
@@ -52,12 +61,11 @@ class _SessionLockTimeout(RuntimeError):
 
 
 class _SessionFileLock:
-    """A small, POSIX-only inter-process lock beside a session file.
+    """A small cross-platform inter-process lock beside a session file.
 
-    ScriptNow CLI supports macOS and Linux. ``flock`` is deliberately used
-    instead of an in-memory lock because a normal CLI invocation is a new
-    process. The lock file contains no credentials and is retained as a safe,
-    empty coordination point after release.
+    A normal CLI invocation is a new process, so an in-memory lock cannot
+    coordinate refresh-token rotation. POSIX uses ``flock`` and Windows uses
+    ``msvcrt.locking`` on the first byte. The file contains no credentials.
     """
 
     def __init__(self, path: Path, *, timeout: float | None = None) -> None:
@@ -79,7 +87,7 @@ class _SessionFileLock:
         deadline = time.monotonic() + self.timeout
         while True:
             try:
-                fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self._lock()
                 return self
             except OSError as error:
                 if error.errno not in (errno.EACCES, errno.EAGAIN):
@@ -94,9 +102,34 @@ class _SessionFileLock:
         del exc_type, exc, traceback
         if self._fd is not None:
             try:
-                fcntl.flock(self._fd, fcntl.LOCK_UN)
+                self._unlock()
             finally:
                 self._close()
+
+    def _lock(self) -> None:
+        if self._fd is None:
+            raise _SessionFileError("本地登录续期锁未初始化")
+        if _fcntl is not None:
+            _fcntl.flock(self._fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+            return
+        if _msvcrt is not None:
+            if os.fstat(self._fd).st_size == 0:
+                os.write(self._fd, b"\0")
+                os.fsync(self._fd)
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            _msvcrt.locking(self._fd, _msvcrt.LK_NBLCK, 1)
+            return
+        raise _SessionFileError("当前系统不支持本地登录续期锁")
+
+    def _unlock(self) -> None:
+        if self._fd is None:
+            return
+        if _fcntl is not None:
+            _fcntl.flock(self._fd, _fcntl.LOCK_UN)
+            return
+        if _msvcrt is not None:
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            _msvcrt.locking(self._fd, _msvcrt.LK_UNLCK, 1)
 
     def _close(self) -> None:
         if self._fd is not None:

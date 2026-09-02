@@ -34,7 +34,9 @@ covering **two creation domains (dual-domain): novels and scripts**. Every comma
 - **Auto-renewing session**: one `login` lasts 30 days — access tokens refresh automatically,
   so agent sessions never die mid-work.
 - **Agent operating contract**: `scriptnow agent-guide` (--json) — platform is the single source of
-  truth, the planning trio is backfill-first, episode/chapter outline completeness is gated before
+  truth, the planning trio is backfill-first (cores/blueprint/storymap default locally generated then
+  proposed back), a fixed creation order (cores & blueprint \u2192 synopsis \u2192 rough outline \u2192 StoryMap with
+  episode/chapter outlines together \u2192 prose), episode/chapter outline completeness is gated before
   prose, generation runs in the background (poll `run status`), and StoryMap restructuring requires
   explicit user authorization.
 - **Append-only structure growth**: `storymap append-volume` / `append-chapters` add volumes/chapters
@@ -53,7 +55,8 @@ git clone https://github.com/quchenchen/scriptnow-cli.git
 cd scriptnow-cli && pip install -e .
 
 # Preferred: production wheel host (sn.igeewa.com) — no git dependency, most stable
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.80-py3-none-any.whl
+version=$(curl -fsS https://sn.igeewa.com/downloads/scriptnow-cli/version.txt)
+python3 -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-${version}-py3-none-any.whl"
 
 # Fixed-version source archive (zip)
 curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
@@ -63,8 +66,22 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # Fixed GitHub tag
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.80"
+python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v${version}"
 ```
+
+**Windows PowerShell** uses the same CLI and platform contract; only the environment
+and executable paths differ:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+$version = (Invoke-RestMethod https://sn.igeewa.com/downloads/scriptnow-cli/version.txt).Trim()
+py -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-$version-py3-none-any.whl"
+scriptnow --version
+```
+
+If local activation scripts are disabled, call `.\.venv\Scripts\python.exe` and
+`.\.venv\Scripts\scriptnow.exe` directly instead of changing the execution policy.
 
 `scriptnow self-upgrade` (and the opt-in background auto-upgrade) prefer the production
 wheel host and fall back to codeload → git+https.
@@ -78,7 +95,7 @@ scriptnow login --host https://sn.igeewa.com --email you@example.com   # interac
 The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
 (cookie only, no password, mode 0600). Alternatively use the `SCRIPTNOW_BASE_URL` /
 `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` environment variables.
-On macOS/Linux, the CLI uses an inter-process lock for automatic refresh: different
+On macOS/Linux/Windows, the CLI uses an inter-process lock for automatic refresh: different
 projects can run concurrently without refresh-token overwrite, while creative writes
 within one project must remain serial to avoid candidate and version conflicts.
 
@@ -122,6 +139,12 @@ scriptnow novel propose <pid> cores @cores.json --review-token <submission-revie
 scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_id>
 scriptnow novel adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
 scriptnow novel propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
+scriptnow novel outline <pid> --text "one-line synopsis" --review-token <submission-review-token>
+scriptnow novel outline-adopt <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow novel rough-outline-example <pid>            # structural suggestion
+scriptnow novel rough-outline-check <pid> @rough_outline.json
+scriptnow novel rough-outline <pid> @rough_outline.json --review-token <submission-review-token>
+scriptnow novel rough-outline-adopt <pid> <candidate_id> --review-token <adoption-review-token>
 scriptnow novel propose <pid> storymap @storymap.json --review-token <submission-review-token>
 scriptnow novel planning-quality <pid> storymap @storymap.json  # full chapter-outline gate
 scriptnow novel orchestrate <pid> --skip-adopt               # read-only orchestration
@@ -145,6 +168,12 @@ scriptnow script propose <pid> cores @cores.json --review-token <submission-revi
 scriptnow review candidate-preview script <pid> story_core_candidate <candidate_id>
 scriptnow script adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
 scriptnow script propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
+scriptnow script outline <pid> --text "one-line synopsis" --review-token <submission-review-token>
+scriptnow script outline-adopt <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow script rough-outline-example <pid>            # structural suggestion
+scriptnow script rough-outline-start <pid>             # long-form isolated chain
+scriptnow script rough-outline-progress <pid>          # read back phase progress
+scriptnow script rough-outline-propose <pid> --review-token <submission-review-token>
 scriptnow script propose <pid> storymap @storymap.json --review-token <submission-review-token>
 scriptnow script planning-quality <pid> storymap @storymap.json  # full episode-outline gate
 # Writing loop
@@ -170,8 +199,8 @@ as a writer-facing export file yet.
 
 | Group | Purpose |
 |-------|---------|
-| guide | Focused newcomer flow (outline-first, layer by layer): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map; `--complete/--status` mark completion and show its status |
-| review | Human review loop: `preview` shows a local candidate / `candidate-preview` shows the canonical platform planning candidate / `status` reads feedback / `confirm` records one decision / `claim` lets the Agent claim a one-time credential; the page is optional |
+| guide | Focused newcomer flow (fixed 12-step order: login → project → direction → cores & blueprint → synopsis → rough outline → StoryMap with episode/chapter outlines → Skill → prose → review → export → done): `--step 1..12 --medium novel|script`; `--pulse/--resume` provide soft return; `--steps` shows the full map; `--complete/--status` mark completion and show its status |
+| review | Human review loop: `propose-preview` derives the platform review scope for outline/cores/blueprint/storymap, `preview` is the advanced generic preview, and `candidate-preview` shows the canonical platform candidate; after an explicit human decision, `confirm` records the exact words, `status` reads feedback, and `claim` returns the one-time credential |
 | project | Projects: create / list / **files (project files)** / upload / **use (set as default project)** / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
@@ -179,7 +208,7 @@ as a writer-facing export file yet.
 | scene | Script scenes (the script-side counterpart of chapter): list / show / generate / adopt (alias of script adopt-scene) / propose (local return) / batch / quality / diff |
 | storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; Novel uses whole-book chapter ranges, not forced volumes)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
-| authorize | Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes |
+| authorize | **DEPRECATED** — Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes. New flows use `review confirm → claim → --review-token` instead |
 | novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / bootstrap / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)**; rebuilding requires the novel rough outline adopted first, phases use whole-book chapter ranges and do not force one phase per volume |
 | script | Script chain: outline / outline-adopt / outline-status / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / story-cores / blueprint / adopt-blueprint / adopt-core / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads)** |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
@@ -255,9 +284,8 @@ These commands are normally run by the Agent behind the conversation:
 ```bash
 # Show and register the complete candidate; this does not write creative content
 scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
-# After the user's one clear decision, record the words and claim a one-time credential
-# Human-only interactive terminal confirmation; automation/--json is rejected.
-scriptnow review confirm <packet-id>
+# After the user's one clear decision, record the exact words and claim a one-time credential
+scriptnow review confirm <packet-id> --decision retain --evidence "Keep this version and continue." --json
 scriptnow review status <packet-id> --json
 scriptnow review claim <packet-id> --json
 # On adjustment, read the feedback, revise, and preview again; never reuse the old credential

@@ -407,6 +407,10 @@ def test_novel_ready_check_ignores_disabled_skill_mounts(monkeypatch):
 def test_guide_focuses_one_creative_decision_and_adapts_script_path():
     runner = CliRunner()
 
+    # New 12-step order: step 4 = story cores & blueprint (script path overrides
+    # to propose cores / adopt-core), step 5 = synopsis outline, step 6 = rough
+    # outline, step 7 = StoryMap with episode outlines, step 9 = scene dual-mode,
+    # step 10 = review & revise.
     focused = runner.invoke(
         main, ["guide", "--step", "4", "--medium", "script", "--json"]
     )
@@ -416,15 +420,18 @@ def test_guide_focuses_one_creative_decision_and_adapts_script_path():
     assert payload["medium"] == "script"
     assert payload["step"]["step"] == 4
     assert len(payload["step"]["lenses"]) == 3
-    assert "script outline" in payload["step"]["command"]
+    assert "scriptnow script propose <作品号> cores" in payload["step"]["command"]
     assert payload["step"]["next_step"]["step"] == 5
     assert "一次只处理一个决定" in payload["step"]["interaction"]["decision"]
 
     script_map = runner.invoke(main, ["guide", "--steps", "--medium", "script", "--json"])
     assert script_map.exit_code == 0
     map_payload = json.loads(script_map.output)
-    assert "script outline" in map_payload["steps"][3]["command"]
-    assert "episode-outline" in map_payload["steps"][6]["command"]
+    assert "scriptnow script propose <作品号> cores" in map_payload["steps"][3]["command"]
+    assert "script outline" in map_payload["steps"][4]["command"]
+    assert "rough-outline" in map_payload["steps"][5]["command"]
+    assert "storymap" in map_payload["steps"][6]["command"]
+    assert "episode-outline" in map_payload["steps"][6]["command"] or "集纲" in map_payload["steps"][6]["verify"]
     assert "scene quality" in map_payload["steps"][9]["command"]
 
     # 人类默认入口只展示第一幕，不再输出十二步命令墙。

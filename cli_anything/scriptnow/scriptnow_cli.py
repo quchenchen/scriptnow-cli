@@ -39,10 +39,18 @@ from cli_anything.scriptnow.utils.upgrade import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+SYNOPSIS_HARD_MAX_CHARS = 1_000
 
 
 class AgentJsonGroup(click.Group):
     """Keep every ``--json`` failure machine-readable and traceback-free."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # The root callback runs before Click invokes the subcommand callback,
+        # so its json_output option cannot see a command-local --json. Preserve
+        # the invocation-wide machine-output intent for that callback.
+        ctx.meta["scriptnow_invocation_json"] = "--json" in args
+        return super().parse_args(ctx, args)
 
     def main(self, *args: Any, **extra: Any) -> Any:
         cli_args = extra.get("args")
@@ -285,16 +293,20 @@ _MAIN_HELP = (
     + "\n\n"
     + """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 
-典型流程（Agent 或创作者）：
-  1. scriptnow project create --name 新作 --medium novel   # 建项目
-  2. scriptnow interpret go 手稿.docx                       # 一书一 Skill：上传作品解读出创作方法论
-  3. scriptnow storymap generate <pid>                      # 规划全书卷章节（后台，拿 run_id 后轮询 run status）
-  4. scriptnow book <pid>                                   # 查看全书托管创作规划
-  5. scriptnow chapter generate <pid> chapter-1-1           # 逐章生成（后台；run status <run_id> 轮询到完成；Agent 审读后带 feedback 修正）
-  6. scriptnow cover generate <pid> --image-model-id <id>   # 生成封面
-  7. scriptnow export create <pid> --units chapter-1-1      # 导出成书
-  8. scriptnow export download <pid> <manifest> -o 书.docx  # 下载交付
-  # Agent 注意：生成命令不带 --wait（宿主工具轮候窗口有限），用 run status 分次轮询
+典型流程（Agent 或创作者，固定 12 步引导顺序）：
+  1. scriptnow login --host https://sn.igeewa.com --email <邮箱>   # 登录平台
+  2. scriptnow project create --name 新作 --medium novel           # 建项目
+  3. scriptnow project direction --apply @direction.json           # 补齐创作方向
+  4. novel propose cores/blueprint → adopt-core / adopt-blueprint  # 故事核心与蓝图（回填优先，planning-quality 门禁）
+  5. scriptnow novel outline <pid> --text "一句梗概" → outline-adopt  # 故事梗概
+  6. scriptnow novel rough-outline-example <pid> → rough-outline → rough-outline-adopt  # 全剧统筹与粗纲
+  7. novel propose storymap @storymap.json → adopt-storymap        # StoryMap 与集纲/章纲一体交付
+  8. scriptnow skill craft / interpret local → preflight → 挂载    # 一书一 Skill
+  9. scriptnow chapter generate <pid> chapter-1-1                  # 逐章正文（后台；run status 轮询；平台主笔默认）
+  10. scriptnow chapter show --plain → chapter quality             # 审读与修订
+  11. scriptnow cover generate <pid> --image-model-id <id> → export create → export download  # 包装与导出
+  12. scriptnow guide --complete                                   # 标记引导完成
+  # Agent 注意：规划三件套（cores/blueprint/storymap）默认本地生成后 propose 回填，不经 --wait 长阻塞，用 run status 分次轮询
 
 剧本同理：medium=script，用 script scene / script storymap / export --domain script。
 更多：每个子命令 -h 查看；所有命令支持 --json 输出结构化结果。"""
@@ -335,8 +347,9 @@ def main(
     ctx.obj["json"] = json_output
     ctx.obj["no_color"] = no_color
     # 强制版本检查：后台低频（24h 缓存）查询 GitHub 发布镜像，有新版时提示
-    # 升级（不阻塞任何命令，失败静默）。
-    if not json_output:
+    # 升级（不阻塞任何命令，失败静默）。子命令自己的 --json 同样是
+    # 机器输出契约；根组尚未解析到它时，仍须避免启动会异步写输出的检查。
+    if not json_output and not ctx.meta.get("scriptnow_invocation_json", False):
         maybe_warn_in_background()
     if ctx.invoked_subcommand is None:
         click.echo(ui.banner(VERSION))
@@ -493,7 +506,7 @@ def authorize_cmd(
     evidence: str,
     json_output: bool,
 ) -> None:
-    """签发一次性「人工决策授权令牌」（对话内文字授权通道）。
+    """【已弃用】签发一次性「人工决策授权令牌」（对话内文字授权通道），仅保留兼容，新流程请改用 review confirm → claim 通道。
 
     复用当前登录会话签发，**不要求重新登录**。用户在对话里明确授权定稿后，
     运行本命令拿到一次性 token（15 分钟有效），agent 用
@@ -1003,7 +1016,7 @@ def doctor_cmd(
 @click.option("--status", is_flag=True, help="查看新手模式完成状态")
 @click.option("--json", "json_output", is_flag=True)
 def guide(steps: bool, step: int | None, medium: str, resume: bool, pulse: str | None, complete: bool, status: bool, json_output: bool) -> None:
-    """新手模式：编辑/编剧视角介绍核心能力、共创愿景，并给出完成一部完整作品的向导。"""
+    """新手模式：固定 12 步创作向导（1 登录 → 2 创建 → 3 方向 → 4 故事核心与蓝图 → 5 故事梗概 → 6 全剧统筹与粗纲 → 7 StoryMap 与集纲/章纲一体 → 8 挂载 Skill → 9 逐章/逐场创作 → 10 审读与修订 → 11 包装与导出 → 12 标记完成）。只跟随当前返回的 next_step，一次一个决定。"""
     import time as _time
 
     if complete:
@@ -1029,7 +1042,7 @@ def guide(steps: bool, step: int | None, medium: str, resume: bool, pulse: str |
         return
 
     if (resume or pulse) and step is None:
-        raise click.ClickException("--resume/--pulse 需要同时指定 --step <1..10>，以免猜测当前创作位置")
+        raise click.ClickException("--resume/--pulse 需要同时指定 --step <1..12>，以免猜测当前创作位置")
     if step is not None:
         guide_payload = (
             _guide_pulse(step, medium, pulse)
@@ -1053,10 +1066,12 @@ _AGENT_CONTRACT = {
     "title": "ScriptNow Agent 操作契约 —— 连接平台前必读",
     "audience": "在 ScriptNow 平台上创作小说/剧本的 AI Agent。以本契约为唯一操作准则；本契约与平台后端返回为准，优先于任何对平台的猜测。",
     "rules": [
+        "创作顺序铁律（12 步 guide 顺序）：故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付 → 正文。粗纲依赖已采纳的核心/蓝图锚点与梗概；禁止先排 StoryMap 或先写正文再补粗纲。",
+        "authorize 命令与旧版 decision-token 通道已弃用：所有采纳授权统一走 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 目标采纳命令的 `--review-token <凭证>`；CLI authorize 仅保留兼容输出并标记 deprecated，新流程不再引导使用。",
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
-        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
+        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 呈现正文 → 用户明确采用 → 完整执行 review confirm 和 review claim 命令 → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选并走同一审阅、采纳链。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "创意方向与蓝图不得只交付占位文本：cores 必须展开完整前提、五类差异化角度与领域细节。blueprint 覆盖六类锚点；description 应说明主体、机制/变化与后果，通常 50–200 字、复杂内容可更长。字数仅作指导，不参与强制门禁。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
@@ -1074,18 +1089,18 @@ _AGENT_CONTRACT = {
         "生成类命令（storymap/chapter/scene generate）默认后台执行并立即返回 run_id，禁止用 --wait 长阻塞等待（宿主工具轮候窗口有限，会超时被杀）。用 scriptnow run status <run_id> 分次轮询直到 succeeded/failed；失败时按 status.error/detail 修正，并用 scriptnow run events <run_id> --json 读取事件 JSON（无事件固定为 events=[]）。交互式终端才可 --wait，并可用 SCRIPTNOW_WAIT_MAX_SECONDS 限制单次等待。",
         "StoryMap 修订是超级高危操作：采纳（storymap adopt）会覆盖当前结构、改变保留章节的标题/字数并影响已采纳正文。只有主编/作者本人明确授权（CLI 需 --confirm，平台需勾选知情确认）才可执行；Agent 不得代替用户采纳 storymap，也不得在未获授权时自行 propose+adopt 重构。被替换的旧结构与各章正文快照会自动归档，可在平台「结构历史」中查看与导出。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享，tenant 级）：命名保存一次即可跨项目按 key 复用。`storymap structure-save <key> @structure.json [--description 说明] [--medium novel|script|both]` 存库（描述与适用类型是可选元数据，帮助挑选结构）；`storymap structures` 列出内置与已存模板（含适用类型与描述）；`storymap structure-delete <key>` 删除。项目按 key 引用（project create --structure <key> 或 direction structure=<key>），未知 key 按 custom 兜底，不视为错误；已建项目的既定计划不受删除影响。",
-        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 粗纲必须完整讲述阶段剧情；长篇项目用 `scriptnow script rough-outline-start` 开隔离链，逐阶段 `rough-outline-phase` 回填并 `rough-outline-progress` 回读，上游返工用 --restart-from 使下游失效，全部完成后 `rough-outline-propose` 形成完整候选。最低篇幅和事件数由 `rough-outline-example` 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链（`scriptnow novel rough-outline-example` → `rough-outline-check` → `rough-outline` 回填 → `rough-outline-adopt`），无分阶段隔离链；novel 的隔离重建走 storymap-rebuild-* 镜像链。",
+        "粗纲（分集/分章大纲·粗纲）是集纲/章纲之前的叙事阶段层。Script 长篇必须用 `scriptnow script rough-outline-start <作品号> --json` 开隔离链；每阶段依次执行 `scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json`、用户明确决定后的完整 review confirm 和 review claim 命令、`scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json`，再以 `scriptnow script rough-outline-progress <作品号> --json` 回读。全部完成后先审阅汇总，再执行 `scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json` 形成完整候选。上游返工用 --restart-from 使下游失效。最低篇幅和事件数由 rough-outline-example 动态返回，禁止一句话粗纲。Novel 粗纲为平铺链，无分阶段隔离链。",
         "StoryMap 隔离重建（script/novel 镜像链）：已有 StoryMap 重建必须用该域 `scriptnow script storymap-rebuild-start` / `scriptnow novel storymap-rebuild-start` 开隔离会话（script 命令族 `storymap-rebuild/rebuild-phase/rebuild-phase-preview/rebuild-check/rebuild-propose`；novel 同形六命令）。必须先采纳该域粗纲（粗纲位于集纲/章纲之前）；script 逐阶段（阶段=集区间，比例按每集场数即 volume_two 解释）rebuild-check（重复度/因果/场名/状态变化）后 rebuild-phase 累积 episodes，novel 逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积 chapters，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档：novel 用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份；script 同样用 `scriptnow script storymap-archives <pid>` 列出、`script storymap-archive <pid> <archive_id>` 查看单份（含旧集场结构与各场正文快照）。禁止一次生成完整 80 集/长卷。",
         "报告完成必须以服务器回读为据：任何写操作（创建项目/规划/回传/采纳/生成/导出）成功 = 服务器返回了 project_id / candidate_id / revision_id / run_id，并在成功后回读平台确认落盘。没有服务器返回的 ID 与回读确认，不得向用户报告『已完成』；不得用本地文件或文字自述代替平台状态。project create 后立即回读 project list 核对项目存在。",
-        "人机协作铁律：任何用户明确输入的『保留 / 调整 / 换方向』都属于人类决定，无论发生在对话还是平台页面。Agent 可以用 review confirm 原样登记这句话，再 status/claim 并执行授权写入；但严禁自行推断、伪造决定，或把沉默、泛泛称赞当作保留。",
+        "人机协作铁律：任何用户明确输入的『保留 / 调整 / 换方向』都属于人类决定，无论发生在对话还是平台页面。Agent 只能用带 packet_id、decision 与 evidence 的完整 review confirm 命令原样登记这句话，再用完整 review claim 命令取得凭证并执行授权写入；严禁自行推断、伪造决定，或把沉默、泛泛称赞当作保留。",
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
         "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --point-of-view <视角> --chapter-target-words 1200；script 项目另设 --volume-one 总集数 --volume-two 每集场数 --volume-three 单集目标分钟（默认 3）（创建后立即 scriptnow project list 回读核对项目存在）",
-        "规划链逐层（梗概 → 粗纲 → 集纲/章纲+storymap 一体）：novel 先 novel outline（梗概）采纳，再 novel rough-outline 平铺链（rough-outline-example → rough-outline-check → rough-outline → rough-outline-adopt）；script 用 script outline 采纳后 script rough-outline-start 分阶段链（-phase/-progress/-propose）。",
+        "规划链逐层（故事核心与蓝图 → 梗概 → 粗纲 → storymap）：对 cores/blueprint 先用 review preview 审阅本地文件，再 propose 回填、candidate-preview 审阅平台候选、confirm/claim。小说故事核心执行 `scriptnow novel adopt-core <作品号> <候选号> --review-token <凭证>`，剧本故事核心执行 `scriptnow script adopt-core <作品号> <候选号> --review-token <凭证>`；蓝图分别执行 `scriptnow novel adopt-blueprint <作品号> <候选号> --review-token <凭证>` 或 `scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证>`。再采纳 outline、粗纲和集纲/章纲一体的 StoryMap；每个写入都以平台返回的 ID 和回读为准。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
-        "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → adopt --human。没有明确决定不得继续。",
+        "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`。没有明确决定不得继续。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
@@ -1100,14 +1115,18 @@ _AGENT_CONTRACT = {
 # available through `--full` for a human or a deliberate deep inspection.
 _AGENT_RUNTIME_CONTRACT = {
     "guide": "scriptnow-agent-runtime-contract",
-    "contract_version": "3",
+    "contract_version": "4",
     "title": "ScriptNow Agent 运行契约",
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
         "任何平台操作前先运行 scriptnow agent-guide --json，并运行 scriptnow guide --status --json；新手模式未完成时按 guide --step <n> 一幕一幕推进，不得跳过引导后自行乱跑。",
+        "创作顺序固定为 12 步（guide --step 1..12）：登录 → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
+        "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
+        "正文双模式默认平台主笔：未明确选择时一律 chapter/scene generate 平台候选 → review preview 呈现正文 → 用户明确决定 → `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 带完整位置参数和 --human/--review-token 的采纳命令；仅当用户明确选择本地创作时才由 Agent 本地写好正文 → chapter/scene propose 回填候选并走同一审阅、采纳链。",
+        "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
-        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview 审读 → adopt），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选 → review preview 审读 → adopt --human。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
+        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview → confirm/claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选并走同一链。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
         "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
         "创意方向与蓝图必须充分：cores 展开完整前提/概念、五类差异化角度及领域方法细节；blueprint 覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点并写具体 description。propose/adopt 均强制 planning-quality=pass，revise/block 必须修正后重传。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
@@ -1121,12 +1140,25 @@ _AGENT_RUNTIME_CONTRACT = {
         "CLI 质量诊断只能由用户主动开启：Agent 不得自行执行 doctor --enable-diagnostics、feedback --send 或 --yes；即使用户要求限时开启，发送前仍须取得单独明确确认。",
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
-        "粗纲是集纲/章纲之前的叙事阶段层。Script 必须先读取 rough-outline-example（其中含可复制的 key_beats[{title,description,anchor_ids}] 模板），再 start。每阶段固定 rough-outline-phase-preview → 在对话展示 human_preview 并等待人 → rough-outline-phase-continue；continue 在 previewed 状态只返回 waiting_for_human，active 后自动 claim+回填。禁止把 packet_id 当 token，也禁止重复 preview 未变化内容。",
-        "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填300–500字梗概候选，不跳到粗纲、集纲/章纲或正文。",
+        "粗纲是集纲/章纲之前的叙事阶段层。Script 必须先读取 `scriptnow script rough-outline-example <作品号> --json`，再运行 `scriptnow script rough-outline-start <作品号> --json`。每阶段固定 `scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json` → 用户明确决定 → 完整执行 review confirm 和 review claim 命令 → `scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json` → `scriptnow script rough-outline-progress <作品号> --json`。禁止把 packet_id 当 token，也禁止重复 preview 未变化内容。",
+        "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选（建议 300–500 字、以因果完整为准，复杂项目硬上限 1000 字），不跳到粗纲、集纲/章纲或正文。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
         "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
     ],
-    "quickstart": ["scriptnow --help", "scriptnow agent-guide --full（仅需人工完整参考时）"],
+    "quickstart": [
+        "scriptnow --help",
+        "scriptnow agent-guide --json（第一个动作）",
+        "scriptnow guide --step 1 --medium novel|script --json（按 next_step 逐幕推进到 12）",
+        "故事核心与蓝图：按 guide 第 4 步先审阅本地文件、propose 回填、审阅平台候选、confirm/claim，再用带 <作品号> <候选号> 和 --review-token 的 adopt-core/adopt-blueprint 采纳。",
+        "故事梗概：novel outline <作品号> --text \"一句梗概\" → novel outline-status → novel outline-adopt",
+        "粗纲：按 guide 第 6 步；script 长篇始终使用完整 `scriptnow script rough-outline-start/phase-preview/phase/progress/propose` 命令链，并在每次平台写入后保存返回值、回读进度。",
+        "StoryMap 一体：review propose-preview → novel propose storymap @storymap.json → review candidate-preview → 用户明确决定 → novel adopt-storymap（planning-quality 通过）；补纲用 chapter outline / outline-batch",
+        "Skill 门禁：skill craft / interpret local → 预检试写 → 挂载",
+        "正文：默认 platform generate，用户明确本地创作时才 propose；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
+        "审读：chapter show <作品号> <章号> --plain → chapter quality → 修订后重审",
+        "导出：export create / preview / download；封面 cover package / generate",
+        "完成：scriptnow guide --complete（仅关闭引导提示，作品闭环以平台导出为准）",
+    ],
     "format_hint": "具体 JSON 结构只以目标 propose 命令的 --help-format / --example 为准。",
     "next_action": "用自然语言说明当前事实和一个需要用户决定的下一步，再执行精确 CLI 命令。",
 }
@@ -1167,15 +1199,15 @@ _GUIDE_STEPS = [
                 "name": "黑泽明",
                 "quote": "创作是美妙的。",
                 "source": "纪录片《黑泽明：创作是美妙的》",
-                "how": "今天你推开的不是软件，而是一间工作室——大师们把一生献给的事，现在轮到你来体会它的美妙。",
+                "how": "今天你推开的不是软件，而是一间工作室——大师们把一生献给的事，现在轮到你来体会它的美妙。"
             },
             {
                 "name": "鲁迅",
                 "quote": "哪里有天才？我是把别人喝咖啡的工夫都用在工作上的。",
                 "source": "鲁迅自述（学生回忆录所载）",
-                "how": "创作从来不是天赋的专利，而是日复一日坐在桌前。今天你坐下来了，这就是全部的开始。",
-            },
-        ],
+                "how": "创作从来不是天赋的专利，而是日复一日坐在桌前。今天你坐下来了，这就是全部的开始。"
+            }
+        ]
     },
     {
         "step": 2,
@@ -1183,10 +1215,7 @@ _GUIDE_STEPS = [
         "scene": "在空白稿纸上写下第一行：作品名、体裁、一句话前提——故事从这里开始呼吸。",
         "why": "先为你的故事建一个家：定下体裁（小说/剧本）与一句话前提，之后的创作都围绕它展开。",
         "downstream": "项目拿到唯一平台编号（project_id），后续规划、正文、导出都挂在这个 id 上。",
-        "command": (
-            "scriptnow project create --name <作品名> --medium novel --premise <一句话前提> "
-            "--genre <类型> --tone <文风> --chapter-target-words 1200"
-        ),
+        "command": "scriptnow project create --name <作品名> --medium novel --premise <一句话前提> --genre <类型> --tone <文风> --chapter-target-words 1200",
         "verify": "返回作品编号；保存它（下文用 <作品号> 代替）。",
         "prompt": "如果只能用一个画面来概括你的故事，那会是什么？",
         "masters": [
@@ -1194,15 +1223,15 @@ _GUIDE_STEPS = [
                 "name": "海明威",
                 "quote": "一切初稿都是狗屎。",
                 "source": "访谈中对《巴黎评论》所说",
-                "how": "别怕写得不好——海明威都这么说过。你要做的只是开始，剩下的交给共创与打磨。",
+                "how": "别怕写得不好——海明威都这么说过。你要做的只是开始，剩下的交给共创与打磨。"
             },
             {
                 "name": "老舍",
                 "quote": "把普通的字用得飘飘欲仙，见出作者的苦心孤诣。",
                 "source": "《老舍谈写作》",
-                "how": "前提不必惊艳，真诚就好。老舍说，功夫在把寻常字用得见匠心——你的故事也一样。",
-            },
-        ],
+                "how": "前提不必惊艳，真诚就好。老舍说，功夫在把寻常字用得见匠心——你的故事也一样。"
+            }
+        ]
     },
     {
         "step": 3,
@@ -1218,115 +1247,105 @@ _GUIDE_STEPS = [
                 "name": "黑泽明",
                 "quote": "你必须学习并经历各种事。",
                 "source": "《蛤蟆的油》",
-                "how": "方向不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。",
+                "how": "方向不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。"
             },
             {
                 "name": "塔可夫斯基",
                 "quote": "导演工作的本质，可以定义为雕刻时光。",
                 "source": "《雕刻时光》",
-                "how": "每一次设定，都是你在雕刻将要呈现的时光——方向定得越清晰，刻出的光影越动人。",
-            },
-        ],
+                "how": "每一次设定，都是你在雕刻将要呈现的时光——方向定得越清晰，刻出的光影越动人。"
+            }
+        ]
     },
     {
         "step": 4,
-        "title": "先写梗概，定下全书走向",
-        "scene": "在动笔前，先给整部作品写一段梗概：主角要什么、阻力是什么、最终走向哪里。梗概是旅程的第一句导航。",
-        "why": "新流程先定梗概（≤500 字）：梗概采纳后 StoryMap 才可规划。这是逐层深入的第一步，避免一开始就锁死结构。",
-        "downstream": "梗概是 StoryMap 结构规划的前置门槛——先定「一句话故事」，卷章结构才有的放矢。",
-        "command": "scriptnow novel outline <作品号> --text \"一句梗概\" → novel outline-adopt <作品号>（先定梗概）",
-        "verify": "梗概大纲已采纳（novel outline-status 显示已定稿）。",
-        "prompt": "如果用一段话说清全书走向，你会怎么说？主角最想要什么，又最怕失去什么？",
-        "masters": [
-            {
-                "name": "契诃夫",
-                "quote": "简洁是天才的姐妹。",
-                "source": "契诃夫书信",
-                "how": "梗概的意义就在于此：把千头万绪收拢成一段话、一个走向，落笔时才能干净、准确、有力。",
-            },
-            {
-                "name": "马尔克斯",
-                "quote": "生活不是我们活过的日子，而是我们记住的日子。",
-                "source": "《活着为了讲述》",
-                "how": "梗概，是你为这趟旅程写下的第一句导航——读者会记住的，正是你从这里开始挑选的日子。",
-            },
-        ],
-    },
-    {
-        "step": 5,
         "title": "立故事核心与创作蓝图",
-        "scene": "摊开编剧的案头：先让一到三个故事方向互相比较，选一个最值得生长的；再为它画创作蓝图——人物、关系、世界、情感弧线。",
-        "why": "故事核心定方向，创作蓝图立骨架：人物为何行动、关系如何变化、情节怎样升级、承诺如何回收。",
-        "downstream": "cores 定人物/世界观根因、blueprint 定锚点；后续 StoryMap 的 beats 与每章章纲的 anchor_ids 都引用这些锚点，因果才不会断。",
-        "command": "review preview → novel propose cores → review candidate-preview → novel adopt-core；blueprint 同样分两次决定",
-        "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
-        "prompt": "这个故事里，你最想让哪一层先立起来：人物、关系、还是世界？",
+        "scene": "故事需要一个地基：先发散三个真正不同的故事方向供你挑选；选定后，用六类锚点（世界、人物、关系、人物弧、情节、伏笔）把世界的规则立起来。",
+        "why": "故事核心与蓝图是后续一切规划的依赖：粗纲、StoryMap 与正文的锚点都来自已采纳的蓝图，所以必须先于梗概与粗纲完成。",
+        "downstream": "蓝图采纳后自动种下人物圣经草稿；梗概、粗纲与 StoryMap 才有锚点可引用。",
+        "command": "Agent 按平台返回的 resource_kind/resource_id 审阅本地 @cores.json：scriptnow review preview <作品号> <resource_kind> <resource_id> @cores.json --title \"故事核心回填审阅\" --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel propose <作品号> cores @cores.json --review-token <凭证> --json → 取 <候选号> → scriptnow review candidate-preview novel <作品号> story_core_candidate <候选号> --title \"故事核心采纳审阅\" --json → confirm/claim → scriptnow novel adopt-core <作品号> <候选号> --review-token <凭证> --json；blueprint 同样完整走 propose、candidate-preview、confirm/claim、scriptnow novel adopt-blueprint <作品号> <候选号> --review-token <凭证> --json。",
+        "verify": "故事核心与蓝图均已采纳（planning-quality 通过）。",
+        "prompt": "如果只能留一个让故事成立的念头，你留哪一个？",
         "masters": [
             {
                 "name": "黑泽明",
                 "quote": "你必须学习并经历各种事。",
                 "source": "《蛤蟆的油》",
-                "how": "蓝图不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。",
+                "how": "蓝图不是束缚，是你在为自己储备的经验——它让之后每一章都站在坚实的地基上。"
             },
             {
                 "name": "塔可夫斯基",
                 "quote": "导演工作的本质，可以定义为雕刻时光。",
                 "source": "《雕刻时光》",
-                "how": "每一次设定，都是你在雕刻将要呈现的时光——核心与蓝图定得越清晰，刻出的光影越动人。",
+                "how": "每一次设定，都是你在雕刻将要呈现的时光——核心与蓝图定得越清晰，刻出的光影越动人。"
+            }
+        ]
+    },
+    {
+        "step": 5,
+        "title": "先写故事梗概，定下全书走向",
+        "scene": "核心与蓝图已定：现在建议用一段 300–500 字的梗概把整本书的走向钉住；复杂项目可展开，但硬上限是 1000 字。",
+        "why": "梗概冻结叙事视角与全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选，不跳到粗纲或正文。",
+        "downstream": "梗概采纳后，粗纲与 StoryMap 的集纲/章纲才有走向依据。",
+        "command": "本地写 @outline.txt（建议 300–500 字，复杂项目硬上限 1000 字）→ scriptnow review propose-preview novel <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json → scriptnow review candidate-preview novel <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow novel outline-adopt <作品号> --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json",
+        "verify": "梗概大纲已采纳（novel outline-status 显示已定稿）。",
+        "prompt": "如果一句话让读者记住你的故事，你会说哪一句？",
+        "masters": [
+            {
+                "name": "契诃夫",
+                "quote": "简洁是天才的姐妹。",
+                "source": "契诃夫书信",
+                "how": "梗概的意义就在于此：把千头万绪收拢成一段话、一个走向，落笔时才能干净、准确、有力。"
             },
-        ],
+            {
+                "name": "马尔克斯",
+                "quote": "生活不是我们活过的日子，而是我们记住的日子。",
+                "source": "《活着为了讲述》",
+                "how": "梗概，是你为这趟旅程写下的第一句导航——读者会记住的，正是你从这里开始挑选的日子。"
+            }
+        ]
     },
     {
         "step": 6,
-        "title": "排卷章结构（StoryMap）",
-        "scene": "把全书拆成一卷卷、一章章——像为故事画出时间的地图。采纳前一切可改，采纳后才是定稿的结构。",
-        "why": "StoryMap 规划卷、章与故事节拍；采纳后成为正文的唯一结构事实源。新流程要求先有已采纳梗概，才能规划结构。",
-        "downstream": "采纳后成为全书唯一结构事实源；逐章写作、导出、故事图谱都基于它。",
-        "command": "review preview → novel propose storymap @storymap.json --review-token <凭证> → review candidate-preview → 人明确采用 → storymap adopt --review-token <凭证>",
-        "verify": "结构已定稿，创作计划可打印（book）。",
-        "prompt": "这一卷卷、一章章里，哪一章让你最期待动笔？",
-        "masters": [
-            {
-                "name": "王家卫",
-                "quote": "电影是时间的艺术。",
-                "source": "访谈",
-                "how": "结构就是你对时间的安排——这一卷卷、一章章，是你亲手为故事量出的节奏。",
-            },
-            {
-                "name": "宫崎骏",
-                "quote": "创作就是生活本身。",
-                "source": "访谈（转述其创作理念）",
-                "how": "采纳结构的那一刻，这部作品开始真正属于你——接下来的每一章，都是你生活的一部分。",
-            },
-        ],
-    },
-    {
-        "step": 7,
-        "title": "章纲随 StoryMap 交付，逐章写作",
-        "scene": "新章节随 StoryMap 一体交付完整章纲——这一章的事件链、目标、冲突、转折、状态变化。新章未带完整章纲不能进入写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响。",
-        "why": "章纲/集纲是每章写作的控制性契约（summary、active_goal、conflict、turn、state_changes、锚点）。新章带完整章纲并通过 planning-quality 后，逐章写作才逐层开放。",
-        "downstream": "新章带完整章纲并通过 planning-quality 后，逐章写作才开放；历史章（已有正文）可读可写不受阻。",
-        "command": (
-            "scriptnow chapter outline-batch <作品号> @outlines.json（批量补齐章纲）或 "
-            "chapter outline <作品号> <章节号> @outline.json（单章）→ "
-            "novel planning-quality <作品号> storymap @storymap.json 门禁"
-        ),
-        "verify": "新章节均带完整章纲并通过 planning-quality；历史章节保持可读可写。",
-        "prompt": "这一章最想完成什么？它的事件链清晰了吗？",
+        "title": "全剧统筹与粗纲",
+        "scene": "梗概之后先统筹全剧/全书：按叙事阶段把故事展开成一段段具体剧情纲要，再逐段深化，禁止一句话粗纲。",
+        "why": "粗纲位于集纲/章纲之前：先写清每段剧情纲要（key_beats + 已采纳蓝图锚点），长篇按阶段分批回填（script 用隔离链、novel 用平铺链），这是 StoryMap 与集纲/章纲一体交付的前提。",
+        "downstream": "粗纲采纳后，StoryMap 与集纲/章纲才有一体的剧情依据；分集大纲导出也依赖粗纲。",
+        "command": "小说平铺链：scriptnow novel rough-outline-example <作品号> --json → 本地生成 @rough_outline.json → scriptnow novel rough-outline-check <作品号> @rough_outline.json --json → scriptnow review preview <作品号> rough_outline <作品号> @rough_outline.json --title \"粗纲回填审阅\" --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel rough-outline <作品号> @rough_outline.json --review-token <凭证> --json → 取 <候选号> → scriptnow review candidate-preview novel <作品号> rough_outline_candidate <候选号> --title \"粗纲采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow novel rough-outline-adopt <作品号> <候选号> --review-token <凭证> --json。script 长篇用完整隔离链：scriptnow script rough-outline-start <作品号> --json → scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json → scriptnow script rough-outline-progress <作品号> --json。全部阶段完成后：scriptnow review preview <作品号> rough_outline_build <构建会话号> @phases.json --title \"粗纲整体审阅\" --json → 用户明确决定 → confirm/claim 取得汇总凭证 → scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json。",
+        "verify": "粗纲已采纳且逐阶段连续覆盖全书/全剧，非一句话粗纲；回读时向人显示「阶段 X / 共 N 阶段」。",
+        "prompt": "你最想让读者在哪一段转折处屏住呼吸？",
         "masters": [
             {
                 "name": "斯蒂芬·金",
                 "quote": "关起门来写初稿，打开门来修改。",
                 "source": "《写作这回事》",
-                "how": "章纲不是枷锁，是让每一章都踏实地长在整部作品肌理里的根须——关门写初稿时，你不必在黑暗里摸索。",
+                "how": "章纲不是枷锁，是让每一章都踏实地长在整部作品肌理里的根须——关门写初稿时，你不必在黑暗里摸索。"
+            }
+        ]
+    },
+    {
+        "step": 7,
+        "title": "排 StoryMap 与集纲/章纲一体交付",
+        "scene": "粗纲已定：把故事排成卷章/集场结构，集纲/章纲随 StoryMap 一体交付——每集每章都带可审读的纲要，一次决定。",
+        "why": "StoryMap 不能只是容器：剧本每集必须带平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids，小说每章必须带 outline（summary/logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）；先用 planning-quality 全量检查再采纳。",
+        "downstream": "StoryMap 采纳后成为正文唯一结构事实源；逐章/逐场写作才开放。",
+        "command": "scriptnow review preview <作品号> storymap <作品号> @storymap.json --title \"StoryMap 回填审阅\" --json（集纲/章纲一体）→ 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel propose <作品号> storymap @storymap.json --review-token <凭证> --json → 取 <候选号> → scriptnow review candidate-preview novel <作品号> storymap_candidate <候选号> --title \"StoryMap 采纳审阅\" --json → confirm/claim → scriptnow storymap adopt <作品号> <候选号> --confirm --review-token <凭证> --json。",
+        "verify": "StoryMap 已采纳，集纲/章纲全量补齐并通过 planning-quality。",
+        "prompt": "结构里哪一段是你最想先写正文的？",
+        "masters": [
+            {
+                "name": "王家卫",
+                "quote": "电影是时间的艺术。",
+                "source": "访谈",
+                "how": "结构就是你对时间的安排——这一卷卷、一章章，是你亲手为故事量出的节奏。"
             },
             {
-                "name": "余华",
-                "quote": "写作的过程，就是不断发现自己内心真实想法的过程。",
-                "source": "余华谈写作（访谈）",
-                "how": "章纲帮你先想清楚这一章想抵达哪里，再动笔——每一章都更接近你心里那个真实的故事。",
-            },
-        ],
+                "name": "宫崎骏",
+                "quote": "创作就是生活本身。",
+                "source": "访谈（转述其创作理念）",
+                "how": "采纳结构的那一刻，这部作品开始真正属于你——接下来的每一章，都是你生活的一部分。"
+            }
+        ]
     },
     {
         "step": 8,
@@ -1336,7 +1355,7 @@ _GUIDE_STEPS = [
         "downstream": "方法论 Skill 挂载并验证后，逐章/逐场正文才有统一风格与连续性，是写作前的必然门禁。",
         "command": "scriptnow skill mounts <作品号>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照方法论规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <作品号>（或 skill create + skill mount）",
         "verify": "scriptnow skill mounts <作品号> 显示该方法论已挂载，且经样本试写验证规则有效。",
-        "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？",
+        "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？"
     },
     {
         "step": 9,
@@ -1344,27 +1363,23 @@ _GUIDE_STEPS = [
         "scene": "真正的共创时刻：Agent 递来一叠手稿，你逐页批注、润色、定稿。每一个字都有你的温度。",
         "why": "创作搭档递来手稿，你可以通读、局部审阅或批注。最终决定可在可视化审阅页完成，也可由你本人在交互式终端确认；Agent 不会代替你确认。",
         "downstream": "正文成为候选，经审读与修订后由你明确定稿（adopted_human），是后续质量审读与导出的素材。",
-        "command": (
-            "scriptnow book <作品号>（看计划）→ chapter show <作品号> <章节号> --plain（你通读全文）→ "
-            "chapter generate <作品号> <章节号> --feedback ...（或 chapter propose --file @blocks.json 回填）→ "
-            "用户在平台页或本人终端确认 → Agent 后台 status/claim → chapter adopt --human --review-token <凭证> <作品号> <章节号> <版本号>"
-        ),
-        "verify": "每一章都有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复确认或处理凭证。",
+        "command": "默认平台主笔：scriptnow chapter generate <作品号> <章节号>（后台，回读 run status）→ 用平台返回的审阅作用域 review preview 呈现正文 → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证> --json；仅当用户明确选择本地创作时：Agent 本地写好正文 → scriptnow chapter propose <作品号> <章节号> @blocks.json --review-token <凭证> --json 回填候选，再走同一审阅与采纳链。未明确选择一律按平台主笔。",
+        "verify": "当前章有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需复制凭证或重复确认。",
         "prompt": "这一章，你想让读者和主角一起经历什么？",
         "masters": [
             {
                 "name": "斯蒂芬·金",
                 "quote": "关起门来写初稿，打开门来修改。",
                 "source": "《写作这回事》",
-                "how": "你正站在门内：先让故事自由生长，改稿的事交给下一轮——这是每一位写作者的日常。",
+                "how": "你正站在门内：先让故事自由生长，改稿的事交给下一轮——这是每一位写作者的日常。"
             },
             {
                 "name": "余华",
                 "quote": "写作的过程，就是不断发现自己内心真实想法的过程。",
                 "source": "余华谈写作（访谈）",
-                "how": "每一章都是你与自己的一次对话——Agent 递来的手稿，帮你把心里那些模糊的念头说清楚。",
-            },
-        ],
+                "how": "每一章都是你与自己的一次对话——Agent 递来的手稿，帮你把心里那些模糊的念头说清楚。"
+            }
+        ]
     },
     {
         "step": 10,
@@ -1380,15 +1395,15 @@ _GUIDE_STEPS = [
                 "name": "海明威",
                 "quote": "好的写作，就像一座冰山，只露出八分之一。",
                 "source": "《死在午后》",
-                "how": "修订不是删减，是把水面下的七分之八想清楚——你每改一处，作品就沉得更稳。",
+                "how": "修订不是删减，是把水面下的七分之八想清楚——你每改一处，作品就沉得更稳。"
             },
             {
                 "name": "鲁迅",
                 "quote": "时间就是性命，无端地空耗别人的时间，其实是无异于谋财害命。",
                 "source": "鲁迅《门外文谈》",
-                "how": "修订也是对读者时间的尊重——你留下的每一句，都要对得起他翻过的每一页。",
-            },
-        ],
+                "how": "修订也是对读者时间的尊重——你留下的每一句，都要对得起他翻过的每一页。"
+            }
+        ]
     },
     {
         "step": 11,
@@ -1396,10 +1411,7 @@ _GUIDE_STEPS = [
         "scene": "杀青时刻：封面落定、包装成册、导出成品——手稿终于成为可以面世的作品。",
         "why": "封面、作品包装、导出格式——从手稿到可发布成品的一站式收尾。",
         "downstream": "封面与包装让作品可交付、可分享，是成书前的外观定型。",
-        "command": (
-            "scriptnow cover package <作品号> && scriptnow cover generate <作品号> --image-model-id <生图模型> && "
-            "scriptnow export options <作品号> && scriptnow export create <作品号>"
-        ),
+        "command": "scriptnow cover package <作品号> && scriptnow cover generate <作品号> --image-model-id <生图模型> && scriptnow export options <作品号> && scriptnow export create <作品号>",
         "verify": "拿到导出文件（或封面 URL）。",
         "prompt": "这部作品完成时，你想把它交给谁？",
         "masters": [
@@ -1407,15 +1419,15 @@ _GUIDE_STEPS = [
                 "name": "宫崎骏",
                 "quote": "创作就是生活本身。",
                 "source": "访谈（转述其创作理念）",
-                "how": "当手稿变成可以交付的作品，你才真正明白这句话——作品是活过的日子。",
+                "how": "当手稿变成可以交付的作品，你才真正明白这句话——作品是活过的日子。"
             },
             {
                 "name": "马尔克斯",
                 "quote": "活着，是为了讲述。",
                 "source": "《活着为了讲述》",
-                "how": "交付不是告别，是讲述的开始——从今天起，这部作品替你向世界说话。",
-            },
-        ],
+                "how": "交付不是告别，是讲述的开始——从今天起，这部作品替你向世界说话。"
+            }
+        ]
     },
     {
         "step": 12,
@@ -1431,16 +1443,16 @@ _GUIDE_STEPS = [
                 "name": "黑泽明",
                 "quote": "无论如何都要写到最后——只要放弃一次，就全完了。",
                 "source": "黑泽明谈创作（访谈）",
-                "how": "你写到了最后。今天这一步，值得被记住——它不是结束，是你创作生涯的第一个句点。",
+                "how": "你写到了最后。今天这一步，值得被记住——它不是结束，是你创作生涯的第一个句点。"
             },
             {
                 "name": "契诃夫",
                 "quote": "写的越多，就写得越好。",
                 "source": "契诃夫书信（转述其创作观）",
-                "how": "第一部作品是起点，不是终点。你已证明自己能把一个故事写完——接下来，去写更多。",
-            },
-        ],
-    },
+                "how": "第一部作品是起点，不是终点。你已证明自己能把一个故事写完——接下来，去写更多。"
+            }
+        ]
+    }
 ]
 
 
@@ -1463,10 +1475,10 @@ _GUIDE_CREATIVE_LENSES: dict[int, list[str]] = {
     1: ["一个忘不掉的人", "一个反复出现的画面", "一个让你不甘心的问题"],
     2: ["谁正在争取什么", "什么力量阻止了他/她", "失败后会失去什么"],
     3: ["读者应感到什么", "作品坚决不成为什么", "语言与节奏更接近哪种气质"],
-    4: ["一句话最想让读者记住什么", "最能体现故事独特性的走向", "结尾想停在哪一个画面"],
-    5: ["主角的欲望与代价", "不可逆的关键选择", "人物关系如何变化"],
-    6: ["最期待的一段", "最像套路的一段", "尚未被结构回答的问题"],
-    7: ["本章唯一任务", "人物在结束时发生的变化", "让读者继续下去的悬念"],
+    4: ["主角的欲望与代价", "不可逆的关键选择", "人物关系如何变化"],
+    5: ["一句话最想让读者记住什么", "最能体现故事独特性的走向", "结尾想停在哪一个画面"],
+    6: ["全剧最硬的一条因果主线", "值得用一整段展开的情节", "尚未被结构回答的问题"],
+    7: ["最期待的一段", "最像套路的一段", "哪一集/章还缺具体剧情"],
     8: ["必须始终遵守的写法", "最容易写偏的地方", "一眼就能识别的正反例"],
     9: ["这一章读者应带走的情绪", "人物最真实的一句话", "结尾的余味"],
     10: ["删掉也不影响故事的内容", "人物只是被剧情推着走的地方", "解释多于行动的句子"],
@@ -1476,35 +1488,13 @@ _GUIDE_CREATIVE_LENSES: dict[int, list[str]] = {
 
 
 _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
-    2: {
-        "command": "scriptnow project create --name <作品名> --medium script --premise <一句话前提> --genre <类型> --tone <影像与台词气质>",
-        "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。",
-    },
-    4: {
-        "command": "scriptnow script outline <作品号> --text \"一句梗概\" → script outline-adopt <作品号>（先定梗概）",
-        "verify": "梗概大纲已采纳（script outline-status 显示已定稿）。",
-    },
-    5: {
-        "command": "review preview → script propose cores → review candidate-preview → script adopt-core；blueprint 同样分两次决定",
-        "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。",
-    },
-    6: {
-        "command": "scriptnow script propose <作品号> storymap @storymap.json → script state <作品号> --json（审阅候选结构）→ 用户明确决定后采纳",
-        "verify": "季/集/场结构已采纳，成为正文唯一结构事实源。",
-    },
-    7: {
-        "command": "scriptnow script episode-outline <作品号> <集号> @outline.json（逐集补集纲）→ script planning-quality <作品号> storymap @storymap.json 门禁",
-        "verify": "全剧集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）已全量补齐并通过 planning-quality。",
-        "downstream": "新集带完整集纲并通过 planning-quality 后，逐场写作才开放；历史集（已有正文）可读可写不受阻。",
-    },
-    9: {
-        "command": "scriptnow scene list <作品号> → scene generate/propose → review preview → 用户在平台页或本人终端确认 → Agent 后台 status/claim → scene adopt --human --review-token <凭证>",
-        "verify": "当前场有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复终端、页面或凭证操作。",
-    },
-    10: {
-        "command": "scriptnow scene show <作品号> <场次号> --plain → scene quality <作品号> <场次号> → 按反馈修订",
-        "verify": "场次功能、可拍性、潜台词与转折无阻断项；用户决定保留什么、修改什么。",
-    },
+    2: {"command": "scriptnow project create --name <作品名> --medium script --premise <一句话前提> --genre <类型> --tone <影像与台词气质>", "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。"},
+    4: {"command": "按平台返回的审阅作用域：scriptnow review preview <作品号> <resource_kind> <resource_id> @cores.json --title \"故事核心回填审阅\" --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script propose <作品号> cores @cores.json --review-token <凭证> --json → scriptnow review candidate-preview script <作品号> story_core_candidate <候选号> --title \"故事核心采纳审阅\" --json → confirm/claim → scriptnow script adopt-core <作品号> <候选号> --review-token <凭证> --json；blueprint 同样走完整链，并用 scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证> --json。", "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。"},
+    5: {"command": "本地写 @outline.txt（建议 300–500 字，复杂项目硬上限 1000 字）→ scriptnow review propose-preview script <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow script outline-status <作品号> --json → scriptnow review candidate-preview script <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow script outline-adopt <作品号> --review-token <凭证> --json → scriptnow script outline-status <作品号> --json", "verify": "故事梗概已采纳（script outline-status 显示已定稿）。"},
+    6: {"command": "长篇隔离链：scriptnow script rough-outline-start <作品号> --json → scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json → scriptnow script rough-outline-progress <作品号> --json；全部阶段完成后：scriptnow review preview <作品号> rough_outline_build <构建会话号> @phases.json --title \"粗纲整体审阅\" --json → 用户明确决定 → confirm/claim 取得汇总凭证 → scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json。", "verify": "粗纲已采纳，逐阶段深化且连续覆盖全剧，非一句话粗纲；回读显示「阶段 X / 共 N 阶段」。"},
+    7: {"command": "scriptnow review preview <作品号> storymap <作品号> @storymap.json --title \"StoryMap 回填审阅\" --json（集纲一体）→ 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script propose <作品号> storymap @storymap.json --review-token <凭证> --json → scriptnow review candidate-preview script <作品号> storymap_candidate <候选号> --title \"StoryMap 采纳审阅\" --json → confirm/claim → scriptnow script storymap adopt <作品号> <候选号> --confirm --review-token <凭证> --json。", "verify": "季/集/场结构已采纳，集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）全量补齐并通过 planning-quality。"},
+    9: {"command": "默认平台主笔：scriptnow script scene <作品号> <场号>（后台，回读 run status）→ 用平台返回的审阅作用域 review preview 呈现正文 → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证> --json；仅当用户明确选择本地创作时：scriptnow script scene-propose <作品号> <场号> --file @scene.json --review-token <凭证> --json 回填候选，再走同一审阅与采纳链。", "verify": "当前场有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复终端、页面或凭证操作。"},
+    10: {"command": "scriptnow scene show <作品号> <场次号> --plain → scene quality <作品号> <场次号> → 按反馈修订", "verify": "场次功能、可拍性、潜台词与转折无阻断项；用户决定保留什么、修改什么。"},
 }
 
 
@@ -1538,7 +1528,7 @@ def _guide_focus(
     }
     item["next_step"] = (
         None
-        if step == 10
+        if step == len(_GUIDE_STEPS)
         else {
             "step": step + 1,
             "command": f"scriptnow guide --step {step + 1} --medium {medium}",
@@ -4466,8 +4456,8 @@ def novel_group(ctx: click.Context) -> None:
 
 @novel_group.command("outline")
 @click.argument("project_id", required=False)
-@click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
-@click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--text", default=None, help="故事梗概（建议 300–500 字，硬上限 1000 字）")
+@click.option("--file", default=None, help="@outline.txt（硬上限 1000 字）")
 @click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -4475,19 +4465,19 @@ def novel_outline(
     ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
     review_token: str, json_output: bool
 ) -> None:
-    """回填梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 用户审阅 → outline 采纳后 storymap 才可规划。
+    """回填故事梗概（建议 300–500 字，硬上限 1000 字）→ 用户审阅 → 采纳后才可规划 StoryMap。
 
     内容发生变化时自动生成新版本（v 递增并回到候选）——适合在追加新章节/内容后刷新梗概，
     用 novel outline-status 查看当前版本，novel outline-adopt 采纳新版本。
     """
     pid = _resolve_project_id(ctx, project_id)
     if not text and not file:
-        raise click.ClickException("需要 --text 或 --file（梗概 ≤500 字）")
+        raise click.ClickException("需要 --text 或 --file（故事梗概硬上限 1000 字）")
     if file:
         raw = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
         text = raw
-    if len((text or "").strip()) > 500:
-        raise click.ClickException("梗概大纲需在 500 字以内")
+    if len((text or "").strip()) > SYNOPSIS_HARD_MAX_CHARS:
+        raise click.ClickException("故事梗概需在 1000 字以内")
     result = _api_request(
         ctx,
         "POST",
@@ -4511,7 +4501,7 @@ def novel_outline_status(ctx: click.Context, project_id: str | None, json_output
     pid = _resolve_project_id(ctx, project_id)
     result = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
     if result is None:
-        click.echo(ui.warn('尚无梗概大纲——先写一句 ≤500 字的梗概：novel outline <作品号> --text "……"'), err=True)
+        click.echo(ui.warn('尚无故事梗概——建议 300–500 字，复杂项目硬上限 1000 字'), err=True)
         return
     if result.get("status") == "candidate":
         result["next_action"] = (
@@ -6062,8 +6052,8 @@ def script_state(ctx: click.Context, project_id: str, json_output: bool) -> None
 
 @script_group.command("outline")
 @click.argument("project_id", required=False)
-@click.option("--text", default=None, help="梗概大纲正文（≤500 字）")
-@click.option("--file", default=None, help="@outline.txt（≤500 字）")
+@click.option("--text", default=None, help="故事梗概（建议 300–500 字，硬上限 1000 字）")
+@click.option("--file", default=None, help="@outline.txt（硬上限 1000 字）")
 @click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -6071,14 +6061,14 @@ def script_outline(
     ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
     review_token: str, json_output: bool
 ) -> None:
-    """回填剧本梗概大纲（≤500 字，早于 StoryMap 的渐进披露节点）→ 采纳后 StoryMap 才可规划。"""
+    """回填剧本故事梗概（建议 300–500 字，硬上限 1000 字）→ 采纳后才可规划 StoryMap。"""
     pid = _resolve_project_id(ctx, project_id)
     if not text and not file:
-        raise click.ClickException("需要 --text 或 --file（梗概 ≤500 字）")
+        raise click.ClickException("需要 --text 或 --file（故事梗概硬上限 1000 字）")
     if file:
         text = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
-    if len((text or "").strip()) > 500:
-        raise click.ClickException("梗概大纲需在 500 字以内")
+    if len((text or "").strip()) > SYNOPSIS_HARD_MAX_CHARS:
+        raise click.ClickException("故事梗概需在 1000 字以内")
     result = _api_request(
         ctx,
         "POST",

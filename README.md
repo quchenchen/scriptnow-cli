@@ -29,7 +29,8 @@
 - **会话自动续期**：一次 `login` 后 access token 过期自动用 refresh token 续期（30 天有效、持久化写回），
   Agent 长会话无需反复登录；仅改密/管理员重置/主动登出后需重新 login。
 - **Agent 操作契约**：`scriptnow agent-guide`（`--json` 结构化）输出连接平台的唯一准则——平台是事实源、
-  规划三件套回填优先、生成命令后台轮询、StoryMap 修订需用户明确授权。
+  规划三件套回填优先（cores/blueprint/storymap 默认本地生成后 propose 回填）、固定创作顺序（核心与蓝图→梗概→
+  粗纲→StoryMap 与集纲/章纲一体→正文）、生成命令后台轮询、StoryMap 修订需用户明确授权。
 - **双域阶段语义**：叙事阶段不决定小说卷边界；剧本 `volume_two` 表示每集场数，阶段比例据此按每集场数解释。
 - **新增卷章 = 纯追加**：`storymap append-volume` / `storymap append-chapters` 只尾部新增，已有卷章
   id/序号/标题/字数完全不动；被替换的旧结构自动归档，平台「结构历史」可查看导出。
@@ -53,8 +54,9 @@
 **生产源直装（推荐）——从平台分发域名下载 wheel，最稳定**：
 
 ```bash
-# 固定版本
-pip install https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-0.3.80-py3-none-any.whl
+# 安装生产源公布的最新版本
+version=$(curl -fsS https://sn.igeewa.com/downloads/scriptnow-cli/version.txt)
+python3 -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-${version}-py3-none-any.whl"
 # 源码包（zip）
 curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
 ```
@@ -71,8 +73,21 @@ curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenc
 pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 
 # 固定 tag 版本
-pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v0.3.80"
+python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v${version}"
 ```
+
+**Windows PowerShell**：建议使用 Python 3.10+ 虚拟环境，命令与平台契约与 macOS/Linux 完全相同。
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+$version = (Invoke-RestMethod https://sn.igeewa.com/downloads/scriptnow-cli/version.txt).Trim()
+py -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-$version-py3-none-any.whl"
+scriptnow --version
+```
+
+如 PowerShell 禁止执行本地激活脚本，可不激活环境，直接执行
+`.\.venv\Scripts\python.exe -m pip install ...` 和 `.\.venv\Scripts\scriptnow.exe --version`。
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
 或 `scriptnow config on` 开启「有新版本时后台自动升级 + 通知」。
@@ -84,7 +99,7 @@ scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式�
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
-CLI 在 macOS/Linux 上会用跨进程锁协调共享会话的自动续期：不同项目可并发执行，避免 refresh token
+CLI 在 macOS/Linux/Windows 上会用跨进程锁协调共享会话的自动续期：不同项目可并发执行，避免 refresh token
 轮换互相覆盖；同一项目的创作写操作仍必须串行，以免产生候选或版本冲突。
 也可用 `SCRIPTNOW_BASE_URL` / `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` 环境变量。
 
@@ -133,6 +148,12 @@ scriptnow novel propose <pid> cores @cores.json --review-token <提交审阅凭�
 scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_id>
 scriptnow novel adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
 scriptnow novel propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
+scriptnow novel outline <pid> --text "一句梗概" --review-token <提交审阅凭证>
+scriptnow novel outline-adopt <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow novel rough-outline-example <pid>                 # 取结构建议
+scriptnow novel rough-outline-check <pid> @rough_outline.json  # 自查
+scriptnow novel rough-outline <pid> @rough_outline.json --review-token <提交审阅凭证>
+scriptnow novel rough-outline-adopt <pid> <candidate_id> --review-token <采纳审阅凭证>
 scriptnow novel propose <pid> storymap @storymap.json --review-token <提交审阅凭证>
 scriptnow novel planning-quality <pid> storymap @storymap.json  # 章纲全量质量门禁
 scriptnow novel orchestrate <pid> --skip-adopt               # 只读编排；采纳走独立审阅命令
@@ -176,6 +197,12 @@ scriptnow script propose <pid> cores @cores.json --review-token <提交审阅凭
 scriptnow review candidate-preview script <pid> story_core_candidate <candidate_id>
 scriptnow script adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
 scriptnow script propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
+scriptnow script outline <pid> --text "一句梗概" --review-token <提交审阅凭证>
+scriptnow script outline-adopt <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow script rough-outline-example <pid>                 # 取结构建议
+scriptnow script rough-outline-start <pid>                  # 长篇开隔离链
+scriptnow script rough-outline-progress <pid>               # 回读阶段进度
+scriptnow script rough-outline-propose <pid> --review-token <提交审阅凭证>
 scriptnow script propose <pid> storymap @storymap.json --review-token <提交审阅凭证>
 # 每个 chapter/episode 都要有对应章纲/集纲字段；先质量门禁再采纳
 scriptnow script planning-quality <pid> storymap @storymap.json
@@ -195,10 +222,10 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 
 | 组 | 用途 |
 |----|------|
-| guide | 聚焦式新手创作向导（outline-first 逐层深入）：`--step 1..12 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图；`--complete/--status` 完成标记与完成状态 |
+| guide | 聚焦式新手创作向导（固定 12 步顺序：登录→创建→方向→故事核心与蓝图→梗概→粗纲→StoryMap 与集纲/章纲一体→Skill→正文→审读→导出→完成）：`--step 1..12 --medium novel|script`；`--pulse/--resume` 柔性回归；`--steps` 查看全图；`--complete/--status` 完成标记与完成状态 |
 | agent-guide | **Agent 操作契约**：连接平台唯一准则（--json 结构化输出） |
-| authorize | 签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿 |
-| review | 人类审阅回路：用户在对话或平台页明确决定后，Agent 以 `confirm` 原样登记，再 `status` / `claim`；不得推断或伪造决定 |
+| authorize | **【已弃用】**签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿。新流程统一走 `review confirm → claim → --review-token`，不再引导 authorize |
+| review | 人类审阅回路：`propose-preview` 为 outline/cores/blueprint/storymap 自动绑定平台审阅作用域，`preview` 为高级通用预览，`candidate-preview` 展示平台候选；用户明确决定后，Agent 以 `confirm` 原样登记，再 `status` / `claim`；不得推断或伪造决定 |
 | project | 项目管理：创建 / 列表 / **files（项目文件）** / 上传素材 / **use（设为默认项目）** / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
 | interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
