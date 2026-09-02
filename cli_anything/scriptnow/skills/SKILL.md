@@ -77,9 +77,13 @@ workflow from memory and do not treat local files as ScriptNow projects.
 > / `storymap append-chapters <pid> <volume_id> @chapters.json` / `storymap append-phase
 > <pid>`（按阶段计划追加），已有卷章的 id/序号/标题完全不动。服务端按候选形状硬门禁：
 > `novel propose storymap` / `script propose storymap` 提交纯追加形状（仅尾部新增、已有单元
-> 全不动）会被拒绝并指引追加通道；真正重构（合并/重排/删除卷、改标题）仍走全量 propose →
-> `storymap adopt --confirm` 高危确认链（被替换结构自动归档）。`storymap adopt` 采纳前会显示
-> 「将移除 N 单元」警告——移除存在即重构意图，纯新增必须走追加通道。
+> 全不动）会被拒绝并指引追加通道；任意位置纯新增（头部/中间插入新卷章）同样被拒（服务端
+> 形状门禁 R2）。全置换（retained=0、不保留任何现有单元）的普通全量提案也被拒（R1）——
+> 恢复旧结构唯一合法通道是 `novel/script storymap-restore`（服务端按归档镜像校验放行），
+> 全新结构仅限首次创建（空结构）或 storymap-rebuild-* 隔离链。真正重构（合并/重排/删除卷、
+> 改标题，且保留至少一个现有单元）仍走全量 propose → `storymap adopt --confirm` 高危确认链
+> （被替换结构自动归档）。`storymap adopt` 采纳前会显示「将移除 N 单元」警告——移除存在即
+> 重构意图，纯新增必须走追加通道。
 > 事故回滚：`novel storymap-restore <pid> <archive_id>` / `script storymap-restore <pid> <archive_id>`
 > 把归档卷章/集场导出为恢复候选 JSON（服务端已拦截纯追加恢复，恢复=覆盖回旧结构，
 > 走完整 review 链后 `storymap adopt --confirm` / `script adopt-storymap` 确认采纳）。
