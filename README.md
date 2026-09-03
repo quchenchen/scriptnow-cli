@@ -76,14 +76,23 @@ pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v${version}"
 ```
 
-**Windows PowerShell**：建议使用 Python 3.10+ 虚拟环境，命令与平台契约与 macOS/Linux 完全相同。
-推荐下载并检查仓库内的 `install.ps1` 后执行；它会检测 Python 3.10+、在
-`%LOCALAPPDATA%\ScriptNow\cli` 创建独立环境、安装生产最新 wheel，并写入用户 PATH：
+**Windows PowerShell**：命令与平台契约与 macOS/Linux 完全相同，环境由一键脚本托管（官方生产源分发，不依赖 GitHub）。
+
+Agent / 自动安装（推荐）：无交互、幂等（已装则自动升级到最新）；缺 Python 3.10+ 时自动从国内镜像
+（清华 TUNA → 华为云 → 中科大 → python.org 兜底）静默下载官方 per-user 安装器（无需管理员/UAC）后继续；
+脚本最后一行输出 `scriptnow.exe` 绝对路径，供 Agent 直接捕获调用：
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/quchenchen/scriptnow-cli/main/install.ps1 -OutFile install-scriptnow.ps1
-powershell -ExecutionPolicy Bypass -File .\install-scriptnow.ps1
+irm https://sn.igeewa.com/downloads/scriptnow-cli/install-agent.ps1 | iex
 ```
+
+人工一键安装：同样自动装最新版（脚本读取 version.txt，无需知道版本号）：
+
+```powershell
+irm https://sn.igeewa.com/downloads/scriptnow-cli/install.ps1 | iex
+```
+
+两个脚本均在 `%LOCALAPPDATA%\ScriptNow\cli` 创建独立 venv、安装生产最新 wheel、写入用户 PATH。
 
 手工安装时：
 
@@ -103,6 +112,24 @@ scriptnow --version
 
 已安装用户：`scriptnow self-upgrade` 自动按「生产源 → codeload → git+https」依次尝试；
 或 `scriptnow config on` 开启「有新版本时后台自动升级 + 通知」。
+
+## 分发与升级策略
+
+CLI 的安装与自动更新**默认锚定官方生产源**（`https://sn.igeewa.com/downloads/scriptnow-cli/`），
+GitHub（quchenchen/scriptnow-cli）仅作镜像与最后兜底，不构成国内用户的可达性依赖：
+
+| 环节 | 优先来源 | 兜底顺序 |
+|---|---|---|
+| 版本探测 | 生产源 `version.txt` | — |
+| wheel / zip 分发 | 生产源 wheel（另有 `-latest-` 固定别名，页面与一键脚本按 latest 装，用户无需知道版本号） | codeload tar.gz → git+https |
+| `self-upgrade` | 生产源 wheel | codeload tar.gz → git+https |
+| Windows 一键脚本 | 生产源（install-agent.ps1 / install.ps1 内嵌生产源 URL） | — |
+| Windows 缺 Python 时的引导 | 国内镜像：清华 TUNA → 华为云 → 中科大 | python.org |
+| 页面安装说明（/cli） | latest 别名 URL（生产源） | — |
+
+发布侧（`scripts/sync-cli-release.sh`）每轮自动上传 wheel / zip / `version.txt` /
+`install.ps1` / `install-agent.ps1` 到生产下载目录，并把 `latest` 别名同步为最新版；
+GitHub 镜像仓库与 release tag 仅作生产源之外的备用下载。
 
 ## 登录
 

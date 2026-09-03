@@ -72,17 +72,27 @@ pip install --force-reinstall /tmp/scriptnow-cli-latest.tar.gz
 python3 -m pip install "https://codeload.github.com/quchenchen/scriptnow-cli/zip/refs/tags/v${version}"
 ```
 
-**Windows PowerShell** uses the same CLI and platform contract; only the environment
-and executable paths differ:
+**Windows PowerShell** uses the same CLI and platform contract; the environment is
+managed by official one-click scripts distributed from the production host
+(never GitHub):
 
-The recommended automatic installer checks Python 3.10+, creates an isolated
-environment under `%LOCALAPPDATA%\ScriptNow\cli`, installs the latest production
-wheel, and adds its Scripts directory to the user PATH:
+Agent / automatic install (recommended): non-interactive and idempotent (upgrades in place).
+If Python 3.10+ is missing it silently downloads the official per-user installer from CN mirrors
+(Tsinghua TUNA → Huawei Cloud → USTC → python.org fallback; no admin / UAC) and continues.
+The LAST line of output is the absolute `scriptnow.exe` path, ready for an agent to capture:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/quchenchen/scriptnow-cli/main/install.ps1 -OutFile install-scriptnow.ps1
-powershell -ExecutionPolicy Bypass -File .\install-scriptnow.ps1
+irm https://sn.igeewa.com/downloads/scriptnow-cli/install-agent.ps1 | iex
 ```
+
+Human one-click install (also fetches the latest release via version.txt):
+
+```powershell
+irm https://sn.igeewa.com/downloads/scriptnow-cli/install.ps1 | iex
+```
+
+Both scripts create an isolated venv under `%LOCALAPPDATA%\ScriptNow\cli`, install the latest
+production wheel, and add its Scripts directory to the user PATH.
 
 Manual installation:
 
