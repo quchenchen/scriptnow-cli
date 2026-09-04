@@ -74,9 +74,12 @@ def test_editable_install_refreshes_from_production_wheel(isolated) -> None:
     ):
         assert upg.upgrade(quiet=True) is True
     command = run.call_args.args[0]
-    assert command[:4] == [upg.sys.executable, "-m", "pip", "install"]
-    assert "--force-reinstall" in command
-    assert f"scriptnow_cli-{upg.VERSION}-py3-none-any.whl" in command[-1]
+    joined = " ".join(command)
+    # 支持 pip（python -m pip）与 uv（uv pip --python）两种安装后端：
+    # 意图是 editable install 被生产 wheel --force-reinstall 替换。
+    assert command[0] in {upg.sys.executable, "uv", "pip"}
+    assert "--force-reinstall" in joined
+    assert f"scriptnow_cli-{upg.VERSION}-py3-none-any.whl" in joined
 
 
 def test_windows_base_python_uses_current_interpreter_without_posix_flag() -> None:

@@ -209,10 +209,26 @@ def test_storymap_adopt_latest_resolves_active_candidate(monkeypatch):
 
     session = Mock()
     session.request.side_effect = [
-        {"story_map_candidates": [
-            {"id": "cand-9", "status": "active"},
-            {"id": "cand-8", "status": "adopted"},
-        ], "story_map": {"version": 1}},
+        # 第一次 /state：--latest 解析 active 候选
+        {
+            "story_map_candidates": [
+                {"id": "cand-9", "status": "active"},
+                {"id": "cand-8", "status": "adopted"},
+            ],
+            "story_map": {"version": 1},
+        },
+        # 第二次 /state：采纳前影响面核对（将移除/新增/保留单元）
+        {
+            "story_map_candidates": [
+                {
+                    "id": "cand-9",
+                    "status": "active",
+                    "impact": {"added_units": 1, "removed_units": 0, "retained_units": 5},
+                },
+                {"id": "cand-8", "status": "adopted"},
+            ],
+            "story_map": {"version": 1},
+        },
         {"status": "adopted", "version": 2},
     ]
     monkeypatch.setattr(cli, "_session", lambda _ctx: session)
@@ -223,9 +239,10 @@ def test_storymap_adopt_latest_resolves_active_candidate(monkeypatch):
     ])
     assert result.exit_code == 0, result.output
     paths = [call.args[1] for call in session.request.call_args_list]
-    assert "/state" in paths[0]
-    assert "cand-9" in paths[1]
-    assert session.request.call_args_list[1].kwargs["headers"] == {"X-Review-Token": "review-1"}
+    assert paths[0].endswith("/state")  # --latest 解析
+    assert paths[1].endswith("/state")  # 影响面核对
+    assert "cand-9" in paths[2]  # 第三次请求才是 adopt POST
+    assert session.request.call_args_list[2].kwargs["headers"] == {"X-Review-Token": "review-1"}
 
 
 def test_chapter_generate_help_lists_preview():

@@ -475,6 +475,13 @@ def _extract_detail(response: requests.Response) -> str:
             return detail[:300]
         if isinstance(detail, list) and detail:
             return json.dumps(detail[0], ensure_ascii=False)[:300]
+        if isinstance(detail, dict):
+            # Platform structured errors ({code, message, guide, ...}) —
+            # surface the human message, same source the frontend uses.
+            message = detail.get("message") or detail.get("msg")
+            if isinstance(message, str):
+                return message[:300]
+            return json.dumps(detail, ensure_ascii=False)[:300]
     return response.text[:300]
 
 

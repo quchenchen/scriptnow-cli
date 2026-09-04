@@ -17,6 +17,23 @@ def test_extract_detail_prefers_actionable_agent_detail() -> None:
     assert _extract_detail(response) == "Novel StoryMap version conflict"
 
 
+def test_extract_detail_unpacks_structured_dict_detail() -> None:
+    """Platform structured errors ({code, message, guide}) surface the human
+    message, same source the frontend uses — not a raw JSON dump."""
+    response = Mock()
+    response.json.return_value = {
+        "detail": {
+            "code": "skill_gate_required",
+            "message": "开始剧本创作前，需要先配置写作方法论。",
+            "guide": "…",
+        }
+    }
+    assert _extract_detail(response) == "开始剧本创作前，需要先配置写作方法论。"
+
+    response.json.return_value = {"detail": {"code": "x", "note": "无 message 字段"}}
+    assert "无 message 字段" in _extract_detail(response)
+
+
 def test_request_preserves_custom_headers_and_adds_csrf() -> None:
     response = Mock(status_code=204, cookies=[], headers={})
     http = Mock()
