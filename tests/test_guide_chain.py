@@ -122,7 +122,8 @@ def test_runtime_contract_has_backfill_platform_author_and_order() -> None:
     rules = NL.join(rc["rules"])
     assert "创作顺序固定为 12 步" in rules
     assert "规划回填优先" in rules
-    assert "正文双模式默认平台主笔" in rules
+    assert "正文最终创作默认由平台内真实 AgentScope Agent 主笔" in rules
+    assert "绝不自动扩大为采纳、结构覆盖、删除或发布" in rules
     assert "已弃用" in rules and "authorize" in rules
     quickstart = NL.join(rc["quickstart"])
     # HEAD 版 quickstart 保持精简入口（--help / agent-guide --full）
@@ -162,6 +163,10 @@ def test_doc_files_reflect_fixed_creation_order() -> None:
         assert ("故事核心与蓝图" in text) or ("cores & blueprint" in text), path
         assert ("粗纲" in text) or ("rough outline" in text), path
         assert (("authorize" in text) and ("已弃用" in text)) or ("DEPRECATED" in text), path
+        novel_row = next(line for line in text.splitlines() if line.startswith("| novel |"))
+        script_row = next(line for line in text.splitlines() if line.startswith("| script |"))
+        assert novel_row.index("story-cores") < novel_row.index("outline"), path
+        assert script_row.index("story-cores") < script_row.index("outline"), path
 
 
 def test_skill_md_reflects_layer_order() -> None:
@@ -228,6 +233,22 @@ def test_cli_page_has_12_acts() -> None:
     assert "故事核心与蓝图" in text
     assert "全剧统筹与粗纲" in text
     assert "StoryMap 与集纲/章纲一体" in text
+
+
+def test_cli_page_uses_the_canonical_cores_first_order_and_no_retired_bootstrap() -> None:
+    import pathlib
+
+    page = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "scriptnow" / "frontend" / "apps" / "creator" / "src" / "views" / "CliGuidePage.vue"
+    )
+    text = page.read_text(encoding="utf-8")
+    novel = text[text.index("name: 'novel'"):text.index("name: 'chapter / storymap'")]
+    script = text[text.index("name: 'script'"):text.index("name: 'storyboard'")]
+    assert novel.index("propose <项目ID> cores") < novel.index("novel outline")
+    assert script.index("script propose <项目ID> cores") < script.index("script outline")
+    assert "novel bootstrap" not in text
+    assert "默认由平台内真实 AgentScope 主笔" in text
 
 # ------------------------------------------------ P2 hardening -----
 

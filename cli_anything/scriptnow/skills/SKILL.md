@@ -127,6 +127,10 @@ the reviewed content changes, preview it again.
   coordinates automatic refresh for a shared login session on macOS/Linux.
 - Use CLI commands for every platform action; local files are temporary drafts
   only. Return creative drafts through `propose` so the platform validates them.
+  An author's delegation to an external Agent covers guidance, reading,
+  orchestration, presentation, and the specifically requested generate/propose
+  work only. It never expands to adoption, StoryMap replacement, deletion, or
+  publishing.
 - Planning is backfill-first: locally prepare `story_cores`, `blueprint`, and
   `storymap`, then `propose`; platform generation is a fallback.
 - Story cores accept 1–3 candidate drafts so the human can choose one; every
@@ -164,7 +168,10 @@ the reviewed content changes, preview it again.
   the mounted Skills. Return it with `storyboard propose`. Platform analysis and
   generation are fallback-only; continuity is a director/user decision. Never
   guess an unknown episode range. Use the audited `source-range` or
-  `source-revoke --confirm` path instead of database access.
+  `source-revoke --confirm` path instead of database access. Then use
+  `storyboard candidate-preview` to review the exact saved candidate; only a
+  later explicit decision may flow through `review confirm` → `review claim` →
+  `storyboard adopt --review-token`.
 - Scene planning boards are explicit, single-scene platform actions: use
   `storyboard scene-board list|inspect`, then `upload PROJECT SCENE FILE --layout auto --mode annotated` or
   `generate PROJECT SCENE --layout auto --mode annotated` only when requested. The server derives layout,
@@ -176,7 +183,8 @@ the reviewed content changes, preview it again.
 - Never adopt a chapter, scene, or StoryMap without the user's explicit current
   decision. StoryMap replacement also needs its CLI confirmation path.
 - 逐章/逐场创作双模式（dual-mode chapter/scene creation, the user must choose
-  explicitly and the platform does not block): platform-led is the default and
+  explicitly and the platform does not block): final prose is authored by a
+  real in-platform AgentScope Agent by default. Platform-led is the default and
   recommended — `chapter/scene generate` produces a platform candidate →
   `review preview` for human review → `adopt`. Only when the user explicitly
   chooses local creation does the Agent write prose locally, backfill the

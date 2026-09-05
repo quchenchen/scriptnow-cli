@@ -16,6 +16,7 @@ def runner() -> CliRunner:
 @pytest.fixture
 def fake_session(monkeypatch):
     session = Mock()
+    session.base_url = "https://sn.example.test"
     proposal_calls = 0
 
     def request(method, path, **kwargs):
@@ -57,7 +58,7 @@ def fake_session(monkeypatch):
     return session
 
 
-def test_storyboard_propose_backfills_local_candidate_and_optional_adoption(
+def test_storyboard_propose_backfills_local_candidate_without_self_adoption(
     runner: CliRunner, fake_session, tmp_path
 ) -> None:
     candidate = tmp_path / "storyboard.json"
@@ -76,7 +77,6 @@ def test_storyboard_propose_backfills_local_candidate_and_optional_adoption(
             f"@{candidate}",
             "--source-id",
             "source-1",
-            "--adopt",
             "--json",
         ],
     )
@@ -87,8 +87,8 @@ def test_storyboard_propose_backfills_local_candidate_and_optional_adoption(
         "/storyboard/projects/project-1/propose",
     )
     assert calls[1].kwargs["json_body"]["script"]["title"] == "Local storyboard"
-    assert calls[2].args[1].endswith("/strategy-runs/strategy-run-1/decisions")
-    assert calls[2].kwargs["json_body"]["selected_candidate_key"] == "agent-proposal"
+    assert all(not call.args[1].endswith("/decisions") for call in calls)
+    assert "storyboard candidate-preview project-1 strategy-run-1" in result.output
     assert all("analyze" not in call.args[1] for call in calls)
 
 
@@ -319,22 +319,30 @@ def test_storyboard_source_revoke_requires_confirmation_and_reads_back(
     assert fake_session.request.call_args_list[1].args[1].endswith("/state")
 
 
-def test_storyboard_adopt_retry_reuses_existing_decision(
-    runner: CliRunner, fake_session, tmp_path
+def test_storyboard_adoption_requires_a_separate_review_token(
+    runner: CliRunner, fake_session
 ) -> None:
-    candidate = tmp_path / "storyboard.json"
-    candidate.write_text(
-        json.dumps({"title": "Stable", "scenes": [{"title": "Scene", "shots": []}]}),
-        encoding="utf-8",
+    preview = runner.invoke(
+        main,
+        ["storyboard", "candidate-preview", "project-1", "strategy-run-1", "--json"],
     )
-    arguments = [
-        "storyboard", "propose", "project-1", str(candidate),
-        "--source-id", "source-1", "--adopt", "--json",
-    ]
-    assert runner.invoke(main, arguments).exit_code == 0
-    assert runner.invoke(main, arguments).exit_code == 0
-    decision_posts = [
-        call for call in fake_session.request.call_args_list
-        if call.args[1].endswith("/decisions")
-    ]
-    assert len(decision_posts) == 1
+    assert preview.exit_code == 0, preview.output
+    preview_call = fake_session.request.call_args
+    assert preview_call.args[1].endswith("/strategy-runs/strategy-run-1/review-preview")
+    assert preview_call.kwargs["json_body"] == {
+        "candidate_key": "agent-proposal",
+        "title": "分镜候选采纳审阅",
+    }
+
+    adopted = runner.invoke(
+        main,
+        [
+            "storyboard", "adopt", "project-1", "strategy-run-1",
+            "--review-token", "review-token", "--json",
+        ],
+    )
+    assert adopted.exit_code == 0, adopted.output
+    decision_call = fake_session.request.call_args
+    assert decision_call.args[1].endswith("/strategy-runs/strategy-run-1/decisions")
+    assert decision_call.kwargs["headers"] == {"X-Review-Token": "review-token"}
+    assert decision_call.kwargs["json_body"]["reason"] != "用户明确采用 Agent 本地分镜候选"

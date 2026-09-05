@@ -1074,7 +1074,7 @@ _AGENT_CONTRACT = {
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
-        "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认由平台主笔完成（chapter/scene generate 平台生成候选 → review preview 呈现正文 → 用户明确采用 → 完整执行 review confirm 和 review claim 命令 → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`），平台建议优先平台主笔；仅当用户明确选择本地创作时，才由 Agent 本地写好正文再 chapter propose / scene-propose 回填候选并走同一审阅、采纳链。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
+        "作者的『请 Agent 协助创作』只授权引导、读取、编排、展示和在已说明范围内生成/propose；绝不自动扩大为采纳、StoryMap 覆盖、删除或发布。正文最终创作默认由平台内真实 AgentScope Agent 主笔：chapter/scene generate 平台生成候选 → review preview 呈现正文 → 用户明确采用 → confirm/claim → adopt。仅当作者明确选择外部 Agent 代写正文时，才可 chapter propose / scene-propose 回填，并仍须走同一独立审阅与采纳链。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "创意方向与蓝图不得只交付占位文本：cores 必须展开完整前提、五类差异化角度与领域细节。blueprint 覆盖六类锚点；description 应说明主体、机制/变化与后果，通常 50–200 字、复杂内容可更长。字数仅作指导，不参与强制门禁。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
@@ -1106,7 +1106,7 @@ _AGENT_CONTRACT = {
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
         "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`。没有明确决定不得继续。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
-        "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid>；仅在用户明确采用后加 --adopt",
+        "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid> → storyboard candidate-preview → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" → scriptnow review claim <packet_id> → storyboard adopt --review-token <token>。",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
         "新增卷/章走追加通道（append-volume / append-chapters / append-phase），严禁用全量替换承载新增；服务端形状门禁拦截，纯追加全量提案会返回追加通道指引。全量替换仅限真重构（合并/重排/删除卷），storymap adopt 采纳前显示「将移除 N 单元」警告；全置换（retained=0）普通全量提案被服务端拒绝，恢复旧结构走 novel/script storymap-restore 归档镜像豁免。事故回滚：novel/script storymap-restore <作品号> <归档号> 导出恢复候选（覆盖式=重构，走完整 review 链）。",
@@ -1127,7 +1127,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "任何平台操作前先运行 scriptnow agent-guide --json，并运行 scriptnow guide --status --json；新手模式未完成时按 guide --step <n> 一幕一幕推进，不得跳过引导后自行乱跑。",
         "创作顺序固定为 12 步（guide --step 1..12）：登录 → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
         "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
-        "正文双模式默认平台主笔：未明确选择时一律 chapter/scene generate 平台候选 → review preview 呈现正文 → 用户明确决定 → `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 带完整位置参数和 --human/--review-token 的采纳命令；仅当用户明确选择本地创作时才由 Agent 本地写好正文 → chapter/scene propose 回填候选并走同一审阅、采纳链。",
+        "作者对 Agent 的创作委托只覆盖引导、读取、编排、展示和在说明范围内生成/propose，绝不自动扩大为采纳、结构覆盖、删除或发布。正文最终创作默认由平台内真实 AgentScope Agent 主笔：chapter/scene generate 平台候选 → review preview 呈现正文 → 用户明确决定 → `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 带完整位置参数和 --human/--review-token 的采纳命令；仅当作者明确选择外部 Agent 代写正文时才由 Agent 本地写好正文 → chapter/scene propose 回填候选并走同一审阅、采纳链。",
         "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
@@ -4896,212 +4896,6 @@ def novel_adopt_blueprint(ctx: click.Context, project_id: str, candidate_id: str
     )
 
 
-@novel_group.command("bootstrap")
-@click.argument("project_id")
-@click.option("--cores-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="故事核心回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
-@click.option("--blueprint-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="蓝图回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
-@click.option("--storymap-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="StoryMap 回填 JSON（推荐：Agent 本地生成 → propose；不传则平台 AI 生成，增加平台压力）")
-@click.option("--budget", type=int, default=None, help="回填内容 token 预算上限（中文≈1 token/字，英文≈1 token/4 字符）")
-@click.option("--cores-feedback", default=None, help="故事核心生成反馈（仅平台生成时使用）")
-@click.option("--blueprint-feedback", default=None, help="蓝图生成反馈（仅平台生成时使用）")
-@click.option("--stop-at", type=click.Choice(["cores", "blueprint", "storymap"]), default=None, help="在哪个阶段后停止（默认跑完整规划）")
-@click.option("--json", "json_output", is_flag=True)
-@click.pass_context
-def novel_bootstrap(
-    ctx: click.Context,
-    project_id: str,
-    cores_file: str | None,
-    blueprint_file: str | None,
-    storymap_file: str | None,
-    budget: int | None,
-    cores_feedback: str | None,
-    blueprint_feedback: str | None,
-    stop_at: str | None,
-    json_output: bool,
-) -> None:
-    """一键完成小说规划：故事核心(3候选)→采纳→蓝图→采纳→StoryMap→采纳。
-
-    Agent 处理优先：传入 --*-file（本地生成的 JSON）则走 propose 回填，
-    未传该文件时才由平台 AI 生成（后备）。可 --stop-at cores|blueprint 在
-    中间停下让人审阅候选。
-    """
-    raise click.ClickException(
-        "bootstrap 的连续自动采纳已停用：请依次走 cores → blueprint → rough outline → StoryMap，"
-        "每阶段展示可读候选并取得一次独立的人类决定。"
-    )
-    import json as _json
-    import time as _time
-
-    session = _session(ctx)
-    steps: list[dict[str, Any]] = []
-
-    def note(step: str, ok: bool, detail: str = "") -> None:
-        steps.append({"step": step, "ok": ok, "detail": detail})
-        if not json_output:
-            mark = ui.ok("") if ok else ui.error("")
-            click.echo(f"  {mark}{step}{(' · ' + detail) if detail else ''}", err=True)
-
-    def load_json(file_path: str | None) -> dict[str, Any] | None:
-        if not file_path:
-            return None
-        try:
-            return _json.loads(Path(file_path).read_text(encoding="utf-8"))
-        except (_json.JSONDecodeError, OSError) as error:
-            raise click.ClickException(f"回填 JSON 解析失败（{file_path}）：{error}") from error
-
-    # ① story cores
-    cores_source = "Agent 回填" if cores_file else "平台 AI"
-    if cores_file:
-        data = load_json(cores_file)
-        drafts = (data or {}).get("drafts") or []
-        if not 1 <= len(drafts) <= 3:
-            raise click.ClickException("cores 回填需要 1 到 3 个 draft")
-        _check_budget(drafts, budget, "故事方向回填", json_output)
-        result = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-cores/propose",
-            json_body={
-                "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
-                "drafts": drafts,
-            },
-            write=True,
-        )
-        if isinstance(result, list):
-            result = result[0] if result else {}
-    else:
-        gen = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-cores/generate?background=true",
-            json_body={
-                "idempotency_key": f"cli-boot-cores-{_time.time_ns()}",
-                "feedback": cores_feedback,
-            },
-            write=True,
-        )
-        if gen.get("run_id"):
-            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = _novel_state(session, project_id)
-    cores = [c for c in state.get("story_cores") or [] if c.get("status") in ("candidate", "active")]
-    if not cores:
-        note(f"故事核心（{cores_source}）", False, "没有候选，请检查 direction 是否完整")
-        _emit({"project_id": project_id, "steps": steps}, json_output)
-        return
-    cores.sort(key=lambda c: c.get("ordinal", 0))
-    session.request(
-        "POST",
-        f"/novel/projects/{project_id}/story-cores/{cores[0]['id']}/adopt",
-        write=True,
-    )
-    note(f"故事核心生成并采纳（{cores_source}）", True, cores[0].get("title"))
-    if stop_at == "cores":
-        _emit({"project_id": project_id, "steps": steps}, json_output)
-        return
-
-    # ② blueprint
-    blueprint_source = "Agent 回填" if blueprint_file else "平台 AI"
-    if blueprint_file:
-        data = load_json(blueprint_file)
-        anchors = (data or {}).get("anchors") or []
-        _check_budget(anchors, budget, "蓝图回填", json_output)
-        if not anchors:
-            raise click.ClickException("blueprint 回填需要至少 1 个 anchor")
-        allowed = {"world", "character", "relationship", "character_arc", "plot", "foreshadow", "motif"}
-        for anchor in anchors:
-            if anchor.get("kind") not in allowed:
-                raise click.ClickException(
-                    f"anchor kind 必须是 {sorted(allowed)}，收到：{anchor.get('kind')}"
-                )
-        session.request(
-            "POST",
-            f"/novel/projects/{project_id}/blueprints/propose",
-            json_body={
-                "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
-                "anchors": anchors,
-            },
-            write=True,
-        )
-    else:
-        gen = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/blueprints/generate?background=true",
-            json_body={
-                "idempotency_key": f"cli-boot-bp-{_time.time_ns()}",
-                "feedback": blueprint_feedback,
-            },
-            write=True,
-        )
-        if gen.get("run_id"):
-            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = _novel_state(session, project_id)
-    bp = next((c for c in state.get("blueprint_candidates") or [] if c.get("status") == "active"), None)
-    if bp is None:
-        note(f"蓝图（{blueprint_source}）", False, "没有候选")
-        _emit({"project_id": project_id, "steps": steps}, json_output)
-        return
-    session.request(
-        "POST",
-        f"/novel/projects/{project_id}/blueprints/{bp['id']}/adopt",
-        write=True,
-    )
-    anchor_count = len((state.get("blueprint") or {}).get("anchors") or [])
-    note(f"蓝图生成并采纳（{blueprint_source}）", True, f"锚点 {anchor_count} 个")
-    if stop_at == "blueprint":
-        _emit({"project_id": project_id, "steps": steps}, json_output)
-        return
-
-    # ③ storymap
-    # ③ storymap
-    storymap_source = "Agent 回填" if storymap_file else "平台 AI"
-    if storymap_file:
-        data = load_json(storymap_file)
-        volumes = (data or {}).get("volumes") or []
-        _check_budget(volumes, budget, "卷章结构回填", json_output)
-        if not volumes:
-            raise click.ClickException("storymap 回填需要至少 1 个 volume")
-        state = _novel_state(session, project_id)
-        version = int((state.get("story_map") or {}).get("version") or 1)
-        session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-map/propose",
-            json_body={
-                "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
-                "expected_version": version,
-                "volumes": volumes,
-            },
-            write=True,
-        )
-    else:
-        gen = session.request(
-            "POST",
-            f"/novel/projects/{project_id}/story-map/generate?background=true",
-            json_body={
-                "idempotency_key": f"cli-boot-sm-{_time.time_ns()}",
-                "feedback": None,
-            },
-            write=True,
-        )
-        if gen.get("run_id"):
-            _wait_for_run(session, project_id, str(gen["run_id"]), True, domain="novel")
-    state = _novel_state(session, project_id)
-    sm = next((c for c in state.get("story_map_candidates") or [] if c.get("status") == "active"), None)
-    if sm is None:
-        note(f"StoryMap（{storymap_source}）", False, "没有候选")
-        _emit({"project_id": project_id, "steps": steps}, json_output)
-        return
-    session.request(
-        "POST",
-        f"/novel/projects/{project_id}/story-map/{sm['id']}/adopt?confirm=true",
-        write=True,
-    )
-    volumes = state.get("story_map", {}).get("volumes", [])
-    total_chapters = sum(len(v.get("chapters", [])) for v in volumes)
-    note(f"StoryMap 生成并采纳（{storymap_source}）", True, f"{len(volumes)} 卷 {total_chapters} 章")
-    _emit({"project_id": project_id, "steps": steps, "story_map_ready": True}, json_output)
-
-
 @novel_group.command("propose")
 @click.argument("project_id")
 @click.argument("kind", type=click.Choice(["cores", "blueprint", "storymap", "bibles"]))
@@ -8856,12 +8650,11 @@ def storyboard_source_revoke(ctx: click.Context, project_id: str, source_id: str
 @click.argument("project_id", required=False)
 @click.argument("file_path", required=False)
 @click.option("--source-id", default=None, help="source-import 返回的来源 ID")
-@click.option("--adopt", is_flag=True, help="仅在用户明确采用后提交人工采纳")
 @click.option("--help-format", is_flag=True, help="按需显示精简 ScriptOut 字段契约")
 @click.option("--example", is_flag=True, help="按需显示最小分镜示例")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
-def storyboard_propose(ctx: click.Context, project_id: str | None, file_path: str | None, source_id: str | None, adopt: bool, help_format: bool, example: bool, json_output: bool) -> None:
+def storyboard_propose(ctx: click.Context, project_id: str | None, file_path: str | None, source_id: str | None, help_format: bool, example: bool, json_output: bool) -> None:
     """回填 Agent 在本地完成的 ScriptOut 分镜候选；平台只校验和版本化。"""
     if help_format:
         click.echo(_STORYBOARD_FORMAT)
@@ -8892,20 +8685,80 @@ def storyboard_propose(ctx: click.Context, project_id: str | None, file_path: st
         json_body={"source_id": source_id, "script": script, "skill_snapshots": contract["skill_snapshots"], "idempotency_key": f"cli-storyboard-propose-{proposal_identity}"},
         write=True,
     )
-    result: dict[str, Any] = {"strategy_run": run, "adopted": False}
-    if adopt:
-        existing = next(
-            (
-                item for item in reversed(run.get("decisions", []))
-                if item.get("decision") in {"adopted", "modified"}
-            ),
-            None,
-        )
-        decision = existing or session.request(
-            "POST", f"/storyboard/projects/{project_id}/strategy-runs/{run['id']}/decisions",
-            json_body={"decision": "adopted", "selected_candidate_key": "agent-proposal", "modification": {}, "reason": "用户明确采用 Agent 本地分镜候选", "final_payload": {}}, write=True,
-        )
-        result.update({"adopted": True, "decision": decision})
+    run_id = str(run.get("id") or "")
+    result: dict[str, Any] = {
+        "strategy_run": run,
+        "adopted": False,
+        "next_steps": [
+            "展示候选：scriptnow storyboard candidate-preview "
+            f"{project_id} {run_id} --json",
+            "用户明确决定后：scriptnow review confirm <packet_id> --decision retain "
+            '--evidence "<用户明确决定原话>" --json',
+            "领取凭证：scriptnow review claim <packet_id> --json",
+            "独立采纳：scriptnow storyboard adopt "
+            f"{project_id} {run_id} --review-token <token> --json",
+        ],
+    }
+    _emit(result, json_output)
+
+
+@storyboard_group.command("candidate-preview")
+@click.argument("project_id")
+@click.argument("strategy_run_id")
+@click.option("--candidate-key", default="agent-proposal", show_default=True)
+@click.option("--title", default="分镜候选采纳审阅")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_candidate_preview(
+    ctx: click.Context,
+    project_id: str,
+    strategy_run_id: str,
+    candidate_key: str,
+    title: str,
+    json_output: bool,
+) -> None:
+    """从平台保存的分镜候选创建内容绑定的采纳审阅。"""
+    session = _session(ctx)
+    result = session.request(
+        "POST",
+        f"/storyboard/projects/{project_id}/strategy-runs/{strategy_run_id}/review-preview",
+        json_body={"candidate_key": candidate_key, "title": title},
+        write=True,
+    )
+    result["review_url"] = session.base_url + str(result.get("review_path") or "")
+    _attach_conversation_review(result, title)
+    _emit(result, json_output)
+
+
+@storyboard_group.command("adopt")
+@click.argument("project_id")
+@click.argument("strategy_run_id")
+@click.option("--candidate-key", default="agent-proposal", show_default=True)
+@click.option("--review-token", required=True, help="review preview → 用户明确决定 → confirm/claim 后取得")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def storyboard_adopt(
+    ctx: click.Context,
+    project_id: str,
+    strategy_run_id: str,
+    candidate_key: str,
+    review_token: str,
+    json_output: bool,
+) -> None:
+    """采纳已审阅的分镜候选；凭证绑定候选、动作和内容摘要。"""
+    result = _session(ctx).request(
+        "POST",
+        f"/storyboard/projects/{project_id}/strategy-runs/{strategy_run_id}/decisions",
+        json_body={
+            "decision": "adopted",
+            "selected_candidate_key": candidate_key,
+            "modification": {},
+            "reason": "用户通过内容绑定审阅凭证明确采用分镜候选",
+            "final_payload": {},
+        },
+        headers={"X-Review-Token": review_token},
+        write=True,
+    )
     _emit(result, json_output)
 
 
