@@ -166,7 +166,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / **preview（交付范围审阅，返回一键审阅地址）** / download / zip；剧本 working DOCX 含每场制作信息 |
-| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**growth**（方法论进化）；**canary**（版本灰度） |
+| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**method-current / method-compile / method-compare / method-bind / method-resolve**（服务端 Method DNA 核心密码版本与 scope 解析）；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | feedback | 严格无内容 v2 质量事件；默认关闭，先用 `doctor --enable-diagnostics MINUTES` 限时开启，发送前再次确认；不含参数、详情、备注、路径、ID 或正文 |

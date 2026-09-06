@@ -383,6 +383,93 @@ def test_skill_unmount_requires_confirmation_and_reads_back(monkeypatch):
     }
 
 
+def test_method_dna_commands_are_thin_server_contract_adapters(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+
+    def request(method, path, **kwargs):
+        if path == "/projects/project-1/method-dna/current":
+            return {"method_dna": {"revision_id": "rev-1", "revision_no": 1}, "binding": {}}
+        if path == "/projects/project-1/method-dna/compile":
+            assert kwargs["write"] is True
+            assert kwargs["json_body"] == {
+                "domain": "script", "audience_reward": ["suspense_pull"],
+                "expression_mode": "controlled_duel", "progression_mode": "clue_driven",
+                "dramatic_intensity": "high_stimulus", "confirm": False,
+            }
+            return {"method_dna": {"revision_id": "rev-2", "status": "draft"}}
+        if path == "/method-dna/compare":
+            assert kwargs["params"] == {
+                "left_revision_id": "rev-1", "right_revision_id": "rev-2"
+            }
+            return {"diff": {"added": ["method.payoff.plant-reversal-result"]}}
+        if path == "/projects/project-1/method-dna/binding":
+            assert kwargs["write"] is True
+            assert kwargs["json_body"] == {
+                "revision_id": "rev-2",
+                "overrides": [{"rule_id": "method.ending.cliffhanger", "enabled": False}],
+                "confirmation_ref": "user-approved-7",
+            }
+            return {"binding_revision_id": "binding-2", "status": "active"}
+        if path == "/projects/project-1/method-dna/resolve-preview":
+            assert kwargs["params"] == {"unit_id": "episode-10"}
+            return {
+                "context": {"narrative_stage": "resolution", "unit_function": "closure"},
+                "labels": {"resolution": "收束", "closure": "闭环"},
+                "method_dna": {"revision_no": 2, "content_digest": "abcdef0123456789"},
+                "active_rules": [{"rule_id": "method.payoff.plant-reversal-result", "execution": "兑现结果"}],
+                "inactive_rules": [{"rule_id": "method.ending.cliffhanger", "reason": "narrative_stage_excluded"}],
+                "required_reads": [{"kind": "method_dna", "rule_ids": ["method.payoff.plant-reversal-result"]}],
+                "verification_plan": [{"rule_id": "method.payoff.plant-reversal-result", "verification": "定位兑现位置", "status": "not_evaluated"}],
+            }
+        raise AssertionError((method, path, kwargs))
+
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+    invocations = [
+        ["skill", "method-current", "project-1", "--json"],
+        ["skill", "method-compile", "project-1", "--audience-reward", "suspense_pull",
+         "--expression-mode", "controlled_duel", "--progression-mode", "clue_driven",
+         "--dramatic-intensity", "high_stimulus", "--json"],
+        ["skill", "method-compare", "rev-1", "rev-2", "--json"],
+        ["skill", "method-bind", "project-1", "rev-2", "--overrides",
+         '{"method.ending.cliffhanger":{"enabled":false}}',
+         "--confirmation-ref", "user-approved-7", "--json"],
+    ]
+    for args in invocations:
+        result = runner.invoke(main, args)
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)
+
+    preview = runner.invoke(
+        main, ["skill", "method-resolve", "project-1", "--unit-id", "episode-10"]
+    )
+    assert preview.exit_code == 0, preview.output
+    assert "本单元启用" in preview.output
+    assert "narrative_stage_excluded" in preview.output
+    assert "创作前必读" in preview.output
+    assert "验证计划" in preview.output
+
+
+def test_method_compile_rejects_more_than_two_rewards_before_network(monkeypatch):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, [
+        "skill", "method-compile", "project-1",
+        "--audience-reward", "revenge_relief", "--audience-reward", "suspense_pull",
+        "--audience-reward", "emotional_resonance",
+        "--expression-mode", "direct_collision", "--progression-mode", "rapid_conflict",
+        "--dramatic-intensity", "standard", "--json",
+    ])
+    assert result.exit_code != 0
+    assert "最多选择两项" in result.output
+    session.request.assert_not_called()
+
+
 def test_novel_ready_check_ignores_disabled_skill_mounts(monkeypatch):
     import cli_anything.scriptnow.scriptnow_cli as cli
 

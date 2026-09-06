@@ -243,7 +243,7 @@ as a writer-facing export file yet.
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / **preview (delivery-scope review with a one-click review URL)** / download / zip; script working DOCX includes per-scene production metadata |
-| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **growth** (methodology evolution); **canary** (version rollout) |
+| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **method-current / method-compile / method-compare / method-bind / method-resolve** (server Method DNA revisions and scope resolution); **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 | feedback | Send strict content-free v2 quality events. Local diagnostics are off by default; enable them temporarily with `doctor --enable-diagnostics MINUTES`, then confirm again before `--send`. Arguments, details, notes, paths, IDs, and prose are never collected. |

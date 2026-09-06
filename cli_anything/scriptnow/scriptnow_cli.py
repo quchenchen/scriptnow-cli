@@ -301,7 +301,7 @@ _MAIN_HELP = (
   5. scriptnow novel outline <pid> --text "一句梗概" → outline-adopt  # 故事梗概
   6. scriptnow novel rough-outline-example <pid> → rough-outline → rough-outline-adopt  # 全剧统筹与粗纲
   7. novel propose storymap @storymap.json → adopt-storymap        # StoryMap 与集纲/章纲一体交付
-  8. scriptnow skill craft / interpret local → preflight → 挂载    # 一书一 Skill
+  8. scriptnow skill craft / interpret local → preflight → 挂载    # 一书一 Skill；剧本可用 method-* 管理核心密码
   9. scriptnow chapter generate <pid> chapter-1-1                  # 逐章正文（后台；run status 轮询；平台主笔默认）
   10. scriptnow chapter show --plain → chapter quality             # 审读与修订
   11. scriptnow cover generate <pid> --image-model-id <id> → export create → export download  # 包装与导出
@@ -1082,6 +1082,7 @@ _AGENT_CONTRACT = {
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         'CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。',
+        "剧本个人创作核心密码统一使用服务端 Method DNA：skill method-current 查看当前精确版本，method-compile 只提交稳定选项并由服务端编译候选，method-compare 比较版本，method-bind 绑定 admitted revision，method-resolve --unit-id 查看服务端解析的 active/inactive rules、原因、required reads 与验证计划。CLI 不自行编译规则、推定启停或拼 prompt。",
         "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
@@ -1106,6 +1107,7 @@ _AGENT_CONTRACT = {
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
         "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`。没有明确决定不得继续。",
         "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
+        "剧本 Method DNA 核心密码必须使用 skill method-current/method-compile/method-compare/method-bind/method-resolve 读取和修改服务端版本；逐场前由 ready-check --unit-id 或 method-resolve --unit-id 查看实际启用规则、停用原因和必读项，禁止 CLI 自行编译或拼 prompt。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid> → storyboard candidate-preview → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" → scriptnow review claim <packet_id> → storyboard adopt --review-token <token>。",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
@@ -1161,6 +1163,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "粗纲：按 guide 第 6 步；script 长篇始终使用完整 `scriptnow script rough-outline-start/phase-preview/phase/progress/propose` 命令链，并在每次平台写入后保存返回值、回读进度。",
         "StoryMap 一体：review propose-preview → novel propose storymap @storymap.json → review candidate-preview → 用户明确决定 → novel adopt-storymap（planning-quality 通过）；补纲用 chapter outline / outline-batch",
         "Skill 门禁：skill craft / interpret local → 预检试写 → 挂载",
+        "剧本核心密码：skill method-current / method-compile / method-compare / method-bind / method-resolve（只消费服务端 Method DNA）",
         "正文：默认 platform generate，用户明确本地创作时才 propose；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
         "审读：chapter show <作品号> <章号> --plain → chapter quality → 修订后重审",
         "导出：export create / preview / download；封面 cover package / generate",
@@ -4658,9 +4661,7 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
         ], "skills": skills, "skill_plan": skill_plan}, json_output)
         return
     if unit_id:
-        context = skill_plan.get("context") or {}
-        labels = skill_plan.get("labels") or {}
-        click.echo(f"叙事阶段：{labels.get(context.get('narrative_stage'), context.get('narrative_stage') or '未明确')} · 单元功能：{labels.get(context.get('unit_function'), context.get('unit_function') or '未明确')}", err=True)
+        _show_method_resolution(dict(skill_plan))
         for focus in skill_plan.get("focus", []):
             click.echo(f"  · {focus}", err=True)
     all_ok = True
@@ -5981,9 +5982,7 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
         ], "skills": skills, "skill_plan": skill_plan}, json_output)
         return
     if unit_id:
-        context = skill_plan.get("context") or {}
-        labels = skill_plan.get("labels") or {}
-        click.echo(f"叙事阶段：{labels.get(context.get('narrative_stage'), context.get('narrative_stage') or '未明确')} · 单元功能：{labels.get(context.get('unit_function'), context.get('unit_function') or '未明确')}", err=True)
+        _show_method_resolution(dict(skill_plan))
         for focus in skill_plan.get("focus", []):
             click.echo(f"  · {focus}", err=True)
     all_ok = True
@@ -8844,6 +8843,185 @@ def storyboard_export(ctx: click.Context, project_id: str, kind: str, output: st
 @click.pass_context
 def skill_group(ctx: click.Context) -> None:
     """创作 Skill 工坊：列表 / 创建 / 编辑 / 挂载 / 上传。"""
+
+
+def _method_dna_json_value(value: str, *, label: str) -> Any:
+    """Read a Method DNA CLI JSON value without interpreting its rules."""
+    raw = Path(value[1:]).read_text(encoding="utf-8") if value.startswith("@") else value
+    try:
+        parsed = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise click.ClickException(f"{label} JSON 读取失败：{error}") from error
+    return parsed
+
+
+def _show_method_resolution(plan: dict[str, Any]) -> None:
+    """Render server-resolved Method DNA decisions; never re-resolve locally."""
+    context = dict(plan.get("context") or {})
+    labels = dict(plan.get("labels") or {})
+    stage = context.get("narrative_stage")
+    function = context.get("unit_function")
+    click.echo(
+        f"叙事阶段：{labels.get(stage, stage or '未明确')} · "
+        f"单元功能：{labels.get(function, function or '未明确')}",
+        err=True,
+    )
+    method = dict(plan.get("method_dna") or {})
+    if method:
+        click.echo(
+            ui.dim(
+                f"核心密码：v{method.get('revision_no', '?')} · "
+                f"{str(method.get('content_digest') or '')[:12]}"
+            ),
+            err=True,
+        )
+    active = [item for item in (plan.get("active_rules") or []) if isinstance(item, dict)]
+    inactive = [item for item in (plan.get("inactive_rules") or []) if isinstance(item, dict)]
+    if active:
+        click.echo("本单元启用：", err=True)
+        for item in active:
+            click.echo(f"  ✓ {item.get('rule_id')}：{item.get('execution') or ''}", err=True)
+    if inactive:
+        click.echo("本单元未启用：", err=True)
+        for item in inactive:
+            click.echo(
+                f"  · {item.get('rule_id')}（{item.get('reason') or '未匹配'}）",
+                err=True,
+            )
+    reads = [item for item in (plan.get("required_reads") or []) if isinstance(item, dict)]
+    if reads:
+        click.echo("创作前必读：", err=True)
+        for item in reads:
+            rule_ids = ", ".join(str(value) for value in (item.get("rule_ids") or []))
+            click.echo(f"  · {item.get('kind')}{'：' + rule_ids if rule_ids else ''}", err=True)
+    verification = [
+        item for item in (plan.get("verification_plan") or []) if isinstance(item, dict)
+    ]
+    if verification:
+        click.echo("验证计划：", err=True)
+        for item in verification:
+            click.echo(
+                f"  · {item.get('rule_id')}：{item.get('verification') or ''}"
+                f"（{item.get('status') or 'not_evaluated'}）",
+                err=True,
+            )
+
+
+@skill_group.command("method-current")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_method_current(ctx: click.Context, project_id: str, json_output: bool) -> None:
+    """查看项目当前绑定的创作核心密码及精确版本。"""
+    result = _session(ctx).request("GET", f"/projects/{project_id}/method-dna/current")
+    if json_output:
+        _emit(result, True)
+        return
+    method = dict(result.get("method_dna") or {})
+    binding = dict(result.get("binding") or {})
+    click.echo(ui.section("=== 当前创作核心密码 ==="), err=True)
+    click.echo(f"DNA：{method.get('dna_id')} · 版本 v{method.get('revision_no')}", err=True)
+    click.echo(f"状态：{method.get('status')} · 摘要：{method.get('content_digest')}", err=True)
+    click.echo(f"项目绑定：v{binding.get('revision_no')} · {binding.get('status')}", err=True)
+
+
+@skill_group.command("method-compile")
+@click.argument("project_id")
+@click.option("--audience-reward", type=click.Choice(["revenge_relief", "suspense_pull", "relationship_tension", "emotional_resonance"]), multiple=True, required=True, help="观众回报，可选一至两项")
+@click.option("--expression-mode", type=click.Choice(["direct_collision", "controlled_duel", "lived_in"]), required=True)
+@click.option("--progression-mode", type=click.Choice(["rapid_conflict", "escalating_pressure", "clue_driven"]), required=True)
+@click.option("--dramatic-intensity", type=click.Choice(["standard", "high_stimulus", "extreme_payoff"]), required=True)
+@click.option("--source-candidate", default=None, help="自由文字补充，仅作为服务端编译候选")
+@click.option("--parent-revision-id", default=None, help="基于哪个 Method DNA 版本形成新候选")
+@click.option("--confirm", is_flag=True, help="确认将通过门禁的候选标记为 admitted；不带则保存 draft")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_method_compile(
+    ctx: click.Context, project_id: str, audience_reward: tuple[str, ...],
+    expression_mode: str, progression_mode: str, dramatic_intensity: str,
+    source_candidate: str | None, parent_revision_id: str | None,
+    confirm: bool, json_output: bool,
+) -> None:
+    """由服务端编译并创建版本化 Method DNA 候选。"""
+    if len(audience_reward) > 2:
+        raise click.ClickException("--audience-reward 最多选择两项")
+    body: dict[str, Any] = {
+        "domain": "script", "audience_reward": list(audience_reward),
+        "expression_mode": expression_mode, "progression_mode": progression_mode,
+        "dramatic_intensity": dramatic_intensity, "confirm": confirm,
+    }
+    if source_candidate is not None:
+        body["source_candidate"] = source_candidate
+    if parent_revision_id is not None:
+        body["parent_revision_id"] = parent_revision_id
+    result = _session(ctx).request(
+        "POST", f"/projects/{project_id}/method-dna/compile", json_body=body, write=True
+    )
+    _emit(result, json_output)
+
+
+@skill_group.command("method-compare")
+@click.argument("left_revision_id")
+@click.argument("right_revision_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_method_compare(
+    ctx: click.Context, left_revision_id: str, right_revision_id: str, json_output: bool
+) -> None:
+    """比较两个服务端 Method DNA revision。"""
+    result = _session(ctx).request(
+        "GET", "/method-dna/compare",
+        params={"left_revision_id": left_revision_id, "right_revision_id": right_revision_id},
+    )
+    _emit(result, json_output)
+
+
+@skill_group.command("method-bind")
+@click.argument("project_id")
+@click.argument("revision_id")
+@click.option("--overrides", default="[]", help="项目规则覆盖 JSON 数组或对象（@file 或内联）")
+@click.option("--confirmation-ref", required=True, help="用户确认依据引用")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_method_bind(
+    ctx: click.Context, project_id: str, revision_id: str, overrides: str,
+    confirmation_ref: str, json_output: bool,
+) -> None:
+    """把一个 admitted Method DNA 精确版本绑定到项目。"""
+    parsed = _method_dna_json_value(overrides, label="overrides")
+    rules = parsed.get("overrides", parsed) if isinstance(parsed, dict) else parsed
+    if isinstance(rules, dict):
+        rules = [
+            {"rule_id": key, **(value if isinstance(value, dict) else {"enabled": bool(value)})}
+            for key, value in rules.items()
+        ]
+    if not isinstance(rules, list) or not all(isinstance(item, dict) for item in rules):
+        raise click.ClickException("overrides 必须是规则对象，或包含 overrides 数组的对象")
+    result = _session(ctx).request(
+        "PUT", f"/projects/{project_id}/method-dna/binding",
+        json_body={"revision_id": revision_id, "overrides": rules, "confirmation_ref": confirmation_ref},
+        write=True,
+    )
+    _emit(result, json_output)
+
+
+@skill_group.command("method-resolve")
+@click.argument("project_id")
+@click.option("--unit-id", default=None, help="已采纳章节、剧集或场次 ID")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_method_resolve(
+    ctx: click.Context, project_id: str, unit_id: str | None, json_output: bool
+) -> None:
+    """预览服务端对当前 scope 解析出的活跃规则、停用原因与必读项。"""
+    result = _session(ctx).request(
+        "GET", f"/projects/{project_id}/method-dna/resolve-preview",
+        params={"unit_id": unit_id} if unit_id else None,
+    )
+    if json_output:
+        _emit(result, True)
+        return
+    _show_method_resolution(dict(result))
 
 
 # ------------------------------------------------------------------ skill craft

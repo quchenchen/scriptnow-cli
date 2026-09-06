@@ -283,3 +283,9 @@ when needed; they are reference material, not model prompt content.
 ## Unified creative Skill plan
 
 CLI, Creator and creative runs use the server creative-skill-plan. Before writing, use ready-check --unit-id <unit-id> to inspect the adopted narrative stage, unit function, personal and built-in methods, and execution readiness. Submit narrative_stage and unit_function with episode/chapter outline candidates; adoption activates them. Never infer stages from episode percentages. Pacing advice is not a veto; selection, reading and application are distinct evidence.
+
+For Script Method DNA, use only the server-backed `skill method-current`,
+`method-compile`, `method-compare`, `method-bind`, and `method-resolve` commands.
+The CLI must not compile rules, infer activation, or build prompt fragments. Before
+writing a unit, inspect `ready-check --unit-id` or `skill method-resolve --unit-id`
+for active and inactive rules, reasons, required reads, and the verification plan.
