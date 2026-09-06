@@ -1082,6 +1082,7 @@ _AGENT_CONTRACT = {
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
         "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
+        'CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。',
         "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
@@ -1139,6 +1140,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "回填 outline/cores/blueprint/storymap 时禁止手填或猜测 review preview 的 resource_kind/resource_id；固定使用 review propose-preview <novel|script> <project_id> <outline|cores|blueprint|storymap> <file> 自动绑定。用户明确决定后原样 confirm，再 claim；--review-token 使用 claim 返回的 token 字段，不是 packet_id。预览后内容若有实质修改，必须重新 preview。",
         "审阅凭证只绑定用户实际阅读的可读 JSON；解析器默认值不得制造内容变化。",
         "生成命令只拿 run_id，随后分次 run status 轮询；不得用长阻塞等待伪装完成。run status 同时返回持久化 operation stage/progress；平台后备 StoryMap 按 Script 最多 3 集、Novel 最多 5 章分批 checkpoint，刷新或服务重启后继续跟踪同一 run。",
+        "粗纲与集纲的未知因果依赖必须串行；并发设置只是独立任务的上限，不证明也不授权并行依赖批次。checkpoint 仅在冻结执行身份、输入签名和前序 checkpoint 链都匹配时复用；旧的未签名或不兼容 checkpoint 从首个不匹配处重新生成后缀，不影响已采纳内容。",
         "写操作只有服务器返回 ID 且回读确认后才可报告完成；错误必须按 CLI 返回的可行动 detail 修正（Agent 请求保留经脱敏的原始领域 detail），不能编造替代结果。",
         "Novel 正文回填中每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON；普通 JSON 文本允许。遇到该校验失败时按返回 detail 修正后重新生成，不得绕过。",
         "同一项目的创作写操作必须串行，避免版本和候选冲突；不同项目可并发，CLI 会安全协调共享登录会话的自动续期。",
@@ -1358,7 +1360,7 @@ _GUIDE_STEPS = [
         "title": "规划并挂载专属 Skill（门禁 · 须健壮性完善）",
         "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
         "why": "动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格、角色守则与连续性标准——多轮打磨、试写检验，直到它真正代表你的意图，然后挂载到作品上，才能开始逐章创作。",
-        "downstream": "方法论 Skill 挂载并验证后，逐章/逐场正文才有统一风格与连续性，是写作前的必然门禁。",
+        "downstream": "方法论挂载后，以 ready-check --unit-id 检查服务端统一方案；按已采纳叙事阶段与本单元功能调整方法，CLI、Creator 与运行使用同一基线。",
         "command": "scriptnow skill mounts <作品号>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照方法论规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <作品号>（或 skill create + skill mount）",
         "verify": "scriptnow skill mounts <作品号> 显示该方法论已挂载，且经样本试写验证规则有效。",
         "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？"
@@ -4623,8 +4625,9 @@ def novel_outline_adopt(ctx: click.Context, project_id: str | None,
 @novel_group.command("ready-check")
 @click.argument("project_id", required=False)
 @click.option("--json", "json_output", is_flag=True)
+@click.option("--unit-id", default=None, help="已采纳章节、剧集或场次 ID；检查叙事阶段与本单元功能。")
 @click.pass_context
-def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: bool, unit_id: str | None) -> None:
     """逐章写作前置完整性检查（强制 gate）：direction / cores / blueprint / 梗概大纲 / storymap / skill。"""
     pid = _resolve_project_id(ctx, project_id)
     session = _session(ctx)
@@ -4646,17 +4649,23 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
         for chapter in (volume.get("chapters") or [])
     ]
     checks.append(("章纲（全书 chapter.outline）", _all_planning_contracts(chapters, "chapter_contract"), "在每个 chapter 的 outline 填写章纲 → chapter outline <pid> <chapter_id> @outline.json（单章补纲）→ planning-quality → propose"))
-    try:
-        mounted = session.request("GET", f"/projects/{pid}/skills")
-        skills = [str(item.get("name") or "") for item in mounted if isinstance(item, dict) and bool(item.get("enabled", True))] if isinstance(mounted, list) else []
-    except Exception:
-        skills = []
-    checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
+    import urllib.parse
+    skill_plan = session.request("GET", f"/projects/{pid}/creative-skill-plan" + (
+        "?" + urllib.parse.urlencode({"unit_id": unit_id}) if unit_id else ""))
+    skills = [str(item.get("name") or "") for item in skill_plan.get("selections", [])]
+    checks.append(("方法论 Skill", skill_plan.get("execution_ready") is True,
+                   "查看服务端 Skill 方案；按诊断完善并挂载项目方法论"))
     if json_output:
         _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
             {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
-        ], "skills": skills}, json_output)
+        ], "skills": skills, "skill_plan": skill_plan}, json_output)
         return
+    if unit_id:
+        context = skill_plan.get("context") or {}
+        labels = skill_plan.get("labels") or {}
+        click.echo(f"叙事阶段：{labels.get(context.get('narrative_stage'), context.get('narrative_stage') or '未明确')} · 单元功能：{labels.get(context.get('unit_function'), context.get('unit_function') or '未明确')}", err=True)
+        for focus in skill_plan.get("focus", []):
+            click.echo(f"  · {focus}", err=True)
     all_ok = True
     for name, ok, fix in checks:
         mark = ui.ok("✓") if ok else ui.error("✗")
@@ -5946,8 +5955,9 @@ def _all_planning_contracts(units: object, key: str) -> bool:
 @script_group.command("ready-check")
 @click.argument("project_id", required=False)
 @click.option("--json", "json_output", is_flag=True)
+@click.option("--unit-id", default=None, help="已采纳章节、剧集或场次 ID；检查叙事阶段与本单元功能。")
 @click.pass_context
-def script_ready_check(ctx: click.Context, project_id: str | None, json_output: bool) -> None:
+def script_ready_check(ctx: click.Context, project_id: str | None, json_output: bool, unit_id: str | None) -> None:
     """剧本逐场写作前置完整性检查（强制 gate）：方向 / 核心 / 蓝图 / 集纲 / StoryMap / Skill。"""
     pid = _resolve_project_id(ctx, project_id)
     session = _session(ctx)
@@ -5962,17 +5972,23 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
     checks.append(("梗概大纲（已定稿）", bool(outline and outline.get("status") == "adopted"), 'script outline <作品号> --text "…" → script outline-adopt'))
     episodes = (state.get("story_map") or {}).get("episodes") or []
     checks.append(("集纲（全剧 Episode 平铺字段）", _all_planning_contracts(episodes, "episode_contract"), "可用 script episode-outline <pid> <episode_id> @outline.json 单集补纲；完成全量后运行 script planning-quality → propose/adopt"))
-    try:
-        mounted = session.request("GET", f"/projects/{pid}/skills")
-        skills = [str(item.get("name") or "") for item in mounted if isinstance(item, dict) and bool(item.get("enabled", True))] if isinstance(mounted, list) else []
-    except Exception:
-        skills = []
-    checks.append(("方法论 Skill", bool(skills), "interpret local 一书一 Skill 或 skill create → skill mount"))
+    import urllib.parse
+    skill_plan = session.request("GET", f"/projects/{pid}/creative-skill-plan" + (
+        "?" + urllib.parse.urlencode({"unit_id": unit_id}) if unit_id else ""))
+    skills = [str(item.get("name") or "") for item in skill_plan.get("selections", [])]
+    checks.append(("方法论 Skill", skill_plan.get("execution_ready") is True,
+                   "查看服务端 Skill 方案；按诊断完善并挂载项目方法论"))
     if json_output:
         _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
             {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
-        ], "skills": skills}, json_output)
+        ], "skills": skills, "skill_plan": skill_plan}, json_output)
         return
+    if unit_id:
+        context = skill_plan.get("context") or {}
+        labels = skill_plan.get("labels") or {}
+        click.echo(f"叙事阶段：{labels.get(context.get('narrative_stage'), context.get('narrative_stage') or '未明确')} · 单元功能：{labels.get(context.get('unit_function'), context.get('unit_function') or '未明确')}", err=True)
+        for focus in skill_plan.get("focus", []):
+            click.echo(f"  · {focus}", err=True)
     all_ok = True
     for name, ok, fix in checks:
         mark = ui.ok("✓") if ok else ui.error("✗")

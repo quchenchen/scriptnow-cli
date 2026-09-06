@@ -387,7 +387,7 @@ def test_novel_ready_check_ignores_disabled_skill_mounts(monkeypatch):
     import cli_anything.scriptnow.scriptnow_cli as cli
 
     session = Mock()
-    session.request.return_value = [{"skill_id": "skill-1", "name": "bad-method", "enabled": False}]
+    session.request.return_value = {"execution_ready": False, "selections": [], "findings": [{"code": "skill_gate_required"}]}
     monkeypatch.setattr(cli, "_session", lambda _ctx: session)
     monkeypatch.setattr(cli, "_resolve_project_id", lambda _ctx, project_id: project_id)
     monkeypatch.setattr(cli, "_novel_state", lambda _session, _pid: {

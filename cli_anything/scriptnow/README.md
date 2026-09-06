@@ -332,3 +332,7 @@ scriptnow review status <packet-id> --json
   （scene-show --plain 读原文 + scene-quality 快检）→ 不达标立即带 feedback 重生成 → 达标才采纳。
 - **质量门槛**：9-10 优秀 · 8-9 良好 · **<8 分立即重生成**，绝不采纳不达标内容。
 - **进度控制**：每集/卷完成后汇报质量统计，询问用户是否继续。
+
+## 统一创作 Skill 方案
+
+CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。

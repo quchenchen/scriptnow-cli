@@ -397,6 +397,8 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 
 ## Agent 使用提示
 
+- **因果安全恢复**：粗纲与集纲的未知因果依赖必须顺序执行；并发设置只是独立任务的上限。checkpoint 只在冻结执行身份、输入签名和前序 checkpoint 链均匹配时复用；未签名或不兼容历史从首个不匹配批次重生后缀，不改动已采纳内容。
+
 - **先读短运行契约（MANDATORY）**：安装入口只含执行边界；每个 Agent 首次动作前必须运行
   `scriptnow agent-guide --json`（完整人工手册用 `--full`）——平台是事实源、
   规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
@@ -451,3 +453,7 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 
 `chapter propose --help-format / --example`、`script scene-propose --help-format / --example` 展示**格式规格示例**
 （blocks JSON 结构/正文分段），仅保证格式合规，**不代表质量水准**——质量由 Agent 按上述评估维度判断。
+
+## 统一创作 Skill 方案
+
+CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。

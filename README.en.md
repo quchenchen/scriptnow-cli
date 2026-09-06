@@ -375,6 +375,8 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
 
 ## Tips for AI agents
 
+- **Causally safe resume**: unknown causal dependencies in rough and episode outlines run in order; concurrency settings are ceilings only for independent work. Reuse checkpoints only when frozen execution identity, input signature, and predecessor chain match. Unsigned or incompatible history regenerates the suffix from the first mismatch without changing adopted content.
+
 - **MANDATORY: read the short runtime contract first** (`scriptnow agent-guide --json`; use
   `--full` only for the human reference manual): the platform is
   the source of truth, planning trio is backfill-first via `propose`, generation commands run in
@@ -456,3 +458,7 @@ quality is judged by the agent against the evaluation dimensions above.
   immediately** — never adopt unqualified work.
 - **Progress control**: after each episode/volume, report quality stats and ask
   the user whether to continue.
+
+## Unified creative Skill plan
+
+CLI, Creator and creative runs use the server creative-skill-plan. Before writing, use ready-check --unit-id <unit-id> to inspect the adopted narrative stage, unit function, personal and built-in methods, and execution readiness. Submit narrative_stage and unit_function with episode/chapter outline candidates; adoption activates them. Never infer stages from episode percentages. Pacing advice is not a veto; selection, reading and application are distinct evidence.

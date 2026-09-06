@@ -220,6 +220,7 @@ the reviewed content changes, preview it again.
   Chinese fallback is generic; `--json` failures use
   `{ok:false,error:{type,status,detail}}` without a traceback. Do not substitute
   an unvalidated structure or silently retry with invented data.
+- For rough and episode planning, treat unknown causal dependencies as sequential. Concurrency settings are ceilings for proven-independent work, never proof of independence. Reuse a checkpoint only when frozen execution identity, input signature, and predecessor chain match; unsigned or incompatible history regenerates the suffix without changing adopted content.
 - CLI quality diagnostics are human opt-in only. An Agent must never run
   `doctor --enable-diagnostics`, `feedback --send`, or `feedback --send --yes`
   on its own. Only after the user explicitly requests diagnostics may the Agent
@@ -278,3 +279,7 @@ commands, hidden reasoning, or a generic tutorial into a creative deliverable.
 
 For command catalogues and human setup material, use the packaged README only
 when needed; they are reference material, not model prompt content.
+
+## Unified creative Skill plan
+
+CLI, Creator and creative runs use the server creative-skill-plan. Before writing, use ready-check --unit-id <unit-id> to inspect the adopted narrative stage, unit function, personal and built-in methods, and execution readiness. Submit narrative_stage and unit_function with episode/chapter outline candidates; adoption activates them. Never infer stages from episode percentages. Pacing advice is not a veto; selection, reading and application are distinct evidence.
