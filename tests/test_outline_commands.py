@@ -16,7 +16,7 @@ def _write(tmp_path, name: str, payload: dict) -> str:
     return f"@{path}"
 
 
-def test_synopsis_outline_cli_matches_platform_hard_ceiling(monkeypatch):
+def test_synopsis_outline_cli_does_not_impose_a_hard_length_ceiling(monkeypatch):
     session = Mock()
     session.request.return_value = {"id": "outline-1", "version": 1, "status": "active"}
     import cli_anything.scriptnow.scriptnow_cli as cli
@@ -26,17 +26,11 @@ def test_synopsis_outline_cli_matches_platform_hard_ceiling(monkeypatch):
     for medium in ("novel", "script"):
         accepted = runner.invoke(
             main,
-            [medium, "outline", "p1", "--text", "故" * 1_000,
-             "--review-token", "review-1", "--json"],
+            [medium, "outline", "p1", "--text", "故" * 1_001,
+            "--review-token", "review-1", "--json"],
         )
         assert accepted.exit_code == 0, (medium, accepted.output)
-        rejected = runner.invoke(
-            main,
-            [medium, "outline", "p1", "--text", "故" * 1_001,
-             "--review-token", "review-1", "--json"],
-        )
-        assert rejected.exit_code == 1
-        assert "1000" in rejected.output
+        assert session.request.call_args.kwargs["json_body"]["content"] == "故" * 1_001
 
 
 def test_episode_outline_backfill_uses_server_storymap_version(monkeypatch, tmp_path):

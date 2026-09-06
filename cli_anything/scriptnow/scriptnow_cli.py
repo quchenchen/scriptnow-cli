@@ -40,7 +40,6 @@ from cli_anything.scriptnow.utils.upgrade import (
 
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-SYNOPSIS_HARD_MAX_CHARS = 1_000
 
 
 class AgentJsonGroup(click.Group):
@@ -1148,7 +1147,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "不得输出安装命令、Skill 手册、隐藏推理或泛化教程到创作交付物。",
         "结构库是可复用叙事结构模板（小说/剧本双域共享）：structure-save 命名存库（--description/--medium 可选元数据）、structures 列出内置与已存、structure-delete 删除；项目按 key 引用，未知 key 按 custom 兜底不视为错误。",
         "粗纲是集纲/章纲之前的叙事阶段层。Script 必须先读取 `scriptnow script rough-outline-example <作品号> --json`，再运行 `scriptnow script rough-outline-start <作品号> --json`。每阶段固定 `scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json` → 用户明确决定 → 完整执行 review confirm 和 review claim 命令 → `scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json` → `scriptnow script rough-outline-progress <作品号> --json`。禁止把 packet_id 当 token，也禁止重复 preview 未变化内容。",
-        "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选（建议 300–500 字、以因果完整为准，复杂项目硬上限 1000 字），不跳到粗纲、集纲/章纲或正文。",
+        "故事梗概生成前必须先读取项目已挂载创作Skill、已采纳方向与蓝图，并遵守平台梗概契约：冻结叙事视角和全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选（建议 300–500 字、以因果完整为准），不跳到粗纲、集纲/章纲或正文。",
         "StoryMap 隔离重建（script）：命令为 `scriptnow script storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`。已有 StoryMap 重建必须先采纳剧本粗纲（粗纲先于集纲），开隔离会话后逐阶段（阶段=集区间）rebuild-check（重复度/因果/场名/状态变化）预检，rebuild-phase 累积 episodes，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换（旧结构与正文快照自动归档）。禁止一次生成完整 80 集。",
         "StoryMap 隔离重建（novel）：命令为 `scriptnow novel storymap-rebuild-start` / `storymap-rebuild` / `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` / `storymap-rebuild-propose`（镜像 script 的 storymap-rebuild-* 链）。必须先采纳小说粗纲（粗纲位于章纲之前）；逐阶段（全书章区间，不强制阶段=卷）rebuild-check（重复度/因果/章名/状态变化）后 rebuild-phase 累积，全部完成 rebuild-propose 形成完整替换候选（不改现有 StoryMap），用户明确确认后才经 storymap adopt --confirm 替换。替换产生的旧结构自动归档，可用 `scriptnow novel storymap-archives <pid>` 列出、`storymap-archive <pid> <archive_id>` 查看单份（含旧卷章结构与各章正文快照），供影响审阅与回滚决策。禁止一次生成完整长卷。",
         "新增卷/章 = 纯追加通道（服务端硬门禁）：已有 StoryMap 的新增只允许 `storymap append-volume <pid> @volumes.json` / `storymap append-chapters <pid> <volume_id> @chapters.json` / `storymap append-phase <pid>`，已有单元 id/序号/标题完全不动；全量 `novel/script propose storymap` 提交纯追加形状会被服务端拒绝并指引追加通道（首次创建空结构不受限）。全量替换仅限合并/重排/删除卷等真重构，storymap adopt 采纳前显示「将移除 N 单元」警告；全置换（retained=0、不保留任何现有单元）普通全量提案被服务端拒绝（形状门禁 R1），恢复旧结构走 `novel/script storymap-restore` 归档镜像豁免，全新结构仅限首次创建（空结构）或 storymap-rebuild-* 隔离链。事故回滚用 `novel storymap-restore <pid> <archive_id>` / `script storymap-restore <pid> <archive_id>` 导出恢复候选（覆盖式=重构，走完整 review 链后确认采纳）。",
@@ -1292,10 +1291,10 @@ _GUIDE_STEPS = [
     {
         "step": 5,
         "title": "先写故事梗概，定下全书走向",
-        "scene": "核心与蓝图已定：现在建议用一段 300–500 字的梗概把整本书的走向钉住；复杂项目可展开，但硬上限是 1000 字。",
+        "scene": "核心与蓝图已定：现在建议用一段 300–500 字的梗概把整本书的走向钉住；复杂项目可按因果完整需要展开。",
         "why": "梗概冻结叙事视角与全篇因果主线，明确起点、升级、关系/认知变化、不可逆选择、结局行动与代价；只回填梗概候选，不跳到粗纲或正文。",
         "downstream": "梗概采纳后，粗纲与 StoryMap 的集纲/章纲才有走向依据。",
-        "command": "本地写 @outline.txt（建议 300–500 字，复杂项目硬上限 1000 字）→ scriptnow review propose-preview novel <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json → scriptnow review candidate-preview novel <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow novel outline-adopt <作品号> --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json",
+        "command": "本地写 @outline.txt（建议 300–500 字，以因果完整为准）→ scriptnow review propose-preview novel <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow novel outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json → scriptnow review candidate-preview novel <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow novel outline-adopt <作品号> --review-token <凭证> --json → scriptnow novel outline-status <作品号> --json",
         "verify": "梗概大纲已采纳（novel outline-status 显示已定稿）。",
         "prompt": "如果一句话让读者记住你的故事，你会说哪一句？",
         "masters": [
@@ -1498,7 +1497,7 @@ _GUIDE_CREATIVE_LENSES: dict[int, list[str]] = {
 _SCRIPT_GUIDE_OVERRIDES: dict[int, dict[str, str]] = {
     2: {"command": "scriptnow project create --name <作品名> --medium script --premise <一句话前提> --genre <类型> --tone <影像与台词气质>", "verify": "返回作品编号，并回读确认体裁为 script、前提与气质准确。"},
     4: {"command": "按平台返回的审阅作用域：scriptnow review preview <作品号> <resource_kind> <resource_id> @cores.json --title \"故事核心回填审阅\" --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script propose <作品号> cores @cores.json --review-token <凭证> --json → scriptnow review candidate-preview script <作品号> story_core_candidate <候选号> --title \"故事核心采纳审阅\" --json → confirm/claim → scriptnow script adopt-core <作品号> <候选号> --review-token <凭证> --json；blueprint 同样走完整链，并用 scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证> --json。", "verify": "故事核心与蓝图均已定稿（planning-quality 通过）。"},
-    5: {"command": "本地写 @outline.txt（建议 300–500 字，复杂项目硬上限 1000 字）→ scriptnow review propose-preview script <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow script outline-status <作品号> --json → scriptnow review candidate-preview script <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow script outline-adopt <作品号> --review-token <凭证> --json → scriptnow script outline-status <作品号> --json", "verify": "故事梗概已采纳（script outline-status 显示已定稿）。"},
+    5: {"command": "本地写 @outline.txt（建议 300–500 字，以因果完整为准）→ scriptnow review propose-preview script <作品号> outline @outline.txt --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script outline <作品号> --file @outline.txt --review-token <凭证> --json → scriptnow script outline-status <作品号> --json → scriptnow review candidate-preview script <作品号> synopsis_outline_candidate <候选号> --title \"梗概采纳审阅\" --json → 用户明确决定后再次 confirm/claim → scriptnow script outline-adopt <作品号> --review-token <凭证> --json → scriptnow script outline-status <作品号> --json", "verify": "故事梗概已采纳（script outline-status 显示已定稿）。"},
     6: {"command": "长篇隔离链：scriptnow script rough-outline-start <作品号> --json → scriptnow script rough-outline-phase-preview <作品号> <阶段键> @phase.json --json → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script rough-outline-phase <作品号> <阶段键> @phase.json --review-token <凭证> --json → scriptnow script rough-outline-progress <作品号> --json；全部阶段完成后：scriptnow review preview <作品号> rough_outline_build <构建会话号> @phases.json --title \"粗纲整体审阅\" --json → 用户明确决定 → confirm/claim 取得汇总凭证 → scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json。", "verify": "粗纲已采纳，逐阶段深化且连续覆盖全剧，非一句话粗纲；回读显示「阶段 X / 共 N 阶段」。"},
     7: {"command": "scriptnow review preview <作品号> storymap <作品号> @storymap.json --title \"StoryMap 回填审阅\" --json（集纲一体）→ 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow script propose <作品号> storymap @storymap.json --review-token <凭证> --json → scriptnow review candidate-preview script <作品号> storymap_candidate <候选号> --title \"StoryMap 采纳审阅\" --json → confirm/claim → scriptnow script storymap adopt <作品号> <候选号> --confirm --review-token <凭证> --json。", "verify": "季/集/场结构已采纳，集纲（logline/active_goal/conflict/turn/state_changes/anchor_ids）全量补齐并通过 planning-quality。"},
     9: {"command": "默认平台主笔：scriptnow script scene <作品号> <场号>（后台，回读 run status）→ 用平台返回的审阅作用域 review preview 呈现正文 → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json → scriptnow review claim <packet_id> --json → scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证> --json；仅当用户明确选择本地创作时：scriptnow script scene-propose <作品号> <场号> --file @scene.json --review-token <凭证> --json 回填候选，再走同一审阅与采纳链。", "verify": "当前场有绑定正文 digest 与用户原话的 adopted_human 版本；用户无需重复终端、页面或凭证操作。"},
@@ -4503,8 +4502,8 @@ def novel_group(ctx: click.Context) -> None:
 
 @novel_group.command("outline")
 @click.argument("project_id", required=False)
-@click.option("--text", default=None, help="故事梗概（建议 300–500 字，硬上限 1000 字）")
-@click.option("--file", default=None, help="@outline.txt（硬上限 1000 字）")
+@click.option("--text", default=None, help="故事梗概（建议 300–500 字，以因果完整为准）")
+@click.option("--file", default=None, help="@outline.txt（以因果完整为准）")
 @click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -4512,19 +4511,17 @@ def novel_outline(
     ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
     review_token: str, json_output: bool
 ) -> None:
-    """回填故事梗概（建议 300–500 字，硬上限 1000 字）→ 用户审阅 → 采纳后才可规划 StoryMap。
+    """回填故事梗概（建议 300–500 字，以因果完整为准）→ 用户审阅 → 采纳后才可规划 StoryMap。
 
     内容发生变化时自动生成新版本（v 递增并回到候选）——适合在追加新章节/内容后刷新梗概，
     用 novel outline-status 查看当前版本，novel outline-adopt 采纳新版本。
     """
     pid = _resolve_project_id(ctx, project_id)
     if not text and not file:
-        raise click.ClickException("需要 --text 或 --file（故事梗概硬上限 1000 字）")
+        raise click.ClickException("需要 --text 或 --file（故事梗概建议 300–500 字，以因果完整为准）")
     if file:
         raw = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
         text = raw
-    if len((text or "").strip()) > SYNOPSIS_HARD_MAX_CHARS:
-        raise click.ClickException("故事梗概需在 1000 字以内")
     result = _api_request(
         ctx,
         "POST",
@@ -4548,7 +4545,7 @@ def novel_outline_status(ctx: click.Context, project_id: str | None, json_output
     pid = _resolve_project_id(ctx, project_id)
     result = _api_request(ctx, "GET", f"/novel/projects/{pid}/synopsis-outline")
     if result is None:
-        click.echo(ui.warn('尚无故事梗概——建议 300–500 字，复杂项目硬上限 1000 字'), err=True)
+        click.echo(ui.warn('尚无故事梗概——建议 300–500 字，以因果完整为准'), err=True)
         return
     if result.get("status") == "candidate":
         result["next_action"] = (
@@ -6061,8 +6058,8 @@ def script_state(ctx: click.Context, project_id: str, json_output: bool) -> None
 
 @script_group.command("outline")
 @click.argument("project_id", required=False)
-@click.option("--text", default=None, help="故事梗概（建议 300–500 字，硬上限 1000 字）")
-@click.option("--file", default=None, help="@outline.txt（硬上限 1000 字）")
+@click.option("--text", default=None, help="故事梗概（建议 300–500 字，以因果完整为准）")
+@click.option("--file", default=None, help="@outline.txt（以因果完整为准）")
 @click.option("--review-token", required=True, help="人类确认完整梗概后由Agent后台取得")
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
@@ -6070,14 +6067,12 @@ def script_outline(
     ctx: click.Context, project_id: str | None, text: str | None, file: str | None,
     review_token: str, json_output: bool
 ) -> None:
-    """回填剧本故事梗概（建议 300–500 字，硬上限 1000 字）→ 采纳后才可规划 StoryMap。"""
+    """回填剧本故事梗概（建议 300–500 字，以因果完整为准）→ 采纳后才可规划 StoryMap。"""
     pid = _resolve_project_id(ctx, project_id)
     if not text and not file:
-        raise click.ClickException("需要 --text 或 --file（故事梗概硬上限 1000 字）")
+        raise click.ClickException("需要 --text 或 --file（故事梗概建议 300–500 字，以因果完整为准）")
     if file:
         text = Path(file[1:] if file.startswith("@") else file).read_text(encoding="utf-8").strip()
-    if len((text or "").strip()) > SYNOPSIS_HARD_MAX_CHARS:
-        raise click.ClickException("故事梗概需在 1000 字以内")
     result = _api_request(
         ctx,
         "POST",
