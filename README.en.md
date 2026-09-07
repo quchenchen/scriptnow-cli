@@ -151,7 +151,9 @@ skill mounted, create one first:
 
 ```bash
 scriptnow skill mounts <pid>                  # which skills are mounted?
-# none → one-work-one-skill distillation (samples stay local): interpret local draft.docx --spec
+# none → default co-creation: skill setup <pid> --json → author picks recommended presets
+#         → --answers @answers.json --confirm --json (server compiles & mounts)
+# one-work-one-skill distillation (samples stay local): interpret local draft.docx --spec
 #         → read locally → --submit @skill.json --project-id <pid>
 #    or a personal skill: skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
 # wrong mount: after explicit user approval, skill unmount <pid> <skill_id> --confirm --json (project-only, then read-back)
@@ -243,7 +245,7 @@ as a writer-facing export file yet.
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / **preview (delivery-scope review with a one-click review URL)** / download / zip; script working DOCX includes per-scene production metadata |
-| skill | Skill workshop: craft (co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **method-current / method-compile / method-compare / method-bind / method-resolve** (server Method DNA revisions and scope resolution); **growth** (methodology evolution); **canary** (version rollout) |
+| skill | Skill workshop: **setup (guided preset co-creation with the author; server compiles & mounts; script domain emits Method DNA)** / craft (deep six-question co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **method-current / method-compile / method-compare / method-bind / method-resolve** (server Method DNA revisions and scope resolution); **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | Ops: status / events |
 | feedback | Send strict content-free v2 quality events. Local diagnostics are off by default; enable them temporarily with `doctor --enable-diagnostics MINUTES`, then confirm again before `--send`. Arguments, details, notes, paths, IDs, and prose are never collected. |
@@ -387,11 +389,13 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   generation checkpoints at most three Script episodes or five Novel chapters per batch and keeps
   the original run trackable across refreshes and service restarts.
 - **MANDATORY: Skill is a pre-writing gate with a robustness-honing duty** — once the
-  intent is clear and the project exists, plan the methodology with the user (multi-round),
-  then harden it (test-drive a sample chapter/scene against its rules, diagnose gaps, iterate),
-  create and mount it on the platform (interpret local distillation or skill create), and
-  verify with `skill mounts <pid>` before any per-chapter/scene writing. `book` also hard-stops
-  on missing Skill support.
+  intent is clear and the project exists, default to `skill setup <pid>` for guided
+  preset co-creation with the author (server compiles & mounts; script domain also emits
+  Method DNA). When deep customization is needed, plan the methodology with the user
+  (multi-round), then harden it (test-drive a sample chapter/scene against its rules,
+  diagnose gaps, iterate), create and mount it on the platform (interpret local
+  distillation or skill craft), and verify with `skill mounts <pid>` before any
+  per-chapter/scene writing. `book` also hard-stops on missing Skill support.
 - **MANDATORY: fill the full project direction yourself** — backfill premise/tone/world_setting/
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.

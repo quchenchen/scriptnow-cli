@@ -84,6 +84,7 @@ macOS/Linux 上 CLI 会用跨进程锁协调共享会话的自动续期：不同
 
 ```bash
 scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？无 → 走下方创建流程
+# 默认共建：skill setup <pid> --json → 与作者点选推荐预设（风格/节奏/禁词；剧本域含 Method DNA）→ --answers @answers.json --confirm --json（服务端编译挂载）
 # 一书一 Skill 蒸馏（样本不传平台）：interpret local 手稿.docx --spec → 本地解读+多轮完善 → --submit @skill.json --project-id <pid>
 #   或 个人 Skill：skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
 # 错误挂载仅在用户明确授权后：skill unmount <pid> <skill_id> --confirm --json（不归档全局 Skill，自动回读）
@@ -166,7 +167,7 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / **preview（交付范围审阅，返回一键审阅地址）** / download / zip；剧本 working DOCX 含每场制作信息 |
-| skill | Skill 工坊：craft（共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**method-current / method-compile / method-compare / method-bind / method-resolve**（服务端 Method DNA 核心密码版本与 scope 解析）；**growth**（方法论进化）；**canary**（版本灰度） |
+| skill | Skill 工坊：**setup（按推荐预设与作者点选共建，服务端编译并挂载；剧本域含 Method DNA）** / craft（六问深度共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅本项目，需 --confirm）** / mounts / upload；**method-current / method-compile / method-compare / method-bind / method-resolve**（服务端 Method DNA 核心密码版本与 scope 解析）；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
 | run | 运行排查：status / events |
 | feedback | 严格无内容 v2 质量事件；默认关闭，先用 `doctor --enable-diagnostics MINUTES` 限时开启，发送前再次确认；不含参数、详情、备注、路径、ID 或正文 |
@@ -278,9 +279,13 @@ scriptnow review status <packet-id> --json
 ## Agent 使用提示
 
 - **编排前置：Skill 支撑检查（MANDATORY）**：创作前 `skill mounts <pid>`；无方法论 Skill 时
-  优先用 `skill craft` 共创。Agent 先以 `--json` 获取问题协议，再以 `--answers @answers.json`
-  一次回填；向用户展示草案并获明确认可后才加 `--confirm`。CLI 创建前做健壮性预检，
-  创建回执、挂载门禁与运行时都解析同一完整方法论 reference；通过后自动挂载并回读验证。也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
+  默认用 `skill setup <pid>` 与作者预设点选共建——Agent 先以 `skill setup <pid> --json` 读取
+  服务端按格式/题材推荐的 presets（对白风格/节奏/禁词；剧本域含 Method DNA 四维），在对话中
+  按编辑语言逐项请作者选择并接受自定义补充，再以 `--answers @answers.json --confirm --json`
+  提交服务端编译挂载并回读回执。深度共创可用 `skill craft`（六问：先以 `--json` 获取问题协议，
+  再以 `--answers @answers.json` 一次回填；向用户展示草案并获明确认可后才加 `--confirm`）。
+  创建回执、挂载门禁与运行时都解析同一完整方法论 reference；通过后自动挂载并回读验证。
+  也可用 interpret local 蒸馏或 skill create。`book` 也会在缺 Skill 时提示。
 - **必须主动填充完整 direction**：用 `project direction <pid> --apply @direction.json` 回填
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
 - **正文创作双模式（用户明确选择，平台侧不阻塞）**：默认由平台主笔完成——`chapter/scene generate`

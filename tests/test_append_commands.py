@@ -353,6 +353,151 @@ def test_skill_craft_agent_flow_preflights_mounts_and_reads_back(monkeypatch):
     )
 
 
+def test_skill_setup_guided_flow_requires_author_input_then_compiles_and_mounts(monkeypatch):
+    """skill setup 预设点选共建：先返回协议（含服务端推荐），确认后才提交 quick-create。"""
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    session = Mock()
+
+    def request(method, path, **kwargs):
+        if path == "/projects":
+            return [{"id": "project-1", "medium": "script", "name": "先手截杀"}]
+        if path == "/skills/presets":
+            return {
+                "presets": {
+                    "dialogue_styles": [{"value": "凌厉直接", "description": "短句交锋"}],
+                    "pacing_options": [{"value": "密集爽点", "description": "快速兑现"}],
+                    "suggested_forbidden_words": ["微微", "仿佛"],
+                    "audience_reward_options": [{"value": "revenge_relief", "label": "复仇解气"}],
+                    "expression_mode_options": [{"value": "direct_collision", "label": "直接碰撞"}],
+                    "progression_mode_options": [{"value": "rapid_conflict", "label": "快速冲突"}],
+                    "dramatic_intensity_options": [{"value": "high_stimulus", "label": "高刺激"}],
+                    "recommended_dramatic_intensity": "high_stimulus",
+                },
+                "quick_create_url": "/skills/quick-create-from-project",
+            }
+        if method == "POST" and path == "/skills/quick-create-from-project":
+            body = kwargs["json_body"]
+            assert body["project_id"] == "project-1"
+            assert body["domain"] == "script"
+            assert body["auto_mount"] is True
+            assert body["dialogue_style"] == "凌厉直接"
+            assert body["pacing"] == "密集爽点"
+            assert body["forbidden_words"] == ["微微", "仿佛"]
+            assert body["audience_reward"] == ["revenge_relief"]
+            assert body["expression_mode"] == "direct_collision"
+            assert body["progression_mode"] == "rapid_conflict"
+            assert body["dramatic_intensity"] == "high_stimulus"
+            return {
+                "material": {"name": "xianshou-jiesha-skill"},
+                "mounted": True,
+                "gate_passed": True,
+                "method_dna": {"revision_no": 1, "content_digest": "abc123"},
+                "method_binding_revision_id": "binding-1",
+                "resolved_preview": {"active_rules": [], "inactive_rules": []},
+            }
+        raise AssertionError((method, path, kwargs))
+
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    runner = CliRunner()
+
+    # 1) 首次 --json：返回 needs_user_input 协议 + 服务端推荐，不发起任何写入
+    protocol = runner.invoke(main, ["skill", "setup", "project-1", "--json"])
+    assert protocol.exit_code == 0, protocol.output
+    payload = json.loads(protocol.output)
+    assert payload["status"] == "needs_user_input"
+    assert payload["domain"] == "script"
+    assert payload["guide"]["recommended_dramatic_intensity"] == "high_stimulus"
+    assert set(payload["answer_schema"]) == {
+        "domain", "dialogue_style", "pacing", "forbidden_words",
+        "custom_instructions", "audience_reward", "expression_mode",
+        "progression_mode", "dramatic_intensity", "source_candidate",
+    }
+
+    # 2) 答案缺项 → 任何网络写入前失败
+    incomplete = runner.invoke(
+        main,
+        ["skill", "setup", "project-1", "--answers", '{"dialogue_style":"凌厉直接"}', "--json"],
+    )
+    assert incomplete.exit_code != 0
+    assert "共建选择不完整" in incomplete.output
+
+    # 3) 未带 --confirm → 返回 needs_confirmation，不提交
+    waiting = runner.invoke(
+        main,
+        [
+            "skill", "setup", "project-1", "--json", "--answers",
+            json.dumps({
+                "domain": "script", "dialogue_style": "凌厉直接", "pacing": "密集爽点",
+                "forbidden_words": ["微微", "仿佛"],
+                "audience_reward": ["revenge_relief"], "expression_mode": "direct_collision",
+                "progression_mode": "rapid_conflict", "dramatic_intensity": "high_stimulus",
+            }, ensure_ascii=False),
+        ],
+    )
+    assert waiting.exit_code == 0, waiting.output
+    assert json.loads(waiting.output)["status"] == "needs_confirmation"
+
+    # 4) --confirm 提交 → 服务端编译挂载，回执读回 mounted/method_dna
+    confirmed = runner.invoke(
+        main,
+        [
+            "skill", "setup", "project-1", "--json", "--confirm",
+            "--answers", json.dumps({
+                "domain": "script", "dialogue_style": "凌厉直接", "pacing": "密集爽点",
+                "forbidden_words": ["微微", "仿佛"],
+                "audience_reward": ["revenge_relief"], "expression_mode": "direct_collision",
+                "progression_mode": "rapid_conflict", "dramatic_intensity": "high_stimulus",
+                "source_candidate": "主角的台词永远是先出招的人",
+            }, ensure_ascii=False),
+        ],
+    )
+    assert confirmed.exit_code == 0, confirmed.output
+    receipt = json.loads(confirmed.output)
+    assert receipt["mounted"] is True
+    assert receipt["gate_passed"] is True
+    assert receipt["method_dna"]["revision_no"] == 1
+
+
+def test_skill_setup_novel_schema_and_validation():
+    """skill setup novel 域：答案 schema 无 Method DNA 字段；legacy 需风格+节奏。"""
+    from cli_anything.scriptnow.scriptnow_cli import (
+        _skill_setup_answer_schema,
+        _skill_setup_missing_answers,
+    )
+
+    schema = _skill_setup_answer_schema("novel")
+    assert "audience_reward" not in schema
+    assert "source_candidate" not in schema
+    assert {"dialogue_style", "pacing", "forbidden_words"} <= set(schema)
+
+    # 缺风格 → 缺项；补全后通过（禁词非强制）
+    missing = _skill_setup_missing_answers("novel", {"dialogue_style": "冷冽克制"})
+    assert any("pacing" in item for item in missing)
+    complete = _skill_setup_missing_answers(
+        "novel", {"dialogue_style": "冷冽克制", "pacing": "悬念递进"}
+    )
+    assert complete == []
+
+    # 剧本 DNA 模式：四维齐全即通过，不再强求 legacy 风格/节奏
+    dna = _skill_setup_missing_answers(
+        "script",
+        {
+            "audience_reward": ["revenge_relief"],
+            "expression_mode": "direct_collision",
+            "progression_mode": "rapid_conflict",
+            "dramatic_intensity": "high_stimulus",
+        },
+    )
+    assert dna == []
+    partial_dna = _skill_setup_missing_answers(
+        "script",
+        {"audience_reward": ["revenge_relief"], "expression_mode": "direct_collision"},
+    )
+    assert any("progression_mode" in item for item in partial_dna)
+
+
 def test_skill_unmount_requires_confirmation_and_reads_back(monkeypatch):
     import cli_anything.scriptnow.scriptnow_cli as cli
 
@@ -794,3 +939,113 @@ def test_feedback_requires_confirmation_and_sends_only_v2_events(
         "不得自行执行 doctor --enable-diagnostics" in rule
         for rule in json.loads(guide.output)["rules"]
     )
+
+
+def test_project_create_script_requires_interactive_format_choice(monkeypatch):
+    """剧本项目创建：交互模式（tty）未显式 --script-format 时强制作者三选一。"""
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    captured: dict[str, object] = {}
+
+    class FakeStream:
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(cli.click, "get_text_stream", lambda _name: FakeStream())
+
+    def request(method, path, **kwargs):
+        if method == "POST" and path == "/projects":
+            captured["body"] = kwargs["json_body"]
+            return {"id": "project-9", "name": "测试剧"}
+        if method == "GET" and path == "/projects":
+            return [{"id": "project-9", "name": "测试剧"}]
+        raise AssertionError((method, path, kwargs))
+
+    session = Mock()
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+
+    # 交互 tty + 键入序号 3（hollywood）→ 明确写入该格式
+    result = CliRunner().invoke(
+        main,
+        [
+            "project", "create", "--name", "测试剧", "--medium", "script",
+            "--volume-one", "20", "--volume-two", "3", "--volume-three", "2",
+        ],
+        input="3\n",
+    )
+    assert result.exit_code == 0, result.output
+    direction = (captured["body"] or {}).get("direction") or {}
+    assert direction.get("script_format") == "hollywood"
+
+    # 交互 tty + 空回车 → 默认 chinese-short（显式展示三选项后取默认仍算作者决策）
+    captured.clear()
+    result = CliRunner().invoke(
+        main,
+        [
+            "project", "create", "--name", "测试剧B", "--medium", "script",
+            "--volume-one", "20", "--volume-two", "3", "--volume-three", "2",
+        ],
+        input="\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "剧本格式（作者选择" in result.output
+    direction = (captured["body"] or {}).get("direction") or {}
+    assert direction.get("script_format") == "chinese-short"
+
+    # 非法输入循环重问直至合法
+    captured.clear()
+    result = CliRunner().invoke(
+        main,
+        [
+            "project", "create", "--name", "测试剧C", "--medium", "script",
+            "--volume-one", "20", "--volume-two", "3", "--volume-three", "2",
+        ],
+        input="not-a-format\n2\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "请输入" in result.output
+    direction = (captured["body"] or {}).get("direction") or {}
+    assert direction.get("script_format") == "chinese-short"  # 序号 2 = chinese-short
+
+
+def test_project_create_script_json_mode_keeps_default_and_validates_explicit(monkeypatch):
+    """剧本项目创建：--json（Agent/脚本）不挂起，非法显式值仍在写入前拒绝。"""
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    captured: dict[str, object] = {}
+
+    def request(method, path, **kwargs):
+        if method == "POST" and path == "/projects":
+            captured["body"] = kwargs["json_body"]
+            return {"id": "project-10", "name": "测试剧D"}
+        if method == "GET" and path == "/projects":
+            return [{"id": "project-10", "name": "测试剧D"}]
+        raise AssertionError((method, path, kwargs))
+
+    session = Mock()
+    session.request.side_effect = request
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+
+    # 非法值 → 创建前拒绝
+    bad = CliRunner().invoke(
+        main,
+        [
+            "project", "create", "--name", "测试剧D", "--medium", "script",
+            "--script-format", "vertical", "--json",
+        ],
+    )
+    assert bad.exit_code != 0
+    assert "剧本格式取值不合法" in bad.output
+    assert not session.request.called
+
+    # json 未传 → 默认 chinese-short，不触发交互
+    ok = CliRunner().invoke(
+        main,
+        [
+            "project", "create", "--name", "测试剧D", "--medium", "script",
+            "--volume-one", "20", "--volume-two", "3", "--volume-three", "2", "--json",
+        ],
+    )
+    assert ok.exit_code == 0, ok.output
+    assert (captured["body"] or {}).get("direction", {}).get("script_format") == "chinese-short"

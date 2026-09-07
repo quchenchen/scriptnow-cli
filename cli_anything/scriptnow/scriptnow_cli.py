@@ -301,7 +301,7 @@ _MAIN_HELP = (
   5. scriptnow novel outline <pid> --text "一句梗概" → outline-adopt  # 故事梗概
   6. scriptnow novel rough-outline-example <pid> → rough-outline → rough-outline-adopt  # 全剧统筹与粗纲
   7. novel propose storymap @storymap.json → adopt-storymap        # StoryMap 与集纲/章纲一体交付
-  8. scriptnow skill craft / interpret local → preflight → 挂载    # 一书一 Skill；剧本可用 method-* 管理核心密码
+  8. scriptnow skill setup <pid> --json → 作者点选共建 → 挂载   # 项目方法论门禁（剧本域含 Method DNA）；深度共创用 skill craft
   9. scriptnow chapter generate <pid> chapter-1-1                  # 逐章正文（后台；run status 轮询；平台主笔默认）
   10. scriptnow chapter show --plain → chapter quality             # 审读与修订
   11. scriptnow cover generate <pid> --image-model-id <id> → export create → export download  # 包装与导出
@@ -1080,7 +1080,7 @@ _AGENT_CONTRACT = {
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
         "分镜同样回填优先：先用 storyboard state/source-preflight/assets 取得平台事实；追加前若旧范围未知或内容重叠必须阻断，不得猜测，可经 source-range 补录或 source-revoke --confirm 审计撤销。Agent 在本地按已挂载 Skill 完成来源提取、场镜规划、资产锚定与 ScriptOut，再用 storyboard propose 回填候选。禁止默认调用平台 analyze、镜头设计或提示词 Agent；衔接策略必须由用户/导演选择。",
         "场次规划板是显式单场操作：先用 storyboard scene-board list/inspect 读取事实，再按用户要求 upload 或 generate；平台派生 layout/pages/shot_ids/digest，禁止绕过 CLI/API 或写入 shot.frame_refs。",
-        "Skill 是逐章/逐场创作前的必然门禁：优先用 skill craft 共创。Agent 先以 --json 获取一次性问题协议，在自然对话中收齐答案，以 --answers @answers.json --json 回填并取得预检草案；创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。向用户展示完整草案并获明确认可后，才用原命令加 --confirm。未 pass 不创建；通过后挂载并服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
+        "Skill 是逐章/逐场创作前的必然门禁：默认用 skill setup 与作者预设点选共建（等价 Creator 快速配置弹窗）。Agent 先运行 `skill setup <作品号> --json` 读取服务端按格式/题材推荐的 presets（对白风格、节奏、禁词短名单；剧本域另有 Method DNA 四维倾向），在自然对话中按编辑语言逐项请作者选择并接受自定义补充，再以 `--answers @answers.json --confirm --json` 提交服务端编译；回执必须含 robustness/gate_passed/mounted（剧本域含 method_dna 与绑定）。无账号外挂载、无服务器回读 ID 不得向用户报告已完成。深度共创可用 skill craft 六问；旧个人 Skill 与 craft 继续兼容。创建回执、挂载 gate 与运行时必须按同一完整方法论 reference 解析。未 pass 不挂载；通过后服务器回读。再用短样本检验约束力、诊断歧义并迭代。最后以 skill mounts <pid> 核实，才能启动正文。项目无已验证方法论 Skill 时禁止写正文。",
         'CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。',
         "剧本个人创作核心密码统一使用服务端 Method DNA：skill method-current 查看当前精确版本，method-compile 只提交稳定选项并由服务端编译候选，method-compare 比较版本，method-bind 绑定 admitted revision，method-resolve --unit-id 查看服务端解析的 active/inactive rules、原因、required reads 与验证计划。CLI 不自行编译规则、推定启停或拼 prompt。",
         "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
@@ -1106,7 +1106,7 @@ _AGENT_CONTRACT = {
         "规划链逐层（故事核心与蓝图 → 梗概 → 粗纲 → storymap）：对 cores/blueprint 先用 review preview 审阅本地文件，再 propose 回填、candidate-preview 审阅平台候选、confirm/claim。小说故事核心执行 `scriptnow novel adopt-core <作品号> <候选号> --review-token <凭证>`，剧本故事核心执行 `scriptnow script adopt-core <作品号> <候选号> --review-token <凭证>`；蓝图分别执行 `scriptnow novel adopt-blueprint <作品号> <候选号> --review-token <凭证>` 或 `scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证>`。再采纳 outline、粗纲和集纲/章纲一体的 StoryMap；每个写入都以平台返回的 ID 和回读为准。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
         "逐章/逐场创作双模式：generate/propose → review preview → 用户在对话或平台页明确决定 → Agent 原样 confirm、claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`。没有明确决定不得继续。",
-        "Skill 门禁（逐章创作前必做）：skill craft --domain novel|script --json → 自然共创 → --answers @answers.json --json 预检并展示草案 → 获认可后原命令加 --project-id <pid> --confirm（创建、挂载、回读）→ 短样本试写验证 → skill mounts <pid> 核实；错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
+        "Skill 门禁（逐章创作前必做）：skill setup <pid> --json → 与作者预设点选共创（风格/节奏/禁词/剧本域 Method DNA 四维）→ --answers @answers.json --confirm --json 提交编译挂载 → 服务器回读回执（robustness/mounted/method_dna）→ skill mounts <pid> 核实；深度共创可用 skill craft --domain novel|script。错误挂载仅在用户明确授权后 skill unmount <pid> <skill_id> --confirm，并回读确认。",
         "剧本 Method DNA 核心密码必须使用 skill method-current/method-compile/method-compare/method-bind/method-resolve 读取和修改服务端版本；逐场前由 ready-check --unit-id 或 method-resolve --unit-id 查看实际启用规则、停用原因和必读项，禁止 CLI 自行编译或拼 prompt。",
         "分镜回填：scriptnow storyboard source-import <pid> source.txt --source-kind script --json → storyboard state/assets <pid> --json → Agent 本地生成 ScriptOut → storyboard propose <pid> @storyboard.json --source-id <sid> → storyboard candidate-preview → 用户明确决定 → scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" → scriptnow review claim <packet_id> → storyboard adopt --review-token <token>。",
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
@@ -1162,7 +1162,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "故事梗概：novel outline <作品号> --text \"一句梗概\" → novel outline-status → novel outline-adopt",
         "粗纲：按 guide 第 6 步；script 长篇始终使用完整 `scriptnow script rough-outline-start/phase-preview/phase/progress/propose` 命令链，并在每次平台写入后保存返回值、回读进度。",
         "StoryMap 一体：review propose-preview → novel propose storymap @storymap.json → review candidate-preview → 用户明确决定 → novel adopt-storymap（planning-quality 通过）；补纲用 chapter outline / outline-batch",
-        "Skill 门禁：skill craft / interpret local → 预检试写 → 挂载",
+        "Skill 门禁：skill setup <pid>（预设点选共建挂载）→ skill mounts <pid> 核实；深度共创 skill craft / interpret local → 预检试写 → 挂载",
         "剧本核心密码：skill method-current / method-compile / method-compare / method-bind / method-resolve（只消费服务端 Method DNA）",
         "正文：默认 platform generate，用户明确本地创作时才 propose；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
         "审读：chapter show <作品号> <章号> --plain → chapter quality → 修订后重审",
@@ -1363,7 +1363,7 @@ _GUIDE_STEPS = [
         "scene": "在动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格锚点、角色守则、连续性标准——多轮打磨，并试写检验，直到方法论真正健壮、真正代表你的意图。",
         "why": "动笔之前，先为这部作品量身打造创作方法论：与你的创作搭档一起梳理风格、角色守则与连续性标准——多轮打磨、试写检验，直到它真正代表你的意图，然后挂载到作品上，才能开始逐章创作。",
         "downstream": "方法论挂载后，以 ready-check --unit-id 检查服务端统一方案；按已采纳叙事阶段与本单元功能调整方法，CLI、Creator 与运行使用同一基线。",
-        "command": "scriptnow skill mounts <作品号>（核实）→ 规划完善：interpret local <作品> --spec → 健壮性完善：试写样本对照方法论规则自审、迭代加固（可多轮）→ 回填创建：interpret local <作品> --submit @skill.json --project-id <作品号>（或 skill create + skill mount）",
+        "command": "scriptnow skill setup <作品号>（按推荐预设点选共建，服务端自动编译挂载；剧本域同时生成 Method DNA）→ scriptnow skill mounts <作品号> 核实 → 深度完善可用 interpret local / skill update",
         "verify": "scriptnow skill mounts <作品号> 显示该方法论已挂载，且经样本试写验证规则有效。",
         "prompt": "这部作品最需要怎样的创作方法论？哪些规则不能妥协？用一小段试写来检验它，够不够稳健？"
     },
@@ -1879,7 +1879,7 @@ def project_list(ctx: click.Context, json_output: bool) -> None:
 @click.option("--styles", default=None, help="文风标签（逗号分隔），如 heroic-epic")
 @click.option("--point-of-view", default="", help="叙事视角，如 第三人称限知 / limited witness")
 @click.option("--structure", default="", help="叙事结构（双域共享）：three_act / hero_journey / kishotenketsu / linear / custom / freytag(五幕) / circular(环形) / dual-thread(双线) / mystery-peel(悬疑剥洋葱)；也支持 JSON 对象自定义多阶段结构（如 project direction --set structure='{\"key\":\"my\",\"phases\":[...]}'）")
-@click.option("--script-format", default="", help="剧本格式（仅 script），如 chinese / hollywood")
+@click.option("--script-format", default="", help="剧本格式（仅 script）：chinese-short=竖屏短剧分镜式（默认）/ chinese=中文标准剧本 / hollywood=好莱坞格式")
 @click.option("--volume-one", default="1", help="卷数（novel）或总集数（script）")
 @click.option("--volume-two", default="15", help="每卷章数（novel）或每集场数（script），可写区间如 2-4")
 @click.option("--volume-three", default="3", show_default=True, help="单集目标分钟（仅 script，必须为正数）")
@@ -1939,7 +1939,44 @@ def project_create(
     if styles:
         direction["styles"] = [item.strip() for item in styles.split(",") if item.strip()]
     if medium == "script":
-        direction["script_format"] = script_format or "chinese"
+        known_formats = {"chinese-short", "chinese", "hollywood"}
+        if script_format and script_format not in known_formats:
+            click.echo(ui.error(f"未知剧本格式「{script_format}」。可选：{'、'.join(sorted(known_formats))}。"), err=True)
+            raise click.ClickException("剧本格式取值不合法，未创建项目")
+        chosen_format = script_format
+        if not chosen_format:
+            # 交互模式（真人终端）强制显式选择，禁止静默默认；
+            # 非交互（Agent/脚本）不传时回退 chinese-short，但 help 与契约要求显式指定。
+            try:
+                stdin_is_tty = click.get_text_stream("stdin").isatty()
+            except Exception:
+                stdin_is_tty = False
+            if stdin_is_tty and not json_output:
+                label = {
+                    "chinese-short": "竖屏短剧剧本（分镜式）",
+                    "chinese": "中国剧本格式",
+                    "hollywood": "好莱坞标准格式",
+                }
+                click.echo(ui.section("剧本格式（作者选择，创建后锁定）"), err=True)
+                for idx, fmt in enumerate(sorted(known_formats), 1):
+                    click.echo(f"  {idx}. {label[fmt]}", err=True)
+                while True:
+                    raw = click.prompt(
+                        "剧本格式",
+                        default="chinese-short",
+                        show_default=False,
+                        err=True,
+                    ).strip()
+                    if raw in known_formats:
+                        chosen_format = raw
+                        break
+                    if raw.isdigit() and 1 <= int(raw) <= len(known_formats):
+                        chosen_format = sorted(known_formats)[int(raw) - 1]
+                        break
+                    click.echo(ui.warn(f"请输入 {', '.join(sorted(known_formats))} 或序号 1-{len(known_formats)}。"), err=True)
+            else:
+                chosen_format = "chinese-short"
+        direction["script_format"] = chosen_format
     body: dict[str, Any] = {
         "name": name,
         "medium": medium,
@@ -3957,7 +3994,7 @@ def chapter_quality(
 def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     """查看全书托管创作规划（Agent 编排原语）：各章已采纳 / 待生成 / 候选待审状态，
     供 Agent 决定逐章创作顺序与审读反馈。非 --json 模式同时侦测项目的 Skill 支撑：
-    缺方法论 Skill 时提示先创建（interpret local 一书一 Skill 或 skill create）再创作。
+    缺方法论 Skill 时提示先共建（skill setup / skill craft）再创作。
 
     The agent (you, or another CLI-equipped agent) drives the hosted loop:
     read this plan, then for each chapter use `chapter show` to read the text,
@@ -4032,9 +4069,9 @@ def book_plan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     else:
         click.echo(
             ui.warn(
-                "项目暂无方法论 Skill —— 建议先创建再创作："
-                "interpret local 一书一 Skill（样本不传平台，Agent 本地蒸馏）"
-                "或 skill create --domain novel；完成后 skill mount 到本项目。"
+                "项目暂无方法论 Skill —— 建议先共建再创作："
+                "scriptnow skill setup <作品号> --json → 作者点选预设共建挂载"
+                "（或 interpret local 一书一 Skill / skill craft 深度共创）。"
             ),
             err=True,
         )
@@ -4654,7 +4691,7 @@ def novel_ready_check(ctx: click.Context, project_id: str | None, json_output: b
         "?" + urllib.parse.urlencode({"unit_id": unit_id}) if unit_id else ""))
     skills = [str(item.get("name") or "") for item in skill_plan.get("selections", [])]
     checks.append(("方法论 Skill", skill_plan.get("execution_ready") is True,
-                   "查看服务端 Skill 方案；按诊断完善并挂载项目方法论"))
+                   "与作者共建并挂载：scriptnow skill setup <作品号> --json → 共创 → --answers @answers.json --confirm --json（剧本域同时编译 Method DNA）；深度共创可用 skill craft"))
     if json_output:
         _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
             {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
@@ -5975,7 +6012,7 @@ def script_ready_check(ctx: click.Context, project_id: str | None, json_output: 
         "?" + urllib.parse.urlencode({"unit_id": unit_id}) if unit_id else ""))
     skills = [str(item.get("name") or "") for item in skill_plan.get("selections", [])]
     checks.append(("方法论 Skill", skill_plan.get("execution_ready") is True,
-                   "查看服务端 Skill 方案；按诊断完善并挂载项目方法论"))
+                   "与作者共建并挂载：scriptnow skill setup <作品号> --json → 共创 → --answers @answers.json --confirm --json（剧本域同时编译 Method DNA）；深度共创可用 skill craft"))
     if json_output:
         _emit({"project_id": pid, "ready": all(c[1] for c in checks), "checks": [
             {"item": c[0], "ok": c[1], "fix": c[2]} for c in checks
@@ -9271,6 +9308,224 @@ def skill_craft(
     if not json_output:
         click.echo(ui.ok(f"方法论《{name}》已创建 —— 用 skill mount <作品号> <skill_id> <version_id> 挂载到作品后即可开始创作。"))
     _emit({**result, "robustness": check}, json_output)
+
+
+@skill_group.command("setup")
+@click.argument("project_id", required=False)
+@click.option("--answers", default=None, help="Agent 已与作者共创的选择 JSON（@file 或内联 JSON），见 --json 首次输出的 answer_schema")
+@click.option("--confirm", is_flag=True, help="确认作者已审阅选择组合与生成回执；Agent/JSON 模式提交必需")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def skill_setup(
+    ctx: click.Context,
+    project_id: str | None,
+    answers: str | None,
+    confirm: bool,
+    json_output: bool,
+) -> None:
+    """正文开工前与作者共建写作方法论（预设点选版，script/novel 通用）。
+
+    等价 Creator 创作前的快速配置弹窗：先取服务端按项目格式/题材推荐的预设
+    （对白风格、节奏、禁词短名单；剧本域另含 Method DNA 四维倾向），由作者
+    逐项选择并可补充自定义规则，服务端编译并挂载方法论 Skill（剧本域同时
+    生成并绑定 Method DNA），随后 ready-check 即就绪。
+
+    用法（Agent 与人共创）：
+      1. scriptnow skill setup <作品号> --json
+         → 读取 presets 选项与 recommended 推荐值；
+      2. 在对话中按编辑语言逐项请作者选择；
+      3. scriptnow skill setup <作品号> --answers @answers.json --confirm --json。
+    CLI 不自行编译规则、不拼接创作 prompt：全部选择交由服务端 quick-create
+    契约编译与挂载，回执含 robustness/gate 与 resolved_preview。
+    """
+    pid = _resolve_project_id(ctx, project_id)
+    session = _session(ctx)
+    # 取项目形态：GET /projects 按 id 过滤（platform 无单查端点）。
+    projects = session.request("GET", "/projects")
+    items = projects if isinstance(projects, list) else []
+    project = next((item for item in items if str(item.get("id") or "") == pid), None)
+    if project is None:
+        raise click.ClickException(f"作品 {pid} 不存在或不属于当前账号")
+    medium = str(project.get("medium") or "")
+    if medium not in {"script", "novel"}:
+        raise click.ClickException(f"作品 {pid} 不是 script/novel 创作项目（medium={medium or '未知'}）")
+    presets = session.request("GET", "/skills/presets", params={"project_id": pid})
+    guide = dict(presets.get("presets") or presets)
+    guide["quick_create_url"] = presets.get("quick_create_url") or "/skills/quick-create-from-project"
+
+    if answers is None:
+        # 首次调用：输出问题协议（选项与推荐值），供 Agent 在对话中与作者共创。
+        _emit(
+            {
+                "status": "needs_user_input",
+                "project_id": pid,
+                "domain": medium,
+                "guide": guide,
+                "answer_schema": _skill_setup_answer_schema(medium),
+                "next": "把 guide 中 dialogue_styles / pacing_options（剧本域另有 audience_reward_options、expression_mode_options、progression_mode_options、dramatic_intensity_options）与 recommended/suggested 逐项讲给作者选择；作者可用自定义补充。收齐后把答案写入 JSON，再运行 skill setup <作品号> --answers @answers.json --confirm --json。",
+            },
+            json_output,
+        )
+        return
+
+    selected = _load_skill_setup_answers(answers)
+    domain = str(selected.get("domain") or "").strip()
+    if domain and domain != medium:
+        raise click.ClickException(f"answers.domain（{domain}）与作品形态（{medium}）不一致")
+    domain = medium
+    missing = _skill_setup_missing_answers(domain, selected)
+    if missing:
+        raise click.ClickException(
+            "共建选择不完整（缺少：" + "、".join(missing) + "）。请按 --json 首次输出的选项逐项补齐后一次提交。"
+        )
+    payload: dict[str, Any] = {"project_id": pid, "domain": domain, "auto_mount": True}
+    payload["dialogue_style"] = selected.get("dialogue_style") or None
+    payload["pacing"] = selected.get("pacing") or None
+    payload["forbidden_words"] = list(selected.get("forbidden_words") or [])
+    custom = str(selected.get("custom_instructions") or "").strip()
+    if custom:
+        payload["custom_instructions"] = custom
+    if domain == "script":
+        rewards = [str(item) for item in (selected.get("audience_reward") or []) if str(item).strip()]
+        payload["audience_reward"] = rewards
+        payload["expression_mode"] = selected.get("expression_mode") or None
+        payload["progression_mode"] = selected.get("progression_mode") or None
+        payload["dramatic_intensity"] = selected.get("dramatic_intensity") or None
+        dna_custom = str(selected.get("source_candidate") or "").strip()
+        if dna_custom:
+            payload["source_candidate"] = dna_custom
+    if answers is not None and not confirm:
+        _emit(
+            {
+                "status": "needs_confirmation",
+                "payload_preview": payload,
+                "next": "把这份选择组合完整展示给作者确认；明确认可后原命令加 --confirm 提交。",
+            },
+            json_output,
+        )
+        return
+    if not json_output and not confirm:
+        click.echo(ui.section("=== 共建选择（请作者确认）==="), err=True)
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2), err=True)
+        if not click.confirm("你（作者）确认这份写作方法论选择并交给服务端编译挂载吗？", default=False):
+            click.echo(ui.warn("已取消——可重新运行 skill setup 调整选择。"), err=True)
+            return
+    result = session.request(
+        "POST", "/skills/quick-create-from-project", json_body=payload, write=True
+    )
+    if not json_output:
+        _show_skill_setup_receipt(pid, medium, result)
+        return
+    _emit(
+        {
+            **result,
+            "project_id": pid,
+            "domain": domain,
+            "next": "方法论已（或未）挂载。挂载成功且 gate_passed 后，可用 skill mounts <作品号> 核实，再以 ready-check --unit-id 确认执行就绪。",
+        },
+        json_output,
+    )
+
+
+def _skill_setup_answer_schema(domain: str) -> dict[str, Any]:
+    """与 QuickSkillCreationRequest 对齐的答案 JSON 形状（服务端单一事实源）。"""
+    schema: dict[str, Any] = {
+        "domain": domain,
+        "dialogue_style": "",  # presets.dialogue_styles[].value
+        "pacing": "",  # presets.pacing_options[].value
+        "forbidden_words": [],  # presets.suggested_forbidden_words 中作者认可项（可自定义增减）
+        "custom_instructions": "",  # 作者补充的写作规则（novel 与 legacy 模式；剧本 DNA 模式请用 source_candidate）
+    }
+    if domain == "script":
+        schema.update(
+            {
+                "audience_reward": [],  # audience_reward_options[]（≤2 项）
+                "expression_mode": "",  # expression_mode_options[]
+                "progression_mode": "",  # progression_mode_options[]
+                "dramatic_intensity": "",  # dramatic_intensity_options[]（推荐 recommended_dramatic_intensity）
+                "source_candidate": "",  # 希望补充进 Method DNA 的判断（仅剧本域）
+            }
+        )
+    return schema
+
+
+def _load_skill_setup_answers(value: str) -> dict[str, Any]:
+    import json as _json
+
+    raw = Path(value[1:]).read_text(encoding="utf-8") if value.startswith("@") else value
+    try:
+        data = _json.loads(raw)
+    except (OSError, UnicodeError, _json.JSONDecodeError) as error:
+        raise click.ClickException(f"answers JSON 读取失败：{error}") from error
+    if not isinstance(data, dict):
+        raise click.ClickException("answers JSON 根必须是对象")
+    allowed = {"domain", "dialogue_style", "pacing", "forbidden_words",
+               "custom_instructions", "audience_reward", "expression_mode",
+               "progression_mode", "dramatic_intensity", "source_candidate"}
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise click.ClickException(f"answers 含未知字段：{', '.join(unknown)}")
+    return {key: data.get(key) for key in allowed}
+
+
+def _skill_setup_missing_answers(domain: str, selected: dict[str, Any]) -> list[str]:
+    """两种模式任一满足即就绪：legacy（风格+节奏）或剧本 Method DNA 四维。"""
+    missing: list[str] = []
+    dna_mode = domain == "script" and bool(
+        (selected.get("audience_reward") and len(selected.get("audience_reward") or []))
+        or str(selected.get("expression_mode") or "").strip()
+        or str(selected.get("progression_mode") or "").strip()
+        or str(selected.get("dramatic_intensity") or "").strip()
+    )
+    if not dna_mode:
+        if not str(selected.get("dialogue_style") or "").strip():
+            missing.append("dialogue_style（对白风格）")
+        if not str(selected.get("pacing") or "").strip():
+            missing.append("pacing（节奏）")
+    if dna_mode:
+        # Method DNA 模式：四维须完整（audience_reward 1-2 项）；风格/节奏交给 DNA 编译
+        if not (selected.get("audience_reward") and len(selected.get("audience_reward") or []) >= 1):
+            missing.append("audience_reward（观众回报，1-2 项）")
+        if not str(selected.get("expression_mode") or "").strip():
+            missing.append("expression_mode（表达方式）")
+        if not str(selected.get("progression_mode") or "").strip():
+            missing.append("progression_mode（推进方式）")
+        if not str(selected.get("dramatic_intensity") or "").strip():
+            missing.append("dramatic_intensity（戏剧强度）")
+    return missing
+
+
+def _show_skill_setup_receipt(project_id: str, domain: str, result: dict[str, Any]) -> None:
+    material = dict(result.get("material") or {})
+    name = str(material.get("name") or result.get("name") or "")
+    mounted = bool(result.get("mounted"))
+    gate_passed = bool(result.get("gate_passed"))
+    click.echo(ui.section("=== 方法论共建回执 ==="), err=True)
+    click.echo(f"方法论：{name or '（未命名）'}", err=True)
+    if gate_passed:
+        click.echo(ui.ok("健壮性门禁：通过"))
+    else:
+        click.echo(ui.warn("健壮性门禁：未达 pass（种子已保存，需到工坊完善后才能解锁正文）"))
+    if domain == "script":
+        dna = dict(result.get("method_dna") or {})
+        if dna:
+            click.echo(f"Method DNA：v{dna.get('revision_no', '?')} · {str(dna.get('content_digest') or '')[:12]}")
+        binding_rev = result.get("method_binding_revision_id")
+        if binding_rev:
+            click.echo(f"Method DNA 绑定：{binding_rev}")
+    if mounted:
+        click.echo(ui.ok(f"已挂载到作品 {project_id} —— 用 skill mounts <作品号> 核实，即可开始正文创作。"))
+    else:
+        click.echo(ui.warn(f"未挂载：{result.get('mount_error') or '健壮性未达 pass'} —— 先完善方法论再挂载。"))
+    preview = dict(result.get("resolved_preview") or {})
+    if preview:
+        click.echo(ui.dim("服务端解析预览（active/inactive rules）："), err=True)
+        for item in (preview.get("active_rules") or []):
+            if isinstance(item, dict):
+                click.echo(f"  ✓ {item.get('rule_id')}", err=True)
+        for item in (preview.get("inactive_rules") or []):
+            if isinstance(item, dict):
+                click.echo(f"  · {item.get('rule_id')}（{item.get('reason') or '未匹配'}）", err=True)
 
 
 @skill_group.command("list")

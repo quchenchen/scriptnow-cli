@@ -240,6 +240,14 @@ the reviewed content changes, preview it again.
   project mount, reads mounts back for verification, and leaves other projects
   and versions untouched. A project with no enabled methodology Skill is not
   ready for writing.
+- `skill setup <project_id>` is the default pre-writing co-creation path: fetch
+  `skill setup <project_id> --json` for server-recommended presets (dialogue
+  styles, pacing, forbidden words; script domain also carries Method DNA axes),
+  walk the author through the choices in editor language, then submit
+  `--answers @answers.json --confirm --json`; the server compiles and mounts and
+  the receipt must show `gate_passed`/`mounted` (script: `method_dna` binding).
+  `skill craft` remains the deep six-question channel; old personal Skills keep
+  working.
 - `skill craft` preflight, its creation receipt, the mount gate, and runtime
   must resolve the same complete methodology reference; never replace it with a
   summary or leak a cross-tenant detail.
@@ -248,6 +256,12 @@ the reviewed content changes, preview it again.
   have distinct generation, frontend, and export contracts. A personal Skill
   extends the selected contract; it never overrides it or merges dialogue
   across an intervening action block.
+- Creating a script project (`project create --medium script`) defaults to
+  `script_format=chinese-short` (vertical short-drama storyboard format) unless
+  `--script-format chinese|hollywood` is passed explicitly. In an interactive
+  terminal with no `--script-format`, the author is prompted to choose the
+  format before creation (never silently locked); pass a value from the three
+  supported formats and read it back from project state before writing.
 
 ## Output discipline
 
