@@ -49,6 +49,8 @@ covering **two creation domains (dual-domain): novels and scripts**. Every comma
 
 ## Installation
 
+PyPI publication is being prepared; use the production host below until a release is visible at https://pypi.org/project/scriptnow-cli/. See PUBLISHING.md for the release workflow.
+
 Requires Python 3.10+. On macOS/Linux system Pythons (Homebrew, python.org) guarded by
 PEP 668, install inside a virtual environment first:
 

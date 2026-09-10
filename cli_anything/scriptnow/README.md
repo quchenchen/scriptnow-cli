@@ -29,6 +29,8 @@
 
 ## 安装
 
+PyPI 首次发布正在准备，可用版本以 https://pypi.org/project/scriptnow-cli/ 为准；发布完成前使用下列生产源。
+
 要求 Python 3.10+。macOS/Linux 系统 Python（Homebrew、python.org）受 PEP 668 保护时，
 请先在虚拟环境中安装：
 

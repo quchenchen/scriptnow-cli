@@ -46,7 +46,8 @@
 要求 Python 3.10+。macOS/Linux 系统 Python（Homebrew、python.org）受 PEP 668 保护时，
 请先在虚拟环境中安装：
 
-> ⚠️ **CLI 不在 PyPI**：`pip install scriptnow-cli` 会报 "No matching distribution"。
+> **PyPI 分发**：正在准备首次发布；以 [项目页](https://pypi.org/project/scriptnow-cli/) 的实际版本为准。
+> 页面尚不可用时请使用下面的生产源安装方式，不按包名猜测安装。
 > 安装/升级优先走**生产分发源**（sn.igeewa.com，wheel 直装、不依赖 git）；GitHub
 > codeload / git+https 仅作兜底。`scriptnow self-upgrade` / `config on` 后台自动升级
 > 同样优先生产源。

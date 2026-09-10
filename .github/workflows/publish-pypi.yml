@@ -1,0 +1,69 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact CLI version to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'quchenchen/scriptnow-cli' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Check the requested version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          from cli_anything.scriptnow import __version__
+          if os.environ['EXPECTED_VERSION'] != __version__:
+              raise SystemExit('Requested version differs from source version')
+          print('Building ScriptNow CLI', __version__)
+          PY
+      - name: Build and validate distributions
+        run: |
+          python -m pip install build twine pytest
+          python -m build
+          python -m twine check --strict dist/*
+          python -m pip install dist/*.whl
+          scriptnow --version
+          scriptnow agent-guide --json > /tmp/agent-guide.json
+          # These five checks need the monorepo Creator page/root README,
+          # which intentionally are not part of the standalone CLI mirror.
+          python -m pytest tests -q -k 'not test_readmes_and_skill_match_current_review_contract and not test_cli_page_has_12_acts and not test_cli_page_uses_the_canonical_cores_first_order_and_no_retired_bootstrap and not test_cli_page_fixed_order_words_and_no_legacy_phrase and not test_cli_page_journey_acts_start_at_login_and_desc_chain_fixed'
+      - uses: actions/upload-artifact@v5
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/scriptnow-cli/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
