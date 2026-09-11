@@ -1,10 +1,10 @@
 """Authenticated HTTP session for the ScriptNow platform.
 
 The platform authenticates via cookie + CSRF (same-origin web model):
-- POST /api/auth/login with email/password sets sf_access / sf_refresh / sf_csrf cookies.
+- Browser authorization exchanges a one-time PKCE grant for sf_access / sf_refresh / sf_csrf cookies.
 - Mutating requests must send the X-CSRF-Token header matching the sf_csrf cookie.
 - The session is persisted locally (base_url, cookies, csrf) so a CLI run does
-  not re-login on every invocation; credentials are never stored.
+  not re-login on every invocation; passwords are never stored; session credentials are stored locally.
 
 Endpoints are reached under ``<base_url>/api/...`` for platform APIs and
 ``<base_url>/api/novel/...`` / ``<base_url>/api/script/...`` for domain APIs.
@@ -496,34 +496,12 @@ def _config_path() -> Path:
     )
 
 
-def login(base_url: str, email: str, password: str) -> Session:
-    session = Session(base_url=base_url.rstrip("/"))
-    payload = {"email": email, "password": password}
-    response = session._http.post(
-        f"{session.api_root}/auth/login",
-        json=payload,
-        timeout=60,
-    )
-    if response.status_code != 200:
-        raise ScriptNowError(
-            f"login failed (HTTP {response.status_code}): {_extract_detail(response)}"
-        )
-    for cookie in response.cookies:
-        session.cookies[cookie.name] = cookie.value
-        if cookie.name == "sf_csrf":
-            session.csrf = cookie.value
-    if not session.csrf:
-        raise ScriptNowError("login response did not set CSRF cookie")
-    session.save(_config_path())
-    return session
-
-
 def load() -> Session:
     path = _config_path()
     if not path.exists():
         raise ScriptNowError(
-            "没有已保存的会话。请先运行: scriptnow login --host <平台地址> --email <账号> --password <密码>\n"
-            "例如: scriptnow login --host https://sn.igeewa.com --email you@example.com --password '...'"
+            "没有已保存的会话。请先运行: scriptnow login --host <平台地址>\n"
+            "例如: scriptnow login --host https://sn.igeewa.com"
         )
     try:
         payload = _read_session_payload(path)

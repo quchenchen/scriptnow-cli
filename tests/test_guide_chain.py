@@ -207,6 +207,7 @@ def test_readmes_and_skill_match_current_review_contract() -> None:
     skill = (
         cli_root / "cli_anything" / "scriptnow" / "skills" / "SKILL.md"
     ).read_text(encoding="utf-8")
+    skill += "\n" + "\n".join(p.read_text(encoding="utf-8") for p in sorted((cli_root / "cli_anything" / "scriptnow" / "skills" / "references").glob("*.md")))
     assert "scriptnow script|novel" not in skill
     assert "scriptnow script rough-outline-phase-preview" in skill
     assert "scriptnow script rough-outline-phase <pid> <phase_key>" in skill

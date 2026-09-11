@@ -35,7 +35,7 @@ scriptnow = "cli_anything.scriptnow.scriptnow_cli:main"
 packages = ["cli_anything", "cli_anything.scriptnow", "cli_anything.scriptnow.utils"]
 
 [tool.setuptools.package-data]
-"cli_anything.scriptnow" = ["skills/SKILL.md", "README.md"]
+"cli_anything.scriptnow" = ["skills/SKILL.md", "skills/references/*.md", "skills/agents/*.yaml", "README.md"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cli_anything.scriptnow.__version__" }

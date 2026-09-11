@@ -25,7 +25,6 @@ from cli_anything.scriptnow.utils.session import (
     ScriptNowError,
     Session,
     load,
-    login,
     write_json,
 )
 from cli_anything.scriptnow.utils.upgrade import (
@@ -83,12 +82,7 @@ class AgentJsonGroup(click.Group):
 
 
 def _session(ctx: click.Context) -> Session:
-    """Resolve a Session, logging in when --base-url/--email/--password are given."""
-    base = ctx.obj.get("base_url")
-    email = ctx.obj.get("email")
-    password = ctx.obj.get("password")
-    if base and email and password:
-        return login(base, email, password)
+    """Load only the previously browser-authorized session."""
     return load()
 
 
@@ -294,7 +288,7 @@ _MAIN_HELP = (
     + """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 
 典型流程（Agent 或创作者，固定 12 步引导顺序）：
-  1. scriptnow login --host https://sn.igeewa.com --email <邮箱>   # 登录平台
+  1. scriptnow login --host https://sn.igeewa.com   # 登录平台
   2. scriptnow project create --name 新作 --medium novel           # 建项目
   3. scriptnow project direction --apply @direction.json           # 补齐创作方向
   4. novel propose cores/blueprint → adopt-core / adopt-blueprint  # 故事核心与蓝图（回填优先，planning-quality 门禁）
@@ -320,8 +314,6 @@ _MAIN_HELP = (
     invoke_without_command=True,
 )
 @click.option("--base-url", envvar="SCRIPTNOW_BASE_URL", help="Platform base URL (e.g. https://sn.igeewa.com)")
-@click.option("--email", envvar="SCRIPTNOW_EMAIL", help="Login email")
-@click.option("--password", envvar="SCRIPTNOW_PASSWORD", help="Login password")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON")
 @click.option("--no-color", "no_color", is_flag=True, help="Disable ANSI colors (also: NO_COLOR / SCRIPTNOW_NO_COLOR env)")
 @click.version_option(
@@ -333,8 +325,6 @@ _MAIN_HELP = (
 def main(
     ctx: click.Context,
     base_url: str | None,
-    email: str | None,
-    password: str | None,
     json_output: bool,
     no_color: bool,
 ) -> None:
@@ -342,8 +332,6 @@ def main(
     ui.init(no_color)
     ctx.ensure_object(dict)
     ctx.obj["base_url"] = base_url
-    ctx.obj["email"] = email
-    ctx.obj["password"] = password
     ctx.obj["json"] = json_output
     ctx.obj["no_color"] = no_color
     # 强制版本检查：后台低频（24h 缓存）查询 GitHub 发布镜像，有新版时提示
@@ -978,7 +966,7 @@ def doctor_cmd(
             click.echo(ui.dim(f"平台：{report.get('base_url')}"), err=True)
         else:
             click.echo(ui.warn(f"未登录：{report.get('login_error')}"), err=True)
-            click.echo(ui.dim("修复：scriptnow login --host <平台地址> --email <账号>（交互输入密码）"), err=True)
+            click.echo(ui.dim("修复：scriptnow login --host <平台地址>（系统浏览器授权）"), err=True)
         click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json + errors.jsonl）"), err=True)
         click.echo(ui.dim("可用环境变量 SCRIPTNOW_CLI_CONFIG 覆盖会话文件位置"), err=True)
         if report["diagnostics_enabled_until"]:
@@ -1068,6 +1056,7 @@ _AGENT_CONTRACT = {
     "title": "ScriptNow Agent 操作契约 —— 连接平台前必读",
     "audience": "在 ScriptNow 平台上创作小说/剧本的 AI Agent。以本契约为唯一操作准则；本契约与平台后端返回为准，优先于任何对平台的猜测。",
     "rules": [
+        "登录只用 scriptnow login 打开系统浏览器，由用户在网页输入账号密码并确认授权。禁止向 Agent 提供密码、读取密码框或以参数、stdin、环境变量代传密码；授权失败不得回退旧密码登录。",
         "创作顺序铁律（12 步 guide 顺序）：故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付 → 正文。粗纲依赖已采纳的核心/蓝图锚点与梗概；禁止先排 StoryMap 或先写正文再补粗纲。",
         "authorize 命令与旧版 decision-token 通道已弃用：所有采纳授权统一走 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 目标采纳命令的 `--review-token <凭证>`；CLI authorize 仅保留兼容输出并标记 deprecated，新流程不再引导使用。",
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
@@ -1086,7 +1075,7 @@ _AGENT_CONTRACT = {
         "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
-        "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，用已知凭据重新运行 scriptnow login，不要伪造凭据或绕开 CLI。",
+        "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，重新运行 scriptnow login 并由用户在系统浏览器授权，不要伪造凭据或绕开 CLI。",
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
@@ -1101,7 +1090,7 @@ _AGENT_CONTRACT = {
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
-        "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
+        "scriptnow login --host https://sn.igeewa.com",
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --point-of-view <视角> --chapter-target-words 1200；script 项目另设 --volume-one 总集数 --volume-two 每集场数 --volume-three 单集目标分钟（默认 3）（创建后立即 scriptnow project list 回读核对项目存在）",
         "规划链逐层（故事核心与蓝图 → 梗概 → 粗纲 → storymap）：对 cores/blueprint 先用 review preview 审阅本地文件，再 propose 回填、candidate-preview 审阅平台候选、confirm/claim。小说故事核心执行 `scriptnow novel adopt-core <作品号> <候选号> --review-token <凭证>`，剧本故事核心执行 `scriptnow script adopt-core <作品号> <候选号> --review-token <凭证>`；蓝图分别执行 `scriptnow novel adopt-blueprint <作品号> <候选号> --review-token <凭证>` 或 `scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证>`。再采纳 outline、粗纲和集纲/章纲一体的 StoryMap；每个写入都以平台返回的 ID 和回读为准。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
@@ -1201,8 +1190,8 @@ _GUIDE_STEPS = [
         "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
         "why": "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。",
         "downstream": "登录后所有写操作自动带身份，是后续一切创作命令的身份基础。",
-        "command": "scriptnow login --host https://sn.igeewa.com --email <邮箱>（随后安全输入密码）",
-        "verify": "输出 登录成功：https://sn.igeewa.com（<邮箱>）",
+        "command": "scriptnow login --host https://sn.igeewa.com",
+        "verify": "浏览器确认后输出授权成功；doctor 核对已保存会话与当前账号，不输出凭据。",
         "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
         "masters": [
             {
@@ -1779,56 +1768,19 @@ def _echo_guide(payload: dict[str, object]) -> None:
 
 
 @main.command()
-@click.option("--host", required=True, help="Platform base URL, e.g. https://sn.igeewa.com")
-@click.option("--email", required=True)
-@click.option(
-    "--password",
-    default=None,
-    hide_input=True,
-    help="密码。为安全起见不建议在命令行传明文：可省略后交互式隐藏输入，或用 --password-stdin / 环境变量 SCRIPTNOW_PASSWORD 传入",
-)
-@click.option(
-    "--password-stdin",
-    is_flag=True,
-    help="从标准输入读取密码（管道/agent 安全传入，不落 shell history 与进程列表）",
-)
+@click.option("--host", default="https://sn.igeewa.com", help="平台地址")
+@click.option("--timeout", type=click.IntRange(30, 600), default=180, help="浏览器授权等待秒数")
 @click.option("--json", "json_output", is_flag=True)
-def login_cmd(host: str, email: str, password: str | None, password_stdin: bool, json_output: bool) -> None:
-    """Authenticate and persist a session (cookie + CSRF).
-
-    密码安全传递（按优先级）：
-      1. --password-stdin：从标准输入读取（推荐给 agent/脚本，不落历史与进程表）
-      2. 环境变量 SCRIPTNOW_PASSWORD（agent 场景）
-      3. 省略 --password：交互式隐藏输入（getpass，屏幕上不显示、不落历史）
-      4. --password <明文>：仅兼容旧脚本；明文会出现在 shell history，尽量不用
-    """
-    import getpass as _getpass
-    import os as _os
-
-    if password is None:
-        if password_stdin:
-            password = click.get_text_stream("stdin").readline().rstrip("\n")
-        else:
-            env_password = _os.environ.get("SCRIPTNOW_PASSWORD")
-            if env_password:
-                password = env_password
-            else:
-                password = _getpass.getpass("密码（输入时不显示）: ")
-    if not password:
-        raise click.ClickException("密码不能为空——请重新运行 scriptnow login")
+def login_cmd(host: str, timeout: int, json_output: bool) -> None:
+    """打开系统浏览器登录授权；CLI 和 Agent 不接收账号密码。"""
+    from cli_anything.scriptnow.utils.browser_login import browser_login
     try:
-        session = login(host, email, password)
+        session = browser_login(host, timeout=timeout, notify=lambda message: click.echo(message, err=True))
     except ScriptNowError as error:
         raise click.ClickException(str(error)) from error
-    password = None  # 用完即弃，避免残留在栈上
+    _emit({"ok": True, "base_url": session.base_url}, json_output)
     if not json_output:
-        click.echo(ui.ok(f"登录成功：{host}（{email}）"))
-        if not _onboarding_done():
-            click.echo(
-                ui.warn("第一次来？小说运行 scriptnow guide --medium novel；剧本运行 --medium script。我们从一个念头开始。"),
-                err=True,
-            )
-    _emit({"ok": True, "base_url": session.base_url, "user": email}, json_output)
+        click.echo(ui.ok("浏览器授权成功，登录会话已保存。"))
 
 
 # ------------------------------------------------------------------------ projects

@@ -63,7 +63,7 @@ Windows PowerShell 使用 `py -3 -m venv .venv` 创建 Python 3.10+ 环境，通
 ## 登录
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式隐藏输入密码（或 --password-stdin / SCRIPTNOW_PASSWORD）
+scriptnow login --host https://sn.igeewa.com   # 打开系统浏览器登录授权
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
@@ -74,7 +74,7 @@ macOS/Linux 上 CLI 会用跨进程锁协调共享会话的自动续期：不同
 是否登录、账号、平台地址与连通性。任何「登录失败 / 找不到配置 / 409 / No such option」
 先 `scriptnow doctor` 定位，不要猜配置位置。`SCRIPTNOW_CLI_CONFIG` 可覆盖会话路径；
 多环境共用同一会话文件时登录一次全部生效。
-也可用 `SCRIPTNOW_BASE_URL` / `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` 环境变量。
+登录仅通过系统浏览器完成，不再接受密码参数、标准输入或密码环境变量。
 
 ## 快速开始（双域）
 
@@ -348,3 +348,13 @@ CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场
 ## CLI release synchronization
 
 Maintainers run monorepo `scripts/sync-cli-release.sh` to synchronize GitHub, the production distribution and PyPI. PyPI environment review remains required; exit 3 means pending, with an exact resume command. See [publishing instructions](https://github.com/quchenchen/scriptnow-cli/blob/main/PUBLISHING.md).
+
+## ScriptNow 创作搭档 Skill
+
+作者可以说“启动 ScriptNow 新手模式”或“继续我的作品”。`scriptnow` Skill 负责对话引导，CLI 负责执行，平台负责权限、审阅与保存。入口按当前任务读取安装、规划、审阅、写作方法、正文、运行恢复或分镜说明，不一次加载全部规则。安装 CLI 包会携带完整 Skill，但不会自动向所有 Agent 客户端注册；注册时须包含整个 skills 目录及其 references、agents 文件。Skill 与 CLI 同步发布，实时 `agent-guide --json` 为操作规则依据。
+
+开始或继续 ScriptNow 创作时，Skill 默认自检；缺少 CLI 即自动安装必要依赖并验证，无需作者另行提出安装要求，已有可用版本直接复用。先检查 Agent 实际执行环境，Windows 优先调用官方 `install-agent.ps1`，完成后用绝对路径验证并继续登录。现有自动 Python 安装分支针对 amd64；其他架构、组织策略和网络限制按具体检查处理，不承诺所有机器均可无人值守安装。
+
+作品写作方法共建：Skill 从灵感和规划对话中积累作者的理念、人物思路、节奏、钩子与表达要求，围绕真实创作决定，正文前整理成核心追求、条件性原则、适用边界和取舍顺序；正反例不是共建主流程，craft 必需的 examples 从已确认的具体取舍中提取。通过现有 skill setup / craft 接口，经作者确认、平台保存和挂载核验后生效；单次修改不自动升级为长期规则。
+
+浏览器授权登录：运行 `scriptnow login` 后由系统浏览器登录并确认，临时授权凭证自动传递，作者无需复制。CLI 不接收密码参数、标准输入或密码环境变量。登录会话复用并自动刷新；默认访问凭据 60 分钟，成功刷新后重新计算 30 天闲置有效期，实际值由服务端设置决定。退出、改密或撤销后仍须重新授权。此变更需后端与 Creator 授权页配套部署后发布 CLI。

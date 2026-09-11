@@ -119,12 +119,11 @@ wheel host and fall back to codeload → git+https.
 ## Login
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email you@example.com   # interactive hidden password (or --password-stdin / SCRIPTNOW_PASSWORD)
+scriptnow login --host https://sn.igeewa.com   # sign in and approve in the system browser
 ```
 
 The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
-(cookie only, no password, mode 0600). Alternatively use the `SCRIPTNOW_BASE_URL` /
-`SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` environment variables.
+(cookies only, no password, mode 0600). Login uses browser authorization; password arguments, stdin and environment variables are no longer supported.
 On macOS/Linux/Windows, the CLI uses an inter-process lock for automatic refresh: different
 projects can run concurrently without refresh-token overwrite, while creative writes
 within one project must remain serial to avoid candidate and version conflicts.
@@ -475,3 +474,13 @@ CLI, Creator and creative runs use the server creative-skill-plan. Before writin
 ## CLI release synchronization
 
 Maintainers run monorepo `scripts/sync-cli-release.sh` to synchronize GitHub, the production distribution and PyPI. PyPI environment review remains required; exit 3 means pending, with an exact resume command. See [publishing instructions](https://github.com/quchenchen/scriptnow-cli/blob/main/PUBLISHING.md).
+
+## ScriptNow creative companion Skill
+
+The `scriptnow` Skill provides a natural-language entrypoint (for example, “Start ScriptNow beginner mode”). Its short entrypoint loads setup, planning, review, methods, writing, operations and storyboard references only when needed. The CLI executes actions; the platform enforces permissions, review and persisted state. Installing the Python package includes the entire Skill bundle but does not register it with every Agent client. Install the complete skills directory, including references and agents metadata, using a compatible client. CLI and Skill ship together; runtime `agent-guide --json` remains authoritative.
+
+Every ScriptNow creation or continuation request triggers an environment check. If the CLI is missing, the Skill installs the necessary dependencies and verifies them automatically, without a separate installation request. Reuse working installations without automatic upgrades. Detect the actual execution environment, use the official Windows `install-agent.ps1`, verify the executable by absolute path, then continue login. Python bootstrapping currently targets amd64; other architectures, managed policies and network failures require environment-specific handling.
+
+Writing methodology co-creation collects the author’s creative intent, character logic, pacing, hooks and expression preferences throughout planning. Before prose, derive conditional principles, boundaries and priorities from actual creative decisions; examples are optional clarification, with the existing craft examples field populated from confirmed decisions rather than a separate comparison exercise; confirm with the author and verify platform persistence and mounting through existing skill setup / craft interfaces. A one-off edit does not automatically become a permanent rule.
+
+Browser login transfers its temporary authorization code automatically; no copying is needed. Session refresh renews the configured inactivity window (default 30 days), while access tokens retain their configured lifetime (default 60 minutes). Logout, password changes and revocation still require fresh authorization. Deploy the backend and Creator approval page before releasing this CLI.

@@ -23,13 +23,13 @@ The command is `scriptnow`; the distribution name is `scriptnow-cli`.
 scriptnow --version
 scriptnow agent-guide --json
 scriptnow doctor
-scriptnow login --host https://sn.igeewa.com --email you@example.com
+scriptnow login --host https://sn.igeewa.com
 scriptnow guide --medium novel
 # For screenwriting:
 scriptnow guide --medium script
 ```
 
-Enter your password at the hidden terminal prompt. A ScriptNow account and
+Sign in and approve CLI access in your system browser; never send your password to the Agent. A ScriptNow account and
 appropriate project access are required; installing this client does not create
 an account or grant service credits.
 

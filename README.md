@@ -136,13 +136,13 @@ GitHub 镜像仓库与 release tag 仅作生产源之外的备用下载。`lates
 ## 登录
 
 ```bash
-scriptnow login --host https://sn.igeewa.com --email 你的账号   # 交互式隐藏输入密码（或 --password-stdin / SCRIPTNOW_PASSWORD）
+scriptnow login --host https://sn.igeewa.com   # 打开系统浏览器登录授权
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
 CLI 在 macOS/Linux/Windows 上会用跨进程锁协调共享会话的自动续期：不同项目可并发执行，避免 refresh token
 轮换互相覆盖；同一项目的创作写操作仍必须串行，以免产生候选或版本冲突。
-也可用 `SCRIPTNOW_BASE_URL` / `SCRIPTNOW_EMAIL` / `SCRIPTNOW_PASSWORD` 环境变量。
+登录仅通过系统浏览器完成，不再接受密码参数、标准输入或密码环境变量。
 
 **会话自动续期**：access token 约 60 分钟过期，CLI 会**自动**用 refresh token 续期并写回本地文件
 （refresh 有效 30 天）——一次登录后 30 天内无需再登录，Agent 长会话也不会中途失效。
@@ -461,3 +461,13 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
 ## 统一创作 Skill 方案
 
 CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。
+
+## ScriptNow 创作搭档 Skill
+
+作者可以说“启动 ScriptNow 新手模式”或“继续我的作品”。`scriptnow` Skill 负责对话引导，CLI 负责执行，平台负责权限、审阅与保存。入口按当前任务读取安装、规划、审阅、写作方法、正文、运行恢复或分镜说明，不一次加载全部规则。安装 CLI 包会携带完整 Skill，但不会自动向所有 Agent 客户端注册；注册时须包含整个 skills 目录及其 references、agents 文件。Skill 与 CLI 同步发布，实时 `agent-guide --json` 为操作规则依据。
+
+开始或继续 ScriptNow 创作时，Skill 默认自检；缺少 CLI 即自动安装必要依赖并验证，无需作者另行提出安装要求，已有可用版本直接复用。先检查 Agent 实际执行环境，Windows 优先调用官方 `install-agent.ps1`，完成后用绝对路径验证并继续登录。现有自动 Python 安装分支针对 amd64；其他架构、组织策略和网络限制按具体检查处理，不承诺所有机器均可无人值守安装。
+
+作品写作方法共建：Skill 从灵感和规划对话中积累作者的理念、人物思路、节奏、钩子与表达要求，围绕真实创作决定，正文前整理成核心追求、条件性原则、适用边界和取舍顺序；正反例不是共建主流程，craft 必需的 examples 从已确认的具体取舍中提取。通过现有 skill setup / craft 接口，经作者确认、平台保存和挂载核验后生效；单次修改不自动升级为长期规则。
+
+浏览器授权登录：运行 `scriptnow login` 后由系统浏览器登录并确认，临时授权凭证自动传递，作者无需复制。CLI 不接收密码参数、标准输入或密码环境变量。登录会话复用并自动刷新；默认访问凭据 60 分钟，成功刷新后重新计算 30 天闲置有效期，实际值由服务端设置决定。退出、改密或撤销后仍须重新授权。此变更需后端与 Creator 授权页配套部署后发布 CLI。

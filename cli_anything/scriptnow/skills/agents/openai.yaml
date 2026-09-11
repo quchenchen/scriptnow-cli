@@ -1,0 +1,6 @@
+interface:
+  display_name: "ScriptNow 创作搭档"
+  short_description: "用自然语言从灵感开始，持续完成小说或剧本的设定、写作、修订与交付"
+  default_prompt: "使用 $scriptnow 启动新手模式，陪我从灵感开始完成自己的作品。"
+policy:
+  allow_implicit_invocation: true
