@@ -49,7 +49,7 @@ covering **two creation domains (dual-domain): novels and scripts**. Every comma
 
 ## Installation
 
-PyPI publication is being prepared; use the production host below until a release is visible at https://pypi.org/project/scriptnow-cli/. See PUBLISHING.md for the release workflow.
+PyPI releases are available at https://pypi.org/project/scriptnow-cli/. Install with `pipx install scriptnow-cli`, or `python -m pip install scriptnow-cli` inside a virtual environment. The production host remains the default update source. See PUBLISHING.md for the release workflow.
 
 Requires Python 3.10+. On macOS/Linux system Pythons (Homebrew, python.org) guarded by
 PEP 668, install inside a virtual environment first:
@@ -369,10 +369,12 @@ evaluation v9 (deep evaluation), work-completion, invitations — to be added on
 
 ## AI Agent installation (SKILL system)
 
+The executable and Agent Skill are separate installations. Installing the PyPI package does not register a Skill in every agent client. The Skill name is `scriptnow`; the Python distribution is `scriptnow-cli`.
+
 Agents (Claude Code / npx skills compatible) can discover capabilities via SKILL.md:
 
 ```bash
-npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
+npx skills add quchenchen/scriptnow-cli --skill scriptnow -g -y
 ```
 
 SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptnow/skills/SKILL.md).
@@ -468,3 +470,8 @@ quality is judged by the agent against the evaluation dimensions above.
 ## Unified creative Skill plan
 
 CLI, Creator and creative runs use the server creative-skill-plan. Before writing, use ready-check --unit-id <unit-id> to inspect the adopted narrative stage, unit function, personal and built-in methods, and execution readiness. Submit narrative_stage and unit_function with episode/chapter outline candidates; adoption activates them. Never infer stages from episode percentages. Pacing advice is not a veto; selection, reading and application are distinct evidence.
+
+
+## CLI release synchronization
+
+Maintainers run monorepo `scripts/sync-cli-release.sh` to synchronize GitHub, the production distribution and PyPI. PyPI environment review remains required; exit 3 means pending, with an exact resume command. See [publishing instructions](https://github.com/quchenchen/scriptnow-cli/blob/main/PUBLISHING.md).

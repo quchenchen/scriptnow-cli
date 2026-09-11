@@ -29,7 +29,7 @@
 
 ## 安装
 
-PyPI 首次发布正在准备，可用版本以 https://pypi.org/project/scriptnow-cli/ 为准；发布完成前使用下列生产源。
+PyPI 分发已上线：https://pypi.org/project/scriptnow-cli/ 。可用 `pipx install scriptnow-cli`，或在虚拟环境中执行 `python -m pip install scriptnow-cli`；默认升级来源仍为下列生产源。
 
 要求 Python 3.10+。macOS/Linux 系统 Python（Homebrew、python.org）受 PEP 668 保护时，
 请先在虚拟环境中安装：
@@ -220,10 +220,10 @@ evaluation v9（深度评估）、work-completion（完结）、invitations（�
 
 ## AI Agent 安装（SKILL 体系）
 
-Agent（Claude Code / npx skills 兼容）可通过 SKILL.md 发现能力：
+PyPI 安装提供 CLI 与内置 Skill 文件，但不会自动注册到每个 Agent 客户端。支持 npx skills 的 Agent 可另行安装名为 `scriptnow` 的 Skill：
 
 ```bash
-npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
+npx skills add quchenchen/scriptnow-cli --skill scriptnow -g -y
 ```
 
 SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptnow/skills/SKILL.md)。
@@ -343,3 +343,8 @@ scriptnow review status <packet-id> --json
 ## 统一创作 Skill 方案
 
 CLI、Creator 与创作运行共用服务端 creative-skill-plan。逐章/逐场前使用 ready-check --unit-id <单元ID> 查看已采纳叙事阶段、本单元功能、个人与内置方法及执行准备；缺少阶段不按集数比例推定。阶段 narrative_stage 与功能 unit_function 随集纲/章纲候选提交，采纳后生效。节奏建议不构成一票否决；已选中、已读取、已应用分别留证。
+
+
+## CLI release synchronization
+
+Maintainers run monorepo `scripts/sync-cli-release.sh` to synchronize GitHub, the production distribution and PyPI. PyPI environment review remains required; exit 3 means pending, with an exact resume command. See [publishing instructions](https://github.com/quchenchen/scriptnow-cli/blob/main/PUBLISHING.md).

@@ -8,10 +8,16 @@ description: Operate ScriptNow as a governed creative-production client. Use for
 This is a runtime entrypoint, not a product manual. Do not expand it into a
 workflow from memory and do not treat local files as ScriptNow projects.
 
-> **CLI 安装 / 升级（生产源优先）**：PyPI 可用版本以项目页为准；首次发布完成前使用平台源。安装/升级优先从平台分发域名
-> `https://sn.igeewa.com/downloads/scriptnow-cli/` 直装 wheel（不依赖 git），GitHub
-> codeload / git+https 仅兜底。已安装用户用 `scriptnow self-upgrade`（自动按
-> 「生产源 → codeload → git+https」尝试），或 `scriptnow config on` 开启后台自动升级。
+> **CLI 安装 / 升级**：发行包名为 `scriptnow-cli`，命令名与 Skill 名为 `scriptnow`。
+> 可用 `pipx install scriptnow-cli` 或虚拟环境内的 `python -m pip install scriptnow-cli` 从
+> [PyPI](https://pypi.org/project/scriptnow-cli/) 安装；平台分发源继续可用，先读取
+> `https://sn.igeewa.com/downloads/scriptnow-cli/version.txt`，再安装对应版本的 wheel。
+> 不使用 `scriptnow_cli-latest-...whl`，新版 pip 会拒绝该版本名。
+> `scriptnow self-upgrade` 的实际顺序仍是「生产源 → codeload → git+https」，不会自动改为 PyPI；
+> PyPI 与平台版本可能不同，分别核对来源。自动升级默认关闭，用户明确选择后才用 `config on`。
+> 安装 CLI 不等于已登录或已创建作品；先 doctor，再按本文 bootstrap 读取实时契约。
+> Agent 客户端如需注册 Skill，另用 `npx skills add quchenchen/scriptnow-cli --skill scriptnow -g -y`
+> （仅适用于支持该工具且已有 Node.js 的客户端）；否则直接执行 `agent-guide --json` 读取契约。
 
 > **分阶段创作（novel）**：`storymap phases` 预览叙事结构（three_act/hero_journey/
 > kishotenketsu/linear/custom）推导的阶段计划；`storymap append-phase` 提交下一个

@@ -46,8 +46,8 @@
 要求 Python 3.10+。macOS/Linux 系统 Python（Homebrew、python.org）受 PEP 668 保护时，
 请先在虚拟环境中安装：
 
-> **PyPI 分发**：正在准备首次发布；以 [项目页](https://pypi.org/project/scriptnow-cli/) 的实际版本为准。
-> 页面尚不可用时请使用下面的生产源安装方式，不按包名猜测安装。
+> **PyPI 分发已上线**：可用版本见 [项目页](https://pypi.org/project/scriptnow-cli/)。
+> 可用 `pipx install scriptnow-cli`，或在虚拟环境中执行 `python -m pip install scriptnow-cli`。
 > 安装/升级优先走**生产分发源**（sn.igeewa.com，wheel 直装、不依赖 git）；GitHub
 > codeload / git+https 仅作兜底。`scriptnow self-upgrade` / `config on` 后台自动升级
 > 同样优先生产源。
@@ -122,15 +122,16 @@ GitHub（quchenchen/scriptnow-cli）仅作镜像与最后兜底，不构成国�
 | 环节 | 优先来源 | 兜底顺序 |
 |---|---|---|
 | 版本探测 | 生产源 `version.txt` | — |
-| wheel / zip 分发 | 生产源 wheel（另有 `-latest-` 固定别名，页面与一键脚本按 latest 装，用户无需知道版本号） | codeload tar.gz → git+https |
+| wheel / zip 分发 | 生产源带真实版本号的 wheel（先读取 `version.txt`；不用 `latest` 作为 wheel 版本号） | codeload tar.gz → git+https |
 | `self-upgrade` | 生产源 wheel | codeload tar.gz → git+https |
 | Windows 一键脚本 | 生产源（install-agent.ps1 / install.ps1 内嵌生产源 URL） | — |
 | Windows 缺 Python 时的引导 | 国内镜像：清华 TUNA → 华为云 → 中科大 | python.org |
-| 页面安装说明（/cli） | latest 别名 URL（生产源） | — |
+| 页面安装说明（/cli） | 版本号 wheel（生产源），并列提供 PyPI 包名安装 | GitHub 源码仅兜底 |
+| PyPI 分发 | `pipx install scriptnow-cli` / 虚拟环境内 `python -m pip install scriptnow-cli` | 平台版本号 wheel |
 
 发布侧（`scripts/sync-cli-release.sh`）每轮自动上传 wheel / zip / `version.txt` /
 `install.ps1` / `install-agent.ps1` 到生产下载目录，并把 `latest` 别名同步为最新版；
-GitHub 镜像仓库与 release tag 仅作生产源之外的备用下载。
+GitHub 镜像仓库与 release tag 仅作生产源之外的备用下载。`latest` 别名只作兼容入口，不作为 pip 安装命令；新版 pip 会拒绝不符合版本规范的文件名。生产同步脚本随后自动调用 PyPI 受信发布 helper；等待审核返回 3 并给出续跑命令，不跳过或自动批准。两处可用版本以各自发布记录为准，公开 wheel 和源码包均就绪才报告完整发布成功。
 
 ## 登录
 
@@ -389,10 +390,10 @@ evaluation v9（深度评估）、work-completion（完结）、invitations（�
 
 ## AI Agent 安装（SKILL 体系）
 
-Agent（Claude Code / npx skills 兼容）可通过 SKILL.md 发现能力：
+CLI 可执行程序与 Agent Skill 分别安装；安装 PyPI 包不会自动为每个 Agent 客户端注册 Skill。支持 npx skills 的 Agent 可通过 SKILL.md 发现能力，Skill 名称是 `scriptnow`（不是发行包名 `scriptnow-cli`）：
 
 ```bash
-npx skills add quchenchen/scriptnow-cli --skill scriptnow-cli -g -y
+npx skills add quchenchen/scriptnow-cli --skill scriptnow -g -y
 ```
 
 SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptnow/skills/SKILL.md)。

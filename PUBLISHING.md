@@ -28,15 +28,32 @@ PyPI checks eligibility on upload.
    five Creator/root-document sync tests cannot run in the standalone mirror
    and are explicitly excluded there. Check `--version`, `--help`, and
    `agent-guide --json`, then run CLI tests.
-3. Synchronize only reviewed CLI files into the release mirror. The general
-   `sync-cli-release.sh` also writes to production; do not invoke it solely for
-   PyPI publication without authorization for those additional actions.
-4. Run the mirror's **Publish to PyPI** workflow on `main` with the exact version.
-   Approve the `pypi` environment after its build checks pass.
-5. Verify the PyPI project/release and install that exact version from
-   `https://pypi.org/simple` in a new environment. Check version and help output.
-6. Only after verification, advertise the PyPI install command in user-facing
-   documentation. The platform distribution remains the default update source.
+3. Run monorepo `scripts/sync-cli-release.sh` after authorization for its GitHub
+   and production-distribution writes. It preflights GitHub auth and the reviewed
+   main-only `pypi` environment, synchronizes the mirror, verifies production
+   distribution, then invokes `scripts/publish-cli-pypi.py` automatically.
+   Unchanged mirror files no longer cause an early exit that skips PyPI.
+4. The helper dispatches **Publish to PyPI** for the exact source commit/version,
+   reuses an active matching run, and checks the run and public PyPI release.
+   It does not auto-approve environment reviews. Exit code 3 means review or
+   execution is pending, not success; follow the printed workflow URL and resume
+   command after approval. Failed builds/uploads and network errors exit 1.
+5. For a PyPI-only release or resuming after approval (no production writes):
+   `python3 scripts/publish-cli-pypi.py --version X.Y.Z --commit <full-sha>`.
+   Use the emitted `--resume <run-id>` when resuming an existing run. The helper
+   verifies the workflow, commit, version, wheel and sdist; it never overwrites an
+   already-published version. Preflight only: add `--check-only`.
+6. A complete release requires wheel and sdist to be publicly available on PyPI.
+   Verify installation of the exact version from `https://pypi.org/simple` in a
+   fresh environment. The default auto-upgrade source remains the platform host.
+   Do not put local proxies, API tokens or session files into release materials.
 
 References: [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/)
 and [PyPA publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/).
+
+## First release verified
+
+Version 0.3.94 was published on 2026-09-11 using
+[workflow run 34549198132](https://github.com/quchenchen/scriptnow-cli/actions/runs/34549198132).
+The public PyPI JSON API lists wheel and sdist; a fresh installation from
+`https://pypi.org/simple` passed version and agent-guide smoke checks.
