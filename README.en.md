@@ -63,8 +63,8 @@ cd scriptnow-cli && pip install -e .
 version=$(curl -fsS https://sn.igeewa.com/downloads/scriptnow-cli/version.txt)
 python3 -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-${version}-py3-none-any.whl"
 
-# Fixed-version source archive (zip)
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
+# Matching production source archive (zip), same version as the wheel above
+curl -sL -o /tmp/scriptnow-cli.zip "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v${version}.zip"
 
 # Fallback: latest GitHub code (codeload direct, no clone)
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -127,6 +127,34 @@ The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.jso
 On macOS/Linux/Windows, the CLI uses an inter-process lock for automatic refresh: different
 projects can run concurrently without refresh-token overwrite, while creative writes
 within one project must remain serial to avoid candidate and version conflicts.
+
+### A host-managed instance has no login step
+
+An instance hosted by an agent (for example the ScriptNow × deepseek-harness
+integration) exports `SCRIPTNOW_HOSTED=1`. There the session is **minted
+server-side by the host** and written to the file `SCRIPTNOW_CLI_CONFIG` points
+at, so the CLI neither needs nor can perform a login:
+
+- `scriptnow login` is **refused outright** with an explanation: it would wait for
+  a browser callback on the instance's own `127.0.0.1`, which your browser cannot
+  reach, so it could only time out;
+- when `scriptnow doctor` reports "not logged in", the right move is to **retry
+  shortly**, or ask the host to re-issue the session — not to log in, and
+  **never** to ask anyone (including an agent) for cookies or a password;
+- the marker reads the environment variable alone and is **not inferred from
+  `SCRIPTNOW_CLI_CONFIG`**: relocating that file is the documented self-service
+  fix below, and those users still own their own login.
+
+To genuinely log in on your own machine, `unset SCRIPTNOW_HOSTED` first.
+
+`SCRIPTNOW_HOSTED=1` answers *who owns the session*; *where that platform's API is
+mounted* is a separate variable. It is `/api` by default (a standalone deployment
+needs nothing set); the integration shape mounts the platform at `/sn-api`, and the
+host exports `SCRIPTNOW_API_PREFIX` alongside the marker. If the CLI reports
+"平台 API 不在 `<api_root>`", it addressed the agent runtime's own namespace — which
+sits behind the login gate and answers with a 401 indistinguishable from an expired
+session — so point `SCRIPTNOW_API_PREFIX` at the real mount point. A malformed value
+is reported by name rather than silently falling back to `/api`.
 
 ### Config & session location (agents: run `scriptnow doctor` first)
 

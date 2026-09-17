@@ -47,13 +47,63 @@ PyPI checks eligibility on upload.
    Verify installation of the exact version from `https://pypi.org/simple` in a
    fresh environment. The default auto-upgrade source remains the platform host.
    Do not put local proxies, API tokens or session files into release materials.
+7. Refresh **Latest verified release** below with the version, workflow run and
+   artifact hashes, then commit it. That snapshot is what keeps this runbook
+   tracking the newest release; a stale snapshot is a real defect.
 
 References: [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/)
 and [PyPA publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/).
 
-## First release verified
+## Latest verified release
 
-Version 0.3.94 was published on 2026-09-11 using
+**`0.3.96`** — published 2026-09-11 via
+[workflow run 34612135389](https://github.com/quchenchen/scriptnow-cli/actions/runs/34612135389).
+
+| Artifact | SHA256 |
+|---|---|
+| `scriptnow_cli-0.3.96-py3-none-any.whl` | `c602eacf784fbfa90df375c4727b92ee8100b1c3033468fec3d850dc1ffe0843` |
+| `scriptnow_cli-0.3.96.tar.gz` | `ebe09669c4f9702524562ad4c870ebd9bff51e93093aefc37b6e0faadd5f2dea` |
+
+Both distributions are listed, unyanked, on the public index; a fresh Python 3.12
+installation from `https://pypi.org/simple` passed `--version` and Skill-bundle
+smoke checks.
+
+### Pending: `0.3.97` is on the platform source only
+
+`0.3.97` (hosted-instance login semantics, see
+`cli_anything/scriptnow/utils/hosted.py`) is **already live on the platform
+download source** — `https://sn.igeewa.com/downloads/scriptnow-cli/version.txt`
+returns `0.3.97`, and the versioned wheel / `latest` alias / source zip are all
+served. It is **not** on PyPI or the GitHub mirror yet, so the snapshot above
+deliberately still says `0.3.96`.
+
+That split is the normal intermediate state of `scripts/sync-cli-release.sh`,
+whose stages run GitHub → platform → PyPI: a run that stops after the platform
+stage leaves the platform source ahead. To finish the release, run the script
+with authorization for its GitHub and PyPI writes (steps 3 and 5 above); it is
+idempotent, so the already-published platform files are simply re-verified.
+
+Registered for that run:
+
+| Artifact | SHA256 |
+|---|---|
+| `scriptnow_cli-0.3.97-py3-none-any.whl` | `175d1b16e58a11b61a32609b7b3a10cd537a40d819ca6b6b516621c8315fd0a0` |
+
+Note this hash is **per build** — the wheel embeds build timestamps, so a
+rebuild changes it. The value that matters is what the platform is serving now
+(`shasum -a 256` the downloaded file), not this line.
+
+PyPI and the workflow run stay the authoritative live record — read the current
+published version straight from the index pip installs from, instead of trusting
+this snapshot:
+
+```bash
+python3 -m pip index versions scriptnow-cli
+# equivalent without pip: https://pypi.org/simple/scriptnow-cli/
+```
+
+The `/pypi/<project>/json` endpoint can lag a few minutes behind a fresh upload;
+the simple index above reflects a new release immediately.
+
+First release: `0.3.94`, 2026-09-11,
 [workflow run 34549198132](https://github.com/quchenchen/scriptnow-cli/actions/runs/34549198132).
-The public PyPI JSON API lists wheel and sdist; a fresh installation from
-`https://pypi.org/simple` passed version and agent-guide smoke checks.

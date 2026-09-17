@@ -58,8 +58,8 @@
 # 安装生产源公布的最新版本
 version=$(curl -fsS https://sn.igeewa.com/downloads/scriptnow-cli/version.txt)
 python3 -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-${version}-py3-none-any.whl"
-# 源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
+# 与 wheel 同版本的生产源码包（zip）
+curl -sL -o /tmp/scriptnow-cli.zip "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v${version}.zip"
 ```
 
 **GitHub 兜底（生产源不可达时）**：
@@ -147,6 +147,28 @@ CLI 在 macOS/Linux/Windows 上会用跨进程锁协调共享会话的自动续�
 **会话自动续期**：access token 约 60 分钟过期，CLI 会**自动**用 refresh token 续期并写回本地文件
 （refresh 有效 30 天）——一次登录后 30 天内无需再登录，Agent 长会话也不会中途失效。
 仅当 refresh 也过期（30 天未用）或改密/管理员重置密码/主动登出后，才需要重新 `scriptnow login`。
+
+### 宿主托管的实例里没有 login 这一步
+
+由宿主 Agent 托管的实例（如 ScriptNow × deepseek-harness 整合形态）会给 CLI 下发
+`SCRIPTNOW_HOSTED=1`。此时**登录会话由宿主在服务端换发**，并写进 `SCRIPTNOW_CLI_CONFIG`
+指向的文件，CLI 自己不需要也无法登录：
+
+- `scriptnow login` 会被**直接拒绝**并说明原因 —— 它要在本实例的 `127.0.0.1` 上等一个
+  浏览器回调，而你自己的浏览器到不了那个地址，流程只会超时；
+- `scriptnow doctor` 报「未登录」时，正确处理是**稍后重试**，或请宿主重新下发会话 ——
+  不是去登录，**更不是向任何人（包括 Agent）索取或粘贴 Cookie / 密码**；
+- 该标记只看环境变量本身，**不从 `SCRIPTNOW_CLI_CONFIG` 推断**：挪动会话文件是下面
+  写明的自助修法，那类用户仍然拥有自己的登录。
+
+确实要在本机自行登录时，先 `unset SCRIPTNOW_HOSTED` 再运行。
+
+`SCRIPTNOW_HOSTED=1` 只回答「会话归谁」。平台 API 挂在哪儿由另一个变量回答：
+独立部署是 `/api`（默认，无需设置），整合形态是 `/sn-api` —— 宿主会一并下发
+`SCRIPTNOW_API_PREFIX`。若 CLI 报「平台 API 不在 `<api_root>`」，说明它把请求打到了
+agent 运行时自己的命名空间（那里被登录闸门守着，回的 401 与会话过期长得一样），
+把 `SCRIPTNOW_API_PREFIX` 指向平台 API 的真实挂载点即可。值格式非法时 CLI 会点名该
+变量报错，不会静默回落 `/api`。
 
 ### 配置与会话定位（Agent 必读）
 

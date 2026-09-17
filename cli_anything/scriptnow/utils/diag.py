@@ -25,6 +25,11 @@ ERROR_CODE_ALLOWLIST = frozenset(
         "CLI_UNKNOWN", "CLI_AUTH_EXPIRED", "CLI_USAGE_UNKNOWN_OPTION",
         "CLI_USAGE_UNKNOWN_COMMAND", "CLI_HTTP_409", "CLI_HTTP_4XX",
         "CLI_HTTP_5XX", "CLI_NETWORK",
+        # 会话所在目录/锁不可访问（只读文件系统、权限或沙箱拦截）。
+        # 与 CLI_AUTH_EXPIRED 分开是刻意的：前者**不是**会话失效，看到它就去修目录，
+        # 不要去让用户重新登录 —— 2026-09-17 线上把 EROFS 误报成「会话损坏」，
+        # agent 因此请用户从 devtools 里复制 cookie。见 utils/session.py。
+        "CLI_SESSION_DIR_UNWRITABLE",
     }
 )
 
@@ -76,6 +81,10 @@ def disable_diagnostics() -> None:
 
 def _error_code(detail: str) -> str:
     value = str(detail).lower()
+    # 先判「环境不可写」：它比 auth 更像「没事，去修目录」。判据用 session.py
+    # `AREA_ERROR_MARKER` 那句固定措辞 —— 它不是 401，也不是登录失效。
+    if "会话本身完好" in str(detail):
+        return "CLI_SESSION_DIR_UNWRITABLE"
     if "401" in value or "登录状态已失效" in str(detail):
         return "CLI_AUTH_EXPIRED"
     if "no such option" in value:
@@ -105,6 +114,8 @@ def _command_key(command: str) -> str:
 
 
 def _phase(error_code: str) -> str:
+    if error_code == "CLI_SESSION_DIR_UNWRITABLE":
+        return "environment"
     if error_code.startswith("CLI_AUTH"):
         return "auth"
     if error_code.startswith("CLI_USAGE"):

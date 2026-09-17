@@ -21,9 +21,16 @@ import click
 
 from cli_anything.scriptnow import __version__ as VERSION
 from cli_anything.scriptnow import ui
+from cli_anything.scriptnow.utils.hosted import (
+    hosted_instance,
+    login_remedy,
+    login_unsupported_message,
+)
 from cli_anything.scriptnow.utils.session import (
     ScriptNowError,
     Session,
+    area_remedy,
+    is_area_error_text,
     load,
     write_json,
 )
@@ -282,13 +289,23 @@ def _check_budget(payload: Any, budget: int | None, label: str, json_output: boo
         click.echo(f"  {ui.dim(f'{label} 预估 {cost} tokens（预算 {budget}）')}", err=True)
 
 
+# 第 1 步在宿主托管实例里不是 login —— 实例内 login 不可能成功
+# （它会等一个只在用户自己电脑上可达的 loopback 回调）。见 utils/hosted.py。
+_LOGIN_HELP_LINE = (
+    "  1. scriptnow doctor --json                              # 确认会话（会话由宿主下发，无需 login）"
+    if hosted_instance()
+    else "  1. scriptnow login --host https://sn.igeewa.com   # 登录平台"
+)
+
 _MAIN_HELP = (
     ui.banner(VERSION, logo=False)
     + "\n\n"
     + """ScriptNow 创作 CLI —— 从灵感到成书交付的一站式命令行。
 
 典型流程（Agent 或创作者，固定 12 步引导顺序）：
-  1. scriptnow login --host https://sn.igeewa.com   # 登录平台
+"""
+    + _LOGIN_HELP_LINE
+    + """
   2. scriptnow project create --name 新作 --medium novel           # 建项目
   3. scriptnow project direction --apply @direction.json           # 补齐创作方向
   4. novel propose cores/blueprint → adopt-core / adopt-blueprint  # 故事核心与蓝图（回填优先，planning-quality 门禁）
@@ -958,15 +975,30 @@ def doctor_cmd(
         click.echo(ui.kv("CLI 版本", report["version"]), err=True)
         click.echo(ui.kv("会话文件", report["session_path"]), err=True)
         click.echo(
-            ui.ok("会话文件存在") if report["session_exists"] else ui.warn("会话文件不存在——先 scriptnow login"),
+            ui.ok("会话文件存在")
+            if report["session_exists"]
+            else ui.warn("会话文件不存在"),
             err=True,
         )
         if report.get("logged_in"):
             click.echo(ui.ok(f"已登录：{report.get('email')}（user {report.get('user_id')}）"), err=True)
             click.echo(ui.dim(f"平台：{report.get('base_url')}"), err=True)
         else:
-            click.echo(ui.warn(f"未登录：{report.get('login_error')}"), err=True)
-            click.echo(ui.dim("修复：scriptnow login --host <平台地址>（系统浏览器授权）"), err=True)
+            # `session.load()` 的消息本身就带修复建议（见 utils/session.py），而下一行
+            # `修复：` 又是同一句话 —— 两处都印会让 doctor 看起来像卡带。这里把已经出现在
+            # 错误文本里的建议摘掉，只保留 `修复：` 这一处；错误文本不含建议时（如会话文件
+            # 损坏走的是别的异常分支）则照常补上，不会漏掉修复指引。
+            #
+            # 但「目录/锁不可访问」是例外：那类错误**不是**登录问题，配「重新登录」
+            # 是反向建议（宿主实例里 login 只会超时）。见 `is_area_error_text`。
+            remedy = login_remedy()
+            error_text = str(report.get("login_error") or "")
+            if is_area_error_text(error_text):
+                remedy = area_remedy()
+            elif remedy and remedy in error_text:
+                error_text = error_text.replace(remedy, "").strip()
+            click.echo(ui.warn(f"未登录：{error_text}"), err=True)
+            click.echo(ui.dim(f"修复：{remedy}"), err=True)
         click.echo(ui.dim("配置目录：~/.config/scriptnow-cli/（session.json + version-check.json + errors.jsonl）"), err=True)
         click.echo(ui.dim("可用环境变量 SCRIPTNOW_CLI_CONFIG 覆盖会话文件位置"), err=True)
         if report["diagnostics_enabled_until"]:
@@ -1051,12 +1083,26 @@ def guide(steps: bool, step: int | None, medium: str, resume: bool, pulse: str |
         _echo_guide(guide_payload)
 
 
+# 12 步引导的第 1 步在宿主托管实例里不是「登录」而是「确认已登录」——
+# 会话由宿主下发，实例内 login 不可能成功。两份契约与 _GUIDE_STEPS 共用这个名字。
+_STEP_ONE_NAME = "确认已登录（会话由宿主下发）" if hosted_instance() else "登录"
+
+# 登录相关的契约条目在两种形态下必须给出相反的操作指引，抽出来避免各处漂移。
+_LOGIN_RULE = (
+    "登录会话由宿主 Agent 下发（SCRIPTNOW_HOSTED=1）：不要运行 scriptnow login"
+    "（它等的是只在用户自己电脑上可达的浏览器回调，在实例里只会超时），"
+    "也不要向用户索取或要求粘贴 Cookie / 密码；提示未登录时让宿主重新下发会话后重试。"
+    if hosted_instance()
+    else "登录只用 scriptnow login 打开系统浏览器，由用户在网页输入账号密码并确认授权。"
+    "禁止向 Agent 提供密码、读取密码框或以参数、stdin、环境变量代传密码；授权失败不得回退旧密码登录。"
+)
+
 _AGENT_CONTRACT = {
     "guide": "scriptnow-agent-contract",
     "title": "ScriptNow Agent 操作契约 —— 连接平台前必读",
     "audience": "在 ScriptNow 平台上创作小说/剧本的 AI Agent。以本契约为唯一操作准则；本契约与平台后端返回为准，优先于任何对平台的猜测。",
     "rules": [
-        "登录只用 scriptnow login 打开系统浏览器，由用户在网页输入账号密码并确认授权。禁止向 Agent 提供密码、读取密码框或以参数、stdin、环境变量代传密码；授权失败不得回退旧密码登录。",
+        _LOGIN_RULE,
         "创作顺序铁律（12 步 guide 顺序）：故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付 → 正文。粗纲依赖已采纳的核心/蓝图锚点与梗概；禁止先排 StoryMap 或先写正文再补粗纲。",
         "authorize 命令与旧版 decision-token 通道已弃用：所有采纳授权统一走 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 目标采纳命令的 `--review-token <凭证>`；CLI authorize 仅保留兼容输出并标记 deprecated，新流程不再引导使用。",
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
@@ -1075,7 +1121,13 @@ _AGENT_CONTRACT = {
         "错误或不适用的项目 Skill 不要归档全局 Skill 或重建项目：在用户明确授权后执行 `skill unmount <project_id> <skill_id> --confirm --json`，CLI 会回读 mounts 确认该项目已解除；其他项目和版本不受影响。解除最后一个已启用写作 Skill 后，ready-check 必须显示不就绪，需挂载通过门禁的方法论后再生成。",
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
-        "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，重新运行 scriptnow login 并由用户在系统浏览器授权，不要伪造凭据或绕开 CLI。",
+        (
+            "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。"
+            "本 CLI 由宿主 Agent 托管（SCRIPTNOW_HOSTED=1）时，登录会话由宿主下发，实例内不要运行 scriptnow login（浏览器回调只在用户自己电脑上可达），"
+            "提示未登录时请宿主重新下发会话；任何情况下都不得向用户索取或要求粘贴 Cookie / 密码。"
+            if hosted_instance()
+            else "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，重新运行 scriptnow login 并由用户在系统浏览器授权，不要伪造凭据或绕开 CLI。"
+        ),
         "命令与参数以 scriptnow --help / scriptnow <命令> --help 为准；不确定时先查帮助，不要臆造参数或输出格式。",
         "需要保存的标识（project_id / chapter_id / revision_id / run_id）来自命令的 --json 输出；后续命令一律引用这些 id，不要自造 id 或猜测路径。",
         "CLI 版本与 /cli 页面一致；发现行为异常先检查 scriptnow --version 是否最新。",
@@ -1090,7 +1142,11 @@ _AGENT_CONTRACT = {
     ],
     "quickstart": [
         "scriptnow guide --step 1 --medium novel|script --json（每步完成后按 next_step 衔接，不一次展示命令墙）",
-        "scriptnow login --host https://sn.igeewa.com",
+        (
+            "scriptnow doctor --json（宿主托管实例：会话由宿主下发，核对 logged_in=true 即可，不要运行 scriptnow login）"
+            if hosted_instance()
+            else "scriptnow login --host https://sn.igeewa.com"
+        ),
         "scriptnow project create --name <作品名> --medium novel|script --premise <前提> --genre <类型> --tone <文风> --point-of-view <视角> --chapter-target-words 1200；script 项目另设 --volume-one 总集数 --volume-two 每集场数 --volume-three 单集目标分钟（默认 3）（创建后立即 scriptnow project list 回读核对项目存在）",
         "规划链逐层（故事核心与蓝图 → 梗概 → 粗纲 → storymap）：对 cores/blueprint 先用 review preview 审阅本地文件，再 propose 回填、candidate-preview 审阅平台候选、confirm/claim。小说故事核心执行 `scriptnow novel adopt-core <作品号> <候选号> --review-token <凭证>`，剧本故事核心执行 `scriptnow script adopt-core <作品号> <候选号> --review-token <凭证>`；蓝图分别执行 `scriptnow novel adopt-blueprint <作品号> <候选号> --review-token <凭证>` 或 `scriptnow script adopt-blueprint <作品号> <候选号> --review-token <凭证>`。再采纳 outline、粗纲和集纲/章纲一体的 StoryMap；每个写入都以平台返回的 ID 和回读为准。",
         "集纲/章纲随 storymap 一体交付（novel 参照 script 合并模型）：剧本每个 episode 提供平铺 logline/active_goal/conflict/turn/state_changes/anchor_ids；小说每个 chapter 的 outline 提供 summary 或 logline、active_goal/conflict/turn/state_changes，锚点可来自 outline.anchor_ids 或 beat。storymap JSON 本地生成 → novel/script planning-quality 预检 → 每阶段先 review preview → propose → review candidate-preview 展示平台候选；人明确保留后分别 adopt，禁止 --adopt 隐式连跳。旧项目可用 episode-outline/chapter outline 补纲；新增卷/章也只形成候选。",
@@ -1116,7 +1172,8 @@ _AGENT_RUNTIME_CONTRACT = {
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
         "任何平台操作前先运行 scriptnow agent-guide --json，并运行 scriptnow guide --status --json；新手模式未完成时按 guide --step <n> 一幕一幕推进，不得跳过引导后自行乱跑。",
-        "创作顺序固定为 12 步（guide --step 1..12）：登录 → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
+        _LOGIN_RULE,
+        f"创作顺序固定为 12 步（guide --step 1..12）：{_STEP_ONE_NAME} → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
         "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
         "作者对 Agent 的创作委托只覆盖引导、读取、编排、展示和在说明范围内生成/propose，绝不自动扩大为采纳、结构覆盖、删除或发布。正文最终创作默认由平台内真实 AgentScope Agent 主笔：chapter/scene generate 平台候选 → review preview 呈现正文 → 用户明确决定 → `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 带完整位置参数和 --human/--review-token 的采纳命令；仅当作者明确选择外部 Agent 代写正文时才由 Agent 本地写好正文 → chapter/scene propose 回填候选并走同一审阅、采纳链。",
         "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
@@ -1186,12 +1243,30 @@ def agent_guide(json_output: bool, full: bool) -> None:
 _GUIDE_STEPS = [
     {
         "step": 1,
-        "title": "登录平台",
+        # 两种部署形态下这一步的动作不同，别写成同一句话：
+        #   · 自管安装：CLI 自己登录（系统浏览器授权）；
+        #   · 宿主托管实例（SCRIPTNOW_HOSTED=1）：宿主在「你已登录平台」的前提下
+        #     把会话下发到实例，实例内 login 不可能成功 —— 它会等一个只在用户
+        #     自己电脑上可达的 loopback 回调。这一步因此变成「核对宿主下发的会话」。
+        "title": "确认已登录（会话由宿主下发）" if hosted_instance() else "登录平台",
         "scene": "推开工作室的门。这里存放着你所有的作品与灵感，先落下你的名字。",
-        "why": "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。",
+        "why": (
+            "宿主已经把你的登录身份下发到本实例，所有创作命令自动带上它，不需要再登录一次。"
+            if hosted_instance()
+            else "登录一次，之后所有创作命令都会自动带上你的身份，不用反复输入。"
+        ),
         "downstream": "登录后所有写操作自动带身份，是后续一切创作命令的身份基础。",
-        "command": "scriptnow login --host https://sn.igeewa.com",
-        "verify": "浏览器确认后输出授权成功；doctor 核对已保存会话与当前账号，不输出凭据。",
+        "command": (
+            "scriptnow doctor --json"
+            if hosted_instance()
+            else "scriptnow login --host https://sn.igeewa.com"
+        ),
+        "verify": (
+            "doctor 必须显示 logged_in=true 与你的账号；若显示未登录，请宿主重新下发会话，"
+            "不要向任何人索取或粘贴 Cookie。"
+            if hosted_instance()
+            else "浏览器确认后输出授权成功；doctor 核对已保存会话与当前账号，不输出凭据。"
+        ),
         "prompt": "此刻你想创作什么？不必完整，先说出那个让你心动的念头。",
         "masters": [
             {
@@ -1774,6 +1849,14 @@ def _echo_guide(payload: dict[str, object]) -> None:
 def login_cmd(host: str, timeout: int, json_output: bool) -> None:
     """打开系统浏览器登录授权；CLI 和 Agent 不接收账号密码。"""
     from cli_anything.scriptnow.utils.browser_login import browser_login
+
+    # 宿主托管实例里登录**不可能成功**：browser_login 会在本实例的 127.0.0.1 上
+    # 等一个浏览器回调，而用户的浏览器到不了实例的 loopback。以前这里会一路等到
+    # 超时才报错，报错又提示「重新运行 scriptnow login」——形成死循环，还会把
+    # Agent 逼去问用户要 Cookie。所以在这里就明确拒绝，并给出正确出路。
+    if hosted_instance():
+        raise click.ClickException(login_unsupported_message())
+
     try:
         session = browser_login(host, timeout=timeout, notify=lambda message: click.echo(message, err=True))
     except ScriptNowError as error:

@@ -42,8 +42,8 @@ cd scriptnow-cli && pip install -e .
 # 优先生产源直装 wheel（sn.igeewa.com，最稳，不依赖 git）
 version=$(curl -fsS https://sn.igeewa.com/downloads/scriptnow-cli/version.txt)
 python3 -m pip install "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow_cli-${version}-py3-none-any.whl"
-# 固定版本源码包（zip）
-curl -sL -o /tmp/scriptnow-cli.zip https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v0.3.80.zip
+# 与 wheel 同版本的生产源码包（zip）
+curl -sL -o /tmp/scriptnow-cli.zip "https://sn.igeewa.com/downloads/scriptnow-cli/scriptnow-cli-v${version}.zip"
 
 # 或从 GitHub 最新代码直接安装（codeload 直连，无需 clone）
 curl -sL -o /tmp/scriptnow-cli-latest.tar.gz https://codeload.github.com/quchenchen/scriptnow-cli/tar.gz/refs/heads/main
@@ -75,6 +75,12 @@ macOS/Linux 上 CLI 会用跨进程锁协调共享会话的自动续期：不同
 先 `scriptnow doctor` 定位，不要猜配置位置。`SCRIPTNOW_CLI_CONFIG` 可覆盖会话路径；
 多环境共用同一会话文件时登录一次全部生效。
 登录仅通过系统浏览器完成，不再接受密码参数、标准输入或密码环境变量。
+
+**宿主托管的实例没有 login 这一步**：宿主 Agent（如 ScriptNow × deepseek-harness 整合形态）
+下发 `SCRIPTNOW_HOSTED=1` 时，会话由宿主在服务端换发并写入 `SCRIPTNOW_CLI_CONFIG` 指向的文件。
+此时 `scriptnow login` 会被**直接拒绝**（它要等一个只在用户自己电脑上可达的浏览器回调，
+在这里必然超时）；`doctor` 报未登录时请稍后重试或请宿主重新下发，**不要向任何人索取或粘贴
+Cookie / 密码**。该标记只看环境变量本身，不从 `SCRIPTNOW_CLI_CONFIG` 推断。
 
 ## 快速开始（双域）
 
