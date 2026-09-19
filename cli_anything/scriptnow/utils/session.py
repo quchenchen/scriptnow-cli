@@ -14,6 +14,7 @@ via :data:`API_PREFIX_ENV` — see :func:`api_prefix` for why that matters.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -23,6 +24,7 @@ import errno
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 try:  # POSIX inter-process refresh lock.
     import fcntl as _fcntl
@@ -293,6 +295,30 @@ def _state_marker(base_url: str, cookies: dict[str, str], csrf: str) -> str:
     )
 
 
+def _access_subject(token: str) -> str:
+    """Read ``sub`` from an access token **without verifying it**.
+
+    Not a security decision: the host recomputes the expected secret *for that
+    user id* and compares, so a forged subject simply fails. We need the subject
+    only to tell the host *which* instance is asking.
+
+    Args:
+        token: The ``sf_access`` JWT (or anything else).
+    Returns:
+        The subject claim, or ``""`` when it cannot be read.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return ""
+    payload = parts[1] + "=" * (-len(parts[1]) % 4)
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
+    except Exception:  # noqa: BLE001 - 任何畸形输入都只是"读不出来"
+        return ""
+    subject = claims.get("sub") if isinstance(claims, dict) else None
+    return subject if isinstance(subject, str) else ""
+
+
 #: 平台 API 相对 ``base_url`` 的挂载点（宿主可覆盖，见 :func:`api_prefix`）。
 API_PREFIX_ENV = "SCRIPTNOW_API_PREFIX"
 
@@ -328,16 +354,146 @@ def api_prefix() -> str:
     raw = os.environ.get(API_PREFIX_ENV, "").strip()
     if raw == "":
         return _DEFAULT_API_PREFIX
+    # `/` means "the API is mounted at the root" — the empty suffix is correct.
+    return _validate_mount_prefix(raw, API_PREFIX_ENV)
+
+
+#: 平台**网页**（Creator 前端）相对 ``base_url`` 的挂载点。
+#:
+#: 与 :data:`API_PREFIX_ENV` 是两个不同的挂载点，不能混用：整合形态下
+#: API 在 ``/sn-api``，而网页在 ``/platform/``（站点根 ``/`` 让给了 agent 外壳）。
+WEB_PREFIX_ENV = "SCRIPTNOW_WEB_PREFIX"
+
+#: 独立部署下网页就挂在站点根，所以默认是空串（不是 ``/``）。
+_DEFAULT_WEB_PREFIX = ""
+
+
+def web_prefix() -> str:
+    """Return the platform **web UI** mount point, relative to ``base_url``.
+
+    Why this exists (the ``/cli/authorize`` link was broken in production)
+    ---------------------------------------------------------------------
+
+    ``scriptnow login`` opens ``base_url + "/cli/authorize"``. That was correct
+    while the Creator owned the site root. In the integrated deployment the root
+    belongs to the agent shell and the Creator moved to ``/platform/``, so the
+    link landed in the wrong application entirely — the browser authorization
+    page was unreachable on the very deployment that most needed it.
+
+    Same shape as :func:`api_prefix`: a mount point is a *deployment* fact, not a
+    constant, so the host states it and the CLI validates rather than guesses.
+    """
+    raw = os.environ.get(WEB_PREFIX_ENV, "").strip()
+    if raw == "":
+        return _DEFAULT_WEB_PREFIX
+    return _validate_mount_prefix(raw, WEB_PREFIX_ENV)
+
+
+def _validate_mount_prefix(raw: str, env_name: str) -> str:
+    """Validate a mount-point environment variable and normalise its trailing slash.
+
+    Shared by :func:`api_prefix` and :func:`web_prefix` so the two cannot drift
+    apart in what they accept — they are the same class of value, and a rule that
+    only one of them enforces is a rule that will be wrong for the other.
+
+    Args:
+        raw: The raw environment value (already stripped, non-empty).
+        env_name: Variable name, used to make the error actionable.
+    Returns:
+        The value without a trailing slash.
+    Raises:
+        ScriptNowError: The value is not a single-slash absolute path, or contains
+            traversal, whitespace or control characters.
+    """
     if not raw.startswith("/") or raw.startswith("//"):
         raise ScriptNowError(
-            f"{API_PREFIX_ENV} 必须是本站绝对路径（以单个 / 开头），收到：{raw!r}"
+            f"{env_name} 必须是本站绝对路径（以单个 / 开头），收到：{raw!r}"
         )
     if "\\" in raw or ".." in raw.split("/"):
-        raise ScriptNowError(f"{API_PREFIX_ENV} 含非法路径片段，收到：{raw!r}")
+        raise ScriptNowError(f"{env_name} 含非法路径片段，收到：{raw!r}")
     if any(character.isspace() or ord(character) < 0x20 for character in raw):
-        raise ScriptNowError(f"{API_PREFIX_ENV} 含空白或控制字符，收到：{raw!r}")
-    # `/` means "the API is mounted at the root" — the empty suffix is correct.
+        raise ScriptNowError(f"{env_name} 含空白或控制字符，收到：{raw!r}")
     return raw.rstrip("/")
+
+
+def web_url(base_url: str, path: str) -> str:
+    """Join a site-relative path into an absolute, openable URL.
+
+    Every user-facing link the CLI prints must go through here. Building one by
+    hand is exactly how ``/cli/authorize`` ended up pointing at the wrong
+    application in the integrated deployment.
+
+    Args:
+        base_url: Platform origin, e.g. ``https://sn.igeewa.com``.
+        path: Site-relative path beginning with ``/``, e.g. ``/device``.
+    Returns:
+        Absolute URL including the configured web prefix.
+    Raises:
+        ScriptNowError: ``path`` is not site-relative (a caller passing an already
+            absolute URL would otherwise get a silently doubled prefix).
+    """
+    if not path.startswith("/") or path.startswith("//"):
+        raise ScriptNowError(f"网页路径必须是站点相对路径（以 / 开头），收到：{path!r}")
+    return f"{base_url.rstrip('/')}{web_prefix()}{path}"
+
+
+def platform_base(host: str) -> str:
+    """Validate and normalise a platform address into a ``base_url``.
+
+    Shared by both login flows (browser PKCE and device code) so they cannot
+    disagree about what counts as an acceptable platform address. Plain HTTP is
+    allowed only for loopback, because the authorization exchange carries a
+    session in the clear.
+
+    Args:
+        host: User-supplied platform address.
+    Returns:
+        The address without a trailing slash.
+    Raises:
+        ScriptNowError: Not HTTPS, or HTTP to a non-loopback host, or carrying
+            credentials / query / fragment / a path.
+    """
+    origin = urlsplit(host)
+    if (origin.scheme not in {"http", "https"} or not origin.netloc or origin.username
+            or origin.password or origin.query or origin.fragment or origin.path not in {"", "/"}
+            or (origin.scheme == "http" and origin.hostname not in {"localhost", "127.0.0.1", "::1"})):
+        raise ScriptNowError("登录地址必须为 HTTPS 平台地址；仅本机开发允许 HTTP")
+    return host.rstrip("/")
+
+
+#: 宿主代持 refresh 模式（W5）下，实例用来续期的**每实例密钥**（由宿主注入）。
+#:
+#: 为什么它读得到也没关系：它的价值只等于"能刷新**自己**这条实例会话"，换不出别人的
+#: （宿主按 userId 派生，密钥与用户一一对应）。详见
+#: `docs/DSH-INSTANCE-CREDENTIAL-SCOPING.md`。
+INSTANCE_SECRET_ENV = "SCRIPTNOW_INSTANCE_SECRET"
+
+
+def instance_secret() -> str:
+    """Return the host-issued instance credential, or ``""`` when not host-managed.
+
+    Presence of this variable is what tells the CLI that *the host holds the
+    refresh token*: the session file then carries only a short-lived access
+    token, and renewal has to go back to the host rather than to the platform.
+    """
+    return os.environ.get(INSTANCE_SECRET_ENV, "").strip()
+
+
+def _session_usable(cookies: dict[str, str], csrf: str) -> bool:
+    """Whether an already-reloaded session can still serve requests.
+
+    Two shapes are usable, and telling them apart is a W5 artifact. A
+    self-managed install holds ``sf_refresh`` and renews against the platform
+    itself; a host-managed instance deliberately holds **no** refresh and renews
+    through the host with the per-instance secret. Judging both by "is there a
+    refresh token" made the *loser* of a concurrent rotation report
+    「登录状态已失效」 even though it had just reloaded a fresh access token.
+    Before W5 the two shapes were identical, which is why this equivalence went
+    unnoticed; ``tests/test_host_refresh.py`` pins both directions.
+    """
+    if csrf == "" or not cookies.get("sf_access"):
+        return False
+    return bool(cookies.get("sf_refresh")) or instance_secret() != ""
 
 
 #: 整合形态网关在「未登录 + 非文档请求」时回的标记头（`gateway/session-gate.mjs`）。
@@ -603,7 +759,7 @@ class Session:
                     self.cookies = latest_cookies
                     self.csrf = latest_csrf
                     self._persisted_marker = latest_marker
-                    return bool(self.cookies.get("sf_refresh") and self.csrf)
+                    return _session_usable(self.cookies, self.csrf)
                 # Refresh with exactly the durable state that was protected by
                 # this lock. A 401 response must not leave an incidental
                 # Set-Cookie mutation in memory as the input to token rotation.
@@ -611,8 +767,13 @@ class Session:
                 self.cookies = latest_cookies
                 self.csrf = latest_csrf
                 self._persisted_marker = latest_marker
-                if not self.cookies.get("sf_refresh") or not self.csrf:
+                if not self.csrf:
                     return False
+                if not self.cookies.get("sf_refresh"):
+                    # 宿主代持模式（W5）：实例里**本来就没有** refresh —— 它在宿主进程
+                    # 内存里。所以这里不是"会话坏了"，是设计如此；续期要回宿主，不是回平台。
+                    # 详见 docs/DSH-INSTANCE-CREDENTIAL-SCOPING.md。
+                    return self._refresh_from_host(path)
                 try:
                     response = self._http.post(
                         f"{self.api_root}/auth/refresh",
@@ -661,6 +822,64 @@ class Session:
             raise ScriptNowError(
                 f"本地登录会话文件损坏或不可读取，未覆盖原文件；{login_remedy()}"
             ) from error
+
+    def _refresh_from_host(self, path: Path) -> bool:
+        """Renew the access token through the host that holds the refresh token.
+
+        Reachable only in a host-managed instance whose session file carries no
+        ``sf_refresh``. The refresh token lives in the gateway process's memory,
+        so a leaked instance file no longer holds anything that can resurrect a
+        session: what leaks is a short-lived access token that cannot renew
+        itself. See ``docs/DSH-INSTANCE-CREDENTIAL-SCOPING.md``.
+
+        Returns ``True`` when a fresh access token is available and persisted.
+
+        Deliberately does **not** set ``_refresh_rejection`` on failure. That
+        flag exists so the *host* learns "the platform rejected this refresh"
+        from a note the CLI leaves behind — but here the host performed the
+        refresh itself and already knows, dropping its copy on a rejection and
+        re-minting on the next page load. Leaving a marker would only make it
+        mint a second session for no reason.
+        """
+        secret = instance_secret()
+        if secret == "":
+            # 没有密钥 ⇒ 不是宿主代持模式（或宿主太老）⇒ 按"需要重新登录"处理。
+            return False
+        subject = _access_subject(str(self.cookies.get("sf_access") or ""))
+        if subject == "":
+            return False
+        try:
+            response = self._http.post(
+                f"{self.base_url}/-/agent-session/refresh",
+                headers={"x-scriptnow-instance": f"{subject}:{secret}"},
+                timeout=30,
+            )
+        except requests.RequestException:
+            return False
+        if response.status_code != 200:
+            return False
+        try:
+            payload = response.json()
+        except ValueError:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        cookies = payload.get("cookies")
+        csrf = payload.get("csrf")
+        access = cookies.get("sf_access") if isinstance(cookies, dict) else None
+        if not isinstance(access, str) or access == "" or not isinstance(csrf, str) or csrf == "":
+            return False
+        self.cookies["sf_access"] = access
+        self.cookies["sf_csrf"] = csrf
+        # 宿主**不该**回 refresh；真回了也不写进本地 —— 本地留着它就等于 W5 白做。
+        self.cookies.pop("sf_refresh", None)
+        self.csrf = csrf
+        try:
+            self.save(path)
+        except OSError:
+            # 与平台路径同理：存不下去不该让本次请求失败，内存里的新会话仍然可用。
+            pass
+        return True
 
     def _mark_session_stale(self) -> None:
         """Leave a "this session's refresh was rejected" note for the host gateway.

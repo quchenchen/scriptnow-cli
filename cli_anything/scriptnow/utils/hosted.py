@@ -65,7 +65,8 @@ def login_remedy() -> str:
         return (
             "登录会话由宿主 Agent 自动下发，实例内无需也无法运行 scriptnow login"
             "（它要等一个只在你自己电脑上可达的浏览器回调）；请稍后重试，"
-            "且不要向任何人索取或粘贴 Cookie"
+            "若一直未恢复请打开一次 AI 助手页面让宿主重新下发"
+            "（宿主只在网页会话有效时才能换发），且不要向任何人索取或粘贴 Cookie"
         )
     return "请先运行: scriptnow login --host <平台地址>（系统浏览器授权）"
 
@@ -81,13 +82,20 @@ def login_remedy_example() -> str:
 
 
 def login_unsupported_message() -> str:
-    """Full refusal text for ``scriptnow login`` inside a host instance."""
+    """Full refusal text for ``scriptnow login`` inside a host instance.
+
+    Deliberately names the *working* alternative (`--device`) instead of only
+    explaining the failure. The 2026-09-17 incident happened precisely because
+    this dead end came with no next step, so the agent improvised one.
+    """
     return (
-        "本 CLI 由宿主 Agent 托管（SCRIPTNOW_HOSTED=1），实例内无法自行登录：\n"
+        "本 CLI 由宿主 Agent 托管（SCRIPTNOW_HOSTED=1），**这一种**登录方式用不了：\n"
         "  · scriptnow login 会在本实例的 127.0.0.1 上等一个浏览器回调，\n"
-        "    而你自己的浏览器到不了这个地址，流程只会超时；\n"
-        "  · 登录会话由宿主在你已登录的前提下自动下发到 SCRIPTNOW_CLI_CONFIG，\n"
-        "    不需要在这里再登录一次。\n"
+        "    而你自己的浏览器到不了这个地址，流程只会超时。\n"
+        "正确做法（二选一）：\n"
+        "  · scriptnow login --device —— 设备码登录：CLI 给出确认码与链接，\n"
+        "    你在**自己已登录的浏览器**里确认即可，凭据不经过命令行；\n"
+        "  · 什么都不做 —— 会话通常已由宿主在你登录平台时自动下发。\n"
         "如果一直提示未登录：请稍后重试，或在对话里请宿主重新下发会话。\n"
         "不要向任何人（包括 Agent）索取或粘贴 Cookie / 密码。\n"
         "（确实要在本机自行登录时，先 unset SCRIPTNOW_HOSTED 再运行。）"

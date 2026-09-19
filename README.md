@@ -20,6 +20,8 @@
   但规划结构与创作循环按域细化，Agent 按域编排。
 - **样本不传平台**：一书一 Skill 用 `interpret local` 在 Agent 本地解读作品、产出方法论后回传，
   平台只接收最终 Skill，不接触作品原文；改编稿用 `chapter propose` / `script scene-propose` 本地回传。
+  改编项目的**来源画像**同样回填优先：`interpret propose` 把画像 + 锚点自证交平台校验，
+  平台只做校验与采纳（不调模型、不阻塞）；`interpret go/read` 的平台通读只是辅助路径。
 - **Skill 能力与版本进化**：`skill growth` 从创作实绩提炼方法论、评估后发布新版本；
   `skill canary` 对新版本做灰度决策（retain / limit / need_evidence / rollback）。
 - **管理员支线**：`admin` 命令组仅 `is_admin` 可用（非管理员 403）；token 消费、额度与财务命令
@@ -35,11 +37,29 @@
 - **新增卷章 = 纯追加（服务端硬门禁）**：`storymap append-volume` / `storymap append-chapters` / `storymap append-phase` 只尾部新增，已有卷章
   id/序号/标题/字数完全不动；纯追加形状（含任意位置纯新增）的全量提案被服务端拒绝并指引追加通道；**全置换（retained=0）的普通全量提案同样被拒绝**——恢复旧结构唯一合法通道是 `novel/script storymap-restore`（服务端按归档镜像校验放行），全新结构仅限首次创建（空结构）或 storymap-rebuild-* 隔离链；被替换的旧结构自动归档，平台「结构历史」可查看导出。
 - **集纲 / 章纲先于正文**：StoryMap 不能只提供 episode/scene 或 volume/chapter 容器。剧本每个
-  `episode` 需填写平铺字段 `logline`、`active_goal`、`conflict`、`turn`、`state_changes`、`anchor_ids`；可用
+  `episode` 需填写平铺字段 `logline`、`active_goal`、`conflict`、`turn`、`state_changes`、`anchor_ids`，并给
+  `title`（**改后的集名**）与 `source_titles`（原著章名原名，仅用于追溯）；可用
   `script episode-outline <pid> <episode_id> @outline.json` 补单集；
   小说每个 `chapter` 需填写嵌入的 `outline`（`summary`/`logline`、`active_goal`、`conflict`、`turn`、
   `state_changes`，锚点可来自 outline 或 beat）；先运行
   `script/novel planning-quality`，全量通过并经作者采纳后才可写正文。历史章节（已有正文）可读可写，不受章纲字段缺失影响；新章节必须带完整章纲（提交前可用 `chapter outline-check` 自查、`chapter outline-example` 看结构示范）。
+- **集名必须改写（服务端硬门禁）**：提取阶段要求原著章名逐字照抄是对的，但**集名不能照抄**——网文标题
+  多为引流词（如『第27章 你可懂了？』），照抄等于让观众从集名读不出本集发生了什么。集名要写进本集当下的
+  冲突对象、主角动作或局面反转；只把章号摘掉、引流词原样保留同样被 `episode_title_rewrite` 判为照抄（revise）。
+- **关键节点必须各有归属（覆盖矩阵门禁）**：蓝图每个 `event` 锚点（含历史别名 `plot`）与每个 `quote`（金句）
+  锚点，都必须被某一集承载（写入该集 `anchor_ids`，或该集某条节拍的 `anchor_ids`）。`script storymap propose`
+  与 `storymap-rebuild-propose` 会跑覆盖矩阵，**无任何一集承载即整体拒绝并列名**；确实要删的节点，在该蓝图
+  锚点 payload 写 `intentionally_dropped: true` 与 `drop_reason: "理由"` 后重新采纳蓝图——不允许不声不响地丢掉一个关键节点。
+- **金句是可选锚点类别**：`kind: "quote"`（别名 quotes / signature_line / signature_lines / golden_line /
+  key_line，原句放 `payload.description`）不是每部戏都盘得出来，所以**不要求六类齐全**；但一旦采纳入蓝图就受
+  覆盖矩阵约束——金句必须被**分配**到某一集，而不是碰运气看写手记不记得。名场面是场景、金句是可以单独传播的
+  那一句话，两件事都要点名，不要互相代替。
+- **量化仪表盘（只读派生视图）**：`scriptnow script analytics <作品号> [--top N] [--json]` → 每集节拍密度
+  （拍/分钟）、冲突分量（不可逆转向/有障碍的对峙/做出选择/付出代价）、角色戏份分布（场数/分钟/占比）与关键节点
+  覆盖矩阵。**不引入任何模型打分**，全部由已采纳 StoryMap 确定性算出，同一份集纲永远得到同一组数字，可以直接
+  拿去对账。剧本每个 scene 另填 `characters`（本场出场角色的蓝图 key）：只填 `character_action.active_character_key`
+  只回答「这一场由谁推动」，答不了「谁在这一场出现、占多少戏」；留空的场次单列为「未标注出场人物」，
+  **不按 0 戏份计入任何角色**。谈节奏、谈戏份、谈覆盖率一律读它，不要自己估算分钟数或占比。
 
 ## 安装
 
@@ -137,6 +157,7 @@ GitHub 镜像仓库与 release tag 仅作生产源之外的备用下载。`lates
 
 ```bash
 scriptnow login --host https://sn.igeewa.com   # 打开系统浏览器登录授权
+scriptnow login --device --host https://sn.igeewa.com   # 设备码：在自己已登录的浏览器里确认
 ```
 
 会话保存到 `~/.config/scriptnow-cli/session.json`（仅 Cookie，不含密码，权限 0600）。
@@ -144,20 +165,41 @@ CLI 在 macOS/Linux/Windows 上会用跨进程锁协调共享会话的自动续�
 轮换互相覆盖；同一项目的创作写操作仍必须串行，以免产生候选或版本冲突。
 登录仅通过系统浏览器完成，不再接受密码参数、标准输入或密码环境变量。
 
+**两种授权方式的分工**：
+
+| 方式 | 怎么走 | 什么时候用 |
+|---|---|---|
+| `scriptnow login` | CLI 在本机 `127.0.0.1` 起一个临时回调，浏览器授权后把 code 交回 CLI（PKCE） | 你自己电脑上的普通终端 |
+| `scriptnow login --device` | CLI 给出**确认码**与链接；你在**自己已登录的浏览器**里确认；CLI 轮询取会话（RFC 8628） | 托管实例、远程主机、没有图形界面的环境 |
+
+设备流是**托管实例里唯一能走通**的方式：普通登录等的是实例自己的 `127.0.0.1` 回调，
+而你自己的浏览器到不了那个地址。两种方式的产物完全相同（同一份 `session.json`），
+且都**不接收密码**、不让凭据经过命令行。
+
 **会话自动续期**：access token 约 60 分钟过期，CLI 会**自动**用 refresh token 续期并写回本地文件
 （refresh 有效 30 天）——一次登录后 30 天内无需再登录，Agent 长会话也不会中途失效。
 仅当 refresh 也过期（30 天未用）或改密/管理员重置密码/主动登出后，才需要重新 `scriptnow login`。
 
-### 宿主托管的实例里没有 login 这一步
+**托管实例里续期由宿主代做**（与"谁持有 refresh"是同一件事）：实例里的会话文件**只放
+短期 access**，`sf_refresh` 留在**宿主进程的内存**里 —— 因为沙箱限制的是写、不是读，
+把长期凭据放进实例的文件系统就意味着 agent 的 `shell` 能读到它（2026-09-17 事故正是
+agent 读出了三件套）。access 过期时 CLI 带**每实例密钥**回宿主换一条新的，凭据一步都不
+进实例。代价是宿主重启后需要你**打开一次助手页面**让它重新换发；
+`scriptnow doctor` 在那种情况下会提示这一点。
+
+### 宿主托管的实例里通常不需要 login
 
 由宿主 Agent 托管的实例（如 ScriptNow × deepseek-harness 整合形态）会给 CLI 下发
-`SCRIPTNOW_HOSTED=1`。此时**登录会话由宿主在服务端换发**，并写进 `SCRIPTNOW_CLI_CONFIG`
-指向的文件，CLI 自己不需要也无法登录：
+`SCRIPTNOW_HOSTED=1`。此时**登录会话通常已由宿主在服务端换发**并写进
+`SCRIPTNOW_CLI_CONFIG` 指向的文件，你什么都不用做：
 
 - `scriptnow login` 会被**直接拒绝**并说明原因 —— 它要在本实例的 `127.0.0.1` 上等一个
   浏览器回调，而你自己的浏览器到不了那个地址，流程只会超时；
-- `scriptnow doctor` 报「未登录」时，正确处理是**稍后重试**，或请宿主重新下发会话 ——
-  不是去登录，**更不是向任何人（包括 Agent）索取或粘贴 Cookie / 密码**；
+- 确实需要重新授权时，用 **`scriptnow login --device`**：CLI 给出确认码与链接，
+  你在自己已登录的浏览器里确认即可，凭据不经过命令行；
+- `scriptnow doctor` 报「未登录」时，正确处理是**稍后重试**、或请宿主重新下发会话，
+  再不行才走 `--device`；**不要向任何人（包括 Agent）索取或粘贴 Cookie / 密码**，
+  Agent 也不应自行调用换发端点或读取会话文件；
 - 该标记只看环境变量本身，**不从 `SCRIPTNOW_CLI_CONFIG` 推断**：挪动会话文件是下面
   写明的自助修法，那类用户仍然拥有自己的登录。
 
@@ -169,6 +211,14 @@ CLI 在 macOS/Linux/Windows 上会用跨进程锁协调共享会话的自动续�
 agent 运行时自己的命名空间（那里被登录闸门守着，回的 401 与会话过期长得一样），
 把 `SCRIPTNOW_API_PREFIX` 指向平台 API 的真实挂载点即可。值格式非法时 CLI 会点名该
 变量报错，不会静默回落 `/api`。
+
+**网页挂在哪儿**由第三个变量回答：`SCRIPTNOW_WEB_PREFIX`。独立部署默认空串（Creator 占站点根），
+整合形态是 `/platform` —— 宿主会一并下发。CLI 打印的每一个**给用户点开的链接**
+（`scriptnow login` 的 `/cli/authorize`、`scriptnow login --device` 的 `/device`）
+都经过它拼接。2026-09-17 的线上缺陷正出在这里：链接是手拼的 `base + "/cli/authorize"`，
+而整合形态下站点根已经给了 agent 外壳，于是授权页被准确地送进了**另一个应用**——在最需要
+它的那个部署里永远打不开。现在所有链接都走一个函数（`session.web_url`），值非法时点名该
+变量报错。
 
 ### 配置与会话定位（Agent 必读）
 
@@ -198,6 +248,9 @@ agent 运行时自己的命名空间（那里被登录闸门守着，回的 401 
 scriptnow skill mounts <pid>                  # 项目已挂载哪些 Skill？
 # 无 → 默认共建：skill setup <pid> --json → 与作者点选推荐预设 → --answers @answers.json --confirm --json
 # 一书一 Skill 蒸馏（样本不传平台）：interpret local 手稿.docx --spec → 本地解读 → --submit @skill.json --project-id <pid>
+# 改编项目来源画像（回填优先，平台不调模型）：interpret propose <pid> --spec → 本地读原著 →
+#   interpret propose <pid> --profile @profile.json → interpret decide <pid> <profile-id> --approve
+#   （平台通读是辅助路径且同步阻塞：interpret go / create + read）
 #   或 个人 Skill：skill create --domain novel|script ... → skill mount <pid> <skill_id> <version_id>
 # 错误挂载：用户明确授权后 skill unmount <pid> <skill_id> --confirm --json（只解除本项目，自动回读确认）
 ```
@@ -270,6 +323,8 @@ scriptnow script rough-outline-propose <pid> --review-token <提交审阅凭证>
 scriptnow script propose <pid> storymap @storymap.json --review-token <提交审阅凭证>
 # 每个 chapter/episode 都要有对应章纲/集纲字段；先质量门禁再采纳
 scriptnow script planning-quality <pid> storymap @storymap.json
+# 交付前自检：节拍密度 / 冲突分量 / 戏份分布 / 关键节点覆盖矩阵（确定性算出，只读）
+scriptnow script analytics <pid>
 # 创作循环（生成默认后台）
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
@@ -291,13 +346,13 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | authorize | **【已弃用】**签发一次性「人工决策授权令牌」（对话内文字授权通道，复用登录会话不要求重新登录）：`--chapter/--scene` 限定目标，`--digest` 绑定用户已读内容；token 供 `chapter adopt --human --token` / `scene adopt --human --token` 完成人工定稿。新流程统一走 `review confirm → claim → --review-token`，不再引导 authorize |
 | review | 人类审阅回路：`propose-preview` 为 outline/cores/blueprint/storymap 自动绑定平台审阅作用域，`preview` 为高级通用预览，`candidate-preview` 展示平台候选；用户明确决定后，Agent 以 `confirm` 原样登记，再 `status` / `claim`；不得推断或伪造决定 |
 | project | 项目管理：创建 / 列表 / **files（项目文件）** / 上传素材 / **use（设为默认项目）** / 删除 / 方向（--apply 客户端梳理回填 / --inspire 平台灵感） |
-| interpret | 一书一 Skill：go（一键解读）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
+| interpret | 一书一 Skill / 来源画像：**propose（回填来源画像候选，推荐：平台只校验与采纳、不调模型、不阻塞）** / go（平台通读，辅助且同步阻塞）/ local（Agent 本地解读，样本不传平台）/ create / read / status / decide |
 | book | 全书托管创作规划（Agent 编排原语，含 Skill 支撑侦测） |
-| chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
+| chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / **batch（自动批次创作：2–3 章一批、串行、须作者审查）** / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | scene | 剧本场次（chapter 的剧本侧对称）：list / show / generate / adopt（alias of script adopt-scene）/ propose（本地回传）/ batch（批量串行）/ quality / diff |
 | storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，Novel 按全书章区间）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；归档导出/恢复候选走分域命令 `novel storymap-restore` / `script storymap-restore`；隔离重建走各域 storymap-rebuild-* 链 |
 | novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
-| script | 剧本创作链：story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）** |
+| script | 剧本创作链：story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）** / **analytics（分集量化仪表盘：节拍密度/冲突分量/角色戏份分布/关键节点覆盖矩阵，确定性算出，只读）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / **candidate-preview / adopt（内容绑定审阅凭证）** / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
@@ -428,6 +483,12 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   `scriptnow agent-guide --json`（完整人工手册用 `--full`）——平台是事实源、
   规划三件套回填优先、禁止体外项目创建（缓存/资料整理除外）、生成命令后台轮询、
   StoryMap 修订需用户明确授权（Agent 不得代替采纳）。
+- **登录凭据只走浏览器授权（MANDATORY）**：登录只用 `scriptnow login`（系统浏览器授权）
+  或 `scriptnow login --device`（设备码：打印确认码与链接，用户在**自己已登录的浏览器**里确认；
+  托管实例/远程主机里**只有这一种可行**）。两者都不接收密码、不让凭据经过命令行。
+  **禁止**向用户索取或要求粘贴 Cookie / 密码；**禁止** Agent 自行调用任何换发/刷新端点，
+  也**禁止**读取或打印 CLI 会话文件 —— 会话归宿主管，「未登录」时先让宿主重新下发，
+  仍不行才把 `scriptnow login --device` 指给用户。
 - **审阅凭证精确绑定**：凭证绑定用户实际阅读的可读 JSON；解析器默认值不得被当作内容变化。
 - **编排前置：Skill 是逐章/逐场创作前的必然门禁（MANDATORY，且须健壮性完善）**：
   创作意图明确且项目落地后，默认用 `skill setup <pid>` 与作者按推荐预设点选共建
@@ -444,6 +505,14 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   正文后经 `chapter propose` / `script scene-propose` 回填候选 → `review preview` 审读 →
   `adopt --human`。未明确选择时一律按平台主笔执行；本规则只约束正文（章节/场次）创作，
   「规划回填优先」（story_cores / blueprint / storymap 规划三件套）保持不变、不受影响。
+- **自动批次创作（agent+CLI 侧串行编排）**：`chapter batch <pid> --chapters a,b,c`
+  （剧本侧 `scene batch <pid> --scenes a,b,c`）在一批里串行跑 2–3 个正文单元。四道门前置，缺一即拒：
+  ① **新手期已过** —— 该作品第一章（剧本：第一场）已有已采纳正文；
+  ② **风格已明确** —— 项目已挂载通过门禁的方法论 Skill；
+  ③ **批次规模 2–3** —— 1 个用 `generate`，> 3 必须拆批；
+  ④ **产出必须作者审查** —— 命令只产候选、**绝不自动采纳**，全部完成后由作者逐章/逐场
+  `show --plain` → `quality` 审查，再走 `review confirm/claim` → 带 `--review-token` 的 `adopt`。
+  中断用 `--save-progress` 保存失败清单、`--resume-from` 续跑；禁止并发或多 subagent 并行编排。
 - 优先 `--json`；**生成命令默认后台并返回 run_id，用 `run status` 分次轮询**——
   不要用 `--wait` 长阻塞（宿主工具轮候窗口有限会超时）；交互终端可用 `--wait` 或设
   `SCRIPTNOW_WAIT_MAX_SECONDS` 限制单次等待。平台拒绝操作时，CLI 会优先透出经脱敏的

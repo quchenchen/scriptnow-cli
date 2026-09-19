@@ -210,6 +210,133 @@ def _document_revision_state(
     return adopted, adopted_human, candidates
 
 
+# ------------------------------------------------------- 自动批次创作模式（批次门）
+# 批次创作是 **agent+CLI 侧串行编排**：CLI 只负责「按集纲/章纲逐单元串行跑完一批」，
+# 编排权始终在 agent 手上——不并发、不起 subagent、不在本地另开生成器绕开同一 durable run。
+#
+# 为什么要四道门（每道都取自服务端已有事实，CLI 不新增状态、不新增表）：
+#   ① 新手期已过：作品第一个正文单元（第一章/第一场）已有已采纳正文。
+#      一批就是 2–3 篇，冷启动直接上批次，作者一篇正文都没看过，漂了也无从判断。
+#   ② 风格已明确：项目已挂载方法论 Skill（skill setup 门禁的产物）。
+#      契约本来就说「项目无已验证方法论 Skill 时禁止写正文」，批次把这句落在可执行的门上。
+#   ③ 批次规模 2–3：1 个不必走批次（用单章/单场生成）；> 3 必须拆批，
+#      否则审读成本与漂移风险一起放大，作者审不动等于没审。
+#   ④ 产出必须作者审查：批次只产候选，**绝不自动采纳**——返回体带 review_required=true，
+#      逐单元 show → quality → 用户明确决定 → confirm/claim → adopt。
+BATCH_MIN_UNITS = 2
+BATCH_MAX_UNITS = 3
+
+
+def _story_units(state: dict[str, Any], *, domain: str) -> list[str]:
+    """按故事结构顺序列出正文单元 id（novel=章，script=场）。"""
+    story_map = state.get("story_map") or {}
+    if domain == "novel":
+        return [
+            str(chapter["id"])
+            for volume in story_map.get("volumes") or []
+            for chapter in volume.get("chapters") or []
+        ]
+    return [
+        str(scene["id"])
+        for episode in story_map.get("episodes") or []
+        for scene in episode.get("scenes") or []
+    ]
+
+
+def _unit_foreign_key(*, domain: str) -> str:
+    """正文 document 归属单元的外键名（novel=chapter_id，script=scene_id）。"""
+    return "chapter_id" if domain == "novel" else "scene_id"
+
+
+def batch_mode_blockers(
+    session: Session,
+    project_id: str,
+    *,
+    domain: str,
+    unit_ids: list[str],
+    resuming: bool = False,
+) -> list[str]:
+    """自动批次创作模式的四道门。返回全部未通过项；空列表＝放行。
+
+    只报「为什么不行」和「怎么才行」，不替 agent 决定该写哪几篇。
+    任何一次查询失败都不吞掉——门禁读不到事实时宁可报错，也不假装通过。
+    """
+    blockers: list[str] = []
+    unit_label = "章" if domain == "novel" else "场"
+    command = "chapter" if domain == "novel" else "scene"
+
+    if len(unit_ids) > BATCH_MAX_UNITS:
+        blockers.append(
+            f"批次规模超限：{len(unit_ids)} {unit_label} > 上限 {BATCH_MAX_UNITS}。"
+            f"请拆成每批 2–{BATCH_MAX_UNITS} {unit_label} 分次提交。"
+        )
+    # 续跑是接着同一批跑，剩下的失败项可能只剩 1 个 —— 下限门只对新批次生效。
+    if not resuming and len(unit_ids) < BATCH_MIN_UNITS:
+        blockers.append(
+            f"批次规模不足：{len(unit_ids)} {unit_label} < 下限 {BATCH_MIN_UNITS}。"
+            f"单{unit_label}请用 scriptnow {command} generate"
+            f"（批次模式是为连续推进设计的）。"
+        )
+
+    state = session.request(
+        "GET",
+        f"/{domain}/projects/{project_id}/state",
+        params={"include_blocks": "false"} if domain == "novel" else None,
+    )
+    units = _story_units(state, domain=domain)
+    if not units:
+        blockers.append(
+            f"作品还没有已采纳的{'StoryMap' if domain == 'novel' else '剧本 StoryMap'}"
+            f"（读不到任何{unit_label}）——先把集纲/章纲采纳下来再谈批次。"
+        )
+    else:
+        first = units[0]
+        key = _unit_foreign_key(domain=domain)
+        docs = [doc for doc in (state.get("documents") or []) if str(doc.get(key) or "") == first]
+        adopted, _, _ = _document_revision_state(docs)
+        if adopted is None:
+            blockers.append(
+                f"新手期未过：作品第一{unit_label}（{first}）还没有已采纳正文。"
+                "批次创作只在作者看过并采纳过一篇正文之后开放 —— 先 "
+                f"scriptnow {command} generate <作品号> {first} → 审读 → 采纳，再开批次。"
+            )
+
+    mounts = session.request("GET", f"/projects/{project_id}/skills") or []
+    if not any(
+        isinstance(item, dict)
+        and bool(item.get("enabled", True))
+        and (item.get("skill_id") or item.get("id"))
+        for item in mounts
+    ):
+        blockers.append(
+            "写作风格未明确：项目还没有挂载通过门禁的方法论 Skill。"
+            "先 scriptnow skill setup <作品号> --json 与作者点选共建（风格/节奏/禁词），"
+            "--answers @answers.json --confirm 挂载，再用 skill mounts 核实。"
+        )
+
+    return blockers
+
+
+def _enforce_batch_mode(
+    session: Session,
+    project_id: str,
+    *,
+    domain: str,
+    unit_ids: list[str],
+    resuming: bool = False,
+) -> None:
+    """四道门未全过就阻断，并给出可执行修正（不降级、不静默继续）。"""
+    blockers = batch_mode_blockers(
+        session, project_id, domain=domain, unit_ids=unit_ids, resuming=resuming
+    )
+    if not blockers:
+        return
+    raise click.ClickException(
+        "自动批次创作模式的前置条件未满足（不降级执行）：\n  · "
+        + "\n  · ".join(blockers)
+    )
+
+
 def _next_step_after_generate(medium: str) -> str:
     """生成/回传完成后的下一步引导。"""
     if medium == "novel":
@@ -314,6 +441,7 @@ _MAIN_HELP = (
   7. novel propose storymap @storymap.json → adopt-storymap        # StoryMap 与集纲/章纲一体交付
   8. scriptnow skill setup <pid> --json → 作者点选共建 → 挂载   # 项目方法论门禁（剧本域含 Method DNA）；深度共创用 skill craft
   9. scriptnow chapter generate <pid> chapter-1-1                  # 逐章正文（后台；run status 轮询；平台主笔默认）
+     scriptnow chapter batch <pid> --chapters chapter-2-1,chapter-2-2  # 自动批次（2–3 章串行；须第一章已采纳 + 已挂载 Skill；产出须作者审查）
   10. scriptnow chapter show --plain → chapter quality             # 审读与修订
   11. scriptnow cover generate <pid> --image-model-id <id> → export create → export download  # 包装与导出
   12. scriptnow guide --complete                                   # 标记引导完成
@@ -1089,9 +1217,13 @@ _STEP_ONE_NAME = "确认已登录（会话由宿主下发）" if hosted_instance
 
 # 登录相关的契约条目在两种形态下必须给出相反的操作指引，抽出来避免各处漂移。
 _LOGIN_RULE = (
-    "登录会话由宿主 Agent 下发（SCRIPTNOW_HOSTED=1）：不要运行 scriptnow login"
-    "（它等的是只在用户自己电脑上可达的浏览器回调，在实例里只会超时），"
-    "也不要向用户索取或要求粘贴 Cookie / 密码；提示未登录时让宿主重新下发会话后重试。"
+    "登录会话由宿主 Agent 下发（SCRIPTNOW_HOSTED=1）：通常什么都不用做。"
+    "确实要登录时**只有** scriptnow login --device 能成功 —— 设备码：CLI 给出确认码与链接，"
+    "用户在**自己已登录的浏览器**里确认，凭据不经过命令行；"
+    "普通的 scriptnow login 在实例里只会超时（它等的是实例自己 127.0.0.1 上的回调，"
+    "用户的浏览器到不了）。禁止向用户索取或要求粘贴 Cookie / 密码，"
+    "也不要自行调用任何换发/刷新端点或读取 CLI 会话文件；"
+    "提示未登录时先请宿主重新下发会话，仍不行再让用户走 scriptnow login --device。"
     if hosted_instance()
     else "登录只用 scriptnow login 打开系统浏览器，由用户在网页输入账号密码并确认授权。"
     "禁止向 Agent 提供密码、读取密码框或以参数、stdin、环境变量代传密码；授权失败不得回退旧密码登录。"
@@ -1110,6 +1242,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "作者的『请 Agent 协助创作』只授权引导、读取、编排、展示和在已说明范围内生成/propose；绝不自动扩大为采纳、StoryMap 覆盖、删除或发布。正文最终创作默认由平台内真实 AgentScope Agent 主笔：chapter/scene generate 平台生成候选 → review preview 呈现正文 → 用户明确采用 → confirm/claim → adopt。仅当作者明确选择外部 Agent 代写正文时，才可 chapter propose / scene-propose 回填，并仍须走同一独立审阅与采纳链。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：剧本每集必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每章必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带完整章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
+        "改编项目的来源画像同样**回填优先**：Agent 本地读完原著 → `scriptnow interpret propose <作品号> --spec` 取回填规范 → `scriptnow interpret propose <作品号> --profile @profile.json` 回填「来源画像 + 锚点自证」（原文不出本地，平台只校验与采纳，**不调模型、不阻塞**）→ 作者复核锚点后 `scriptnow interpret decide <作品号> <profile-id> --approve`。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**（大作品数分钟起，宿主工具轮候窗口常撑不住），不要当默认入口、也不要在其中干等。改编项目在**来源画像获批之前**不得生成任何规划或正文候选 —— 这条门禁不因来源来自本地而放松：回填产出的是候选，不是免批后门；锚点为空或画像缺 story_core/characters/central_conflict 会被平台直接拒收（422）。",
         "创意方向与蓝图不得只交付占位文本：cores 必须展开完整前提、五类差异化角度与领域细节。blueprint 覆盖六类锚点；description 应说明主体、机制/变化与后果，通常 50–200 字、复杂内容可更长。字数仅作指导，不参与强制门禁。",
         "集纲/章纲与节拍必须具体到剧情（约束+引导）：每个 episode 的 logline/active_goal/conflict/turn/state_changes 与每个 scene 的 beat objective 都要落到具体的人物动作与物件——谁、做什么、对谁、拿什么、在哪。禁止『推进矛盾/留下钩子/本场目标/回收伏笔』类元语言套话（planning-quality 会对这类泛化套话判 REVISE）。正确示范：『阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止』；错误示范：『围绕本场目标推进矛盾，为下一场留下可回收的钩子』。Agent 本地生成时按此标准，回填前用 novel/script planning-quality storymap @storymap.json 预检自查（storymap 组无独立 propose 预检命令）。",
         "人物圣经初始设定要充实，不要单薄（约束+引导）：每条 bible 的 profile 至少包含 desire/fear/weakness/goal/inner_need，并尽量补充 background/traits/arc/key_relationship/secret/wound，使其能支撑后续人物弧线与伏笔。planning-quality 对 profile 少于 200 字或缺 desire/fear/weakness/goal/inner_need 判 REVISE。创建时可参考 script bible-example 的结构示范。",
@@ -1122,9 +1255,17 @@ _AGENT_CONTRACT = {
         "Skill 健壮性参照：craft / voice / continuity / evaluation / examples 五个维度必须有实质内容并含正反例；script 还必须覆盖四类质量锚点——场次功能与可观察转折、可见可听可表演、对白/VO/OS 发声时序、台词量与目标时长。skill craft 自动补系统锚点，不增加用户问卷；绕过 craft 直接创建也会由后端 robustness v2 检查。制作信息由系统派生，编剧不维护机器字段。",
         "回传被平台拒绝时，按 CLI 返回的可行动 detail 修正格式后重传；Agent/--json 场景统一返回 {ok:false,error:{type,status,detail}}，其中 detail 保留经脱敏的原始领域提示，不得把中文通用兜底当成修复指令；不要自建替代结构，也不要删除平台已有项目自行重建。",
         (
-            "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。"
-            "本 CLI 由宿主 Agent 托管（SCRIPTNOW_HOSTED=1）时，登录会话由宿主下发，实例内不要运行 scriptnow login（浏览器回调只在用户自己电脑上可达），"
-            "提示未登录时请宿主重新下发会话；任何情况下都不得向用户索取或要求粘贴 Cookie / 密码。"
+            "会话续期由宿主负责。实例里的会话文件**只有短期 access 与 csrf**，"
+            "`sf_refresh` 在宿主进程的内存里（沙箱限制写、不限制读，所以长期凭据放在实例里"
+            "就等于 agent 读得到）。access 过期时 CLI 自己带每实例密钥回宿主换新，你不需要"
+            "也不应该做任何事：**禁止**读取或打印会话文件、**禁止**自行调用任何换发/刷新端点、"
+            "**禁止**向用户索取或要求粘贴 Cookie / 密码。"
+            "同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行。"
+            "本 CLI 由宿主 Agent 托管（SCRIPTNOW_HOSTED=1）；实例内不要运行 scriptnow login"
+            "（浏览器回调只在用户自己电脑上可达，必然超时）——确实要重新授权时用"
+            "`scriptnow login --device`（设备码：用户在自己已登录的浏览器里确认）。"
+            "提示未登录时先请宿主重新下发会话；若一直未恢复，让用户打开一次助手页面"
+            "（宿主只在网页会话有效时才能换发）。"
             if hosted_instance()
             else "会话由 CLI 自动续期（refresh token 30 天）。同一项目的创作写操作仍须串行，避免版本/候选冲突；不同项目可并发执行，CLI 会安全协调共享登录会话的 refresh。若提示『登录状态已失效』，重新运行 scriptnow login 并由用户在系统浏览器授权，不要伪造凭据或绕开 CLI。"
         ),
@@ -1157,7 +1298,10 @@ _AGENT_CONTRACT = {
         "场次规划板：scriptnow storyboard scene-board list <pid> --scene <scene_id> --json → 按用户要求 upload <pid> <scene_id> board.png --layout auto|3x3|4x4 --mode annotated|seedance_sequence 或 generate <pid> <scene_id> --layout auto --mode annotated；删除必须 --confirm。",
         "StoryMap 隔离重建（替换旧结构，仅 script/novel 各自 storymap-rebuild-* 链）：先采纳该域粗纲 → storymap-rebuild-start 冻结 → 逐阶段 rebuild-check 预检 + rebuild-phase 累积（script 传 episodes、novel 传 chapters）→ 全部完成 rebuild-propose 形成完整替换候选 → 用户明确确认后 storymap adopt --confirm 替换（旧结构自动归档）。禁止一次生成完整 80 集/长卷。",
         "新增卷/章走追加通道（append-volume / append-chapters / append-phase），严禁用全量替换承载新增；服务端形状门禁拦截，纯追加全量提案会返回追加通道指引。全量替换仅限真重构（合并/重排/删除卷），storymap adopt 采纳前显示「将移除 N 单元」警告；全置换（retained=0）普通全量提案被服务端拒绝，恢复旧结构走 novel/script storymap-restore 归档镜像豁免。事故回滚：novel/script storymap-restore <作品号> <归档号> 导出恢复候选（覆盖式=重构，走完整 review 链）。",
+        "集名/覆盖矩阵/金句三条硬规矩（服务端强制，2026-09 起）：① **集名必须改写**——网文原标题多为引流词（如『第27章 你可懂了？』），提取阶段要求逐字照抄是对的，但**集名不能照抄**。剧本每个 episode 同时给 `title`（改后的集名：写进本集当下的冲突对象、主角动作或局面反转）与 `source_titles`（原著章名原名，用于追溯）。只把章号摘掉、引流词原样保留，会被 planning-quality 的 episode_title_rewrite 判为照抄（revise）。② **关键节点必须各有归属**——蓝图上每个 `event` 锚点（含历史别名 `plot`）与每个 `quote`（金句）锚点都必须被某一集承载（写入该集 `anchor_ids`，或该集某条节拍的 `anchor_ids`）。`script storymap propose` 与 `storymap-rebuild-propose` 会跑**覆盖矩阵门禁**，无任何一集承载即整体拒绝并列名；确实要删的节点，在该蓝图锚点 payload 里写 `intentionally_dropped: true` 与 `drop_reason: \"理由\"` 后重新采纳蓝图 —— 不允许不声不响地丢掉。③ **金句是可选锚点类别**（`kind: \"quote\"`，别名 quotes/signature_line/signature_lines/golden_line/key_line，`payload.description` 写原句）：它不是每部戏都盘得出来，所以不要求『六类齐全』；但一旦采纳入蓝图就受覆盖矩阵约束 —— 金句必须被**分配**到某一集，而不是碰运气看写手记不记得。名场面是场景、金句是可以单独传播的那一句话，两件事都要点名，不要互相代替。",
+        "为了让戏份算得出来：剧本每个 scene 填 `characters`（本场出场角色的蓝图 key 列表，含 `character_action.active_character_key`）。只填 active_character 只回答『这一场由谁推动』，答不了『谁在这一场出现、占多少戏』。允许留空，但留空的场次会在仪表盘上单列为『未标注出场人物』，**不按 0 戏份计入任何角色**（『没统计过』不等于『这个角色没戏』）。",
         "scriptnow export create <pid> --units chapter-1-1",
+        "分集量化仪表盘：scriptnow script analytics <作品号> --json —— 每集节拍密度（拍/分钟）、冲突分量（不可逆转向/有障碍的对峙/做出选择/付出代价）、角色戏份分布（场数/分钟/占比）与关键节点覆盖矩阵。全部由已采纳 StoryMap 确定性算出，同一份集纲永远得到同一组数字。谈节奏、谈戏份、谈覆盖率一律读它，**不要自己估算分钟数或戏份占比**；它同时是交付前自检：覆盖矩阵不完整会在 propose 时被服务端直接拒绝。",
     ],
     "format_hint": "剧本正文 blocks 类型：slugline|action|character|dialogue|transition；小说正文 blocks 类型：heading|prose|dialogue|quote|divider。Novel 每个 block.text 只能是该块正文，不得内嵌另一份 blocks JSON（普通 JSON 文本允许）；被拒绝时按 detail 修正后重新生成。propose 前可用 --help-format 查看精确 JSON 规格。",
 }
@@ -1167,7 +1311,7 @@ _AGENT_CONTRACT = {
 # available through `--full` for a human or a deliberate deep inspection.
 _AGENT_RUNTIME_CONTRACT = {
     "guide": "scriptnow-agent-runtime-contract",
-    "contract_version": "4",
+    "contract_version": "6",
     "title": "ScriptNow Agent 运行契约",
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
@@ -1175,13 +1319,18 @@ _AGENT_RUNTIME_CONTRACT = {
         _LOGIN_RULE,
         f"创作顺序固定为 12 步（guide --step 1..12）：{_STEP_ONE_NAME} → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
         "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
+        "来源画像回填优先（改编项目）：改编项目的来源画像默认由 Agent 本地读完原著后 `scriptnow interpret propose <作品号> --profile @profile.json` 回填（须带锚点自证 attestation，原文不出本地；平台只校验与采纳，不调模型、不阻塞），再由作者 `scriptnow interpret decide <作品号> <profile-id> --approve` 批准。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**，不作为默认入口。来源画像获批之前，改编项目不得生成任何规划或正文候选 —— 锚点为空、或画像缺 story_core/characters/central_conflict 会被平台拒收（422）；回填产出的是候选，不是免批后门。",
         "作者对 Agent 的创作委托只覆盖引导、读取、编排、展示和在说明范围内生成/propose，绝不自动扩大为采纳、结构覆盖、删除或发布。正文最终创作默认由平台内真实 AgentScope Agent 主笔：chapter/scene generate 平台候选 → review preview 呈现正文 → 用户明确决定 → `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 带完整位置参数和 --human/--review-token 的采纳命令；仅当作者明确选择外部 Agent 代写正文时才由 Agent 本地写好正文 → chapter/scene propose 回填候选并走同一审阅、采纳链。",
         "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
         "本地内容只是一时草稿；规划和正文必须 propose 回平台候选，等待平台校验与服务器回读。",
         "逐章/逐场创作双模式，用户必须明确选择，平台侧不阻塞：默认平台主笔（chapter/scene generate 平台生成候选 → review preview → confirm/claim → `scriptnow chapter adopt <作品号> <章节号> <版本号> --human --review-token <凭证>` 或 `scriptnow scene adopt <作品号> <场号> <版本号> --human --review-token <凭证>`），平台建议优先平台主笔；仅当用户明确选择本地创作时，Agent 本地写好正文再 chapter propose / scene-propose 回填候选并走同一链。未明确选择时按平台主笔执行，不得默认或诱导用户走本地创作。",
-        "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
-        "创意方向与蓝图必须充分：cores 展开完整前提/概念、五类差异化角度及领域方法细节；blueprint 覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点并写具体 description。propose/adopt 均强制 planning-quality=pass，revise/block 必须修正后重传。",
+        "自动批次创作是 agent+CLI 侧串行编排（`chapter batch <作品号> --chapters a,b,c`；剧本侧 `scene batch <作品号> --scenes ...`）：仅当该作品第一章（剧本：第一场）已有已采纳正文、且项目已挂载通过门禁的方法论 Skill 时开放；一批 2–3 个单元（1 个用 generate，> 3 必须拆批）。CLI 逐单元串行执行并轮询 run 到终态，禁止并发或多个 subagent 并行编排（上下文割裂会造成设定漂移、伏笔失联）。批次**只产候选、绝不自动采纳**：全部完成后必须由作者逐单元 chapter/scene show --plain 与 quality 审查，再经完整的对话审阅通道（review confirm 与 review claim 两条完整命令）、以及带 --review-token 的 adopt 独立采纳。中断用 --save-progress / --resume-from 续跑。",
+        "分集/分章集级规划是正文前的必需环节：剧本每个 episode 必须提供平铺的 logline、active_goal、conflict、turn、state_changes、anchor_ids，并给 title（**改后的集名**）与 source_titles（原著章名原名）；小说每个 chapter 必须提供 outline（summary 或 logline、active_goal、conflict、turn、state_changes，锚点可来自 outline 或 beat）。先用 planning-quality 检查全量覆盖，再 propose/采纳；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需补纲即可继续写作。",
+        "集名必须改写、不能照抄（服务端强制）：网文原标题多为引流词（如『第27章 你可懂了？』）—— 提取阶段要求逐字照抄是对的，但集名照抄等于让观众从集名里读不出本集发生了什么。集名要写进本集当下的冲突对象、主角动作或局面反转；原著章名放在 source_titles 里做追溯。只摘掉章号、引流词原样保留同样判为照抄。",
+        "关键节点与金句必须各有归属（覆盖矩阵门禁，服务端强制）：蓝图上每个 event 锚点（含历史别名 plot）与每个 quote（金句）锚点，都必须被某一集承载（写入该集 anchor_ids 或该集某条节拍的 anchor_ids）。script storymap propose 与 storymap-rebuild-propose 会跑覆盖矩阵，无任何一集承载即整体拒绝并列名。确实要删的节点，在该蓝图锚点 payload 写 intentionally_dropped: true 与 drop_reason 后重新采纳蓝图 —— 不允许不声不响地丢掉一个关键节点。金句是**可选**锚点类别（不要求六类齐全），但一旦入蓝图就必须被分配到某一集：名场面是场景、金句是可单独传播的那一句话，两件事都要点名。",
+        "剧本每个 scene 填 characters（本场出场角色的蓝图 key）。只填 character_action.active_character_key 只回答『这一场由谁推动』，答不了『谁在这一场出现、占多少戏』；留空的场次会在仪表盘上单列为未标注，不按 0 戏份计入任何角色。谈节奏与戏份一律读 `scriptnow script analytics <作品号> --json`（每集节拍密度/冲突分量/角色戏份分布/覆盖矩阵，确定性算出），不要自己估算分钟数或占比。",
+        "创意方向与蓝图必须充分：cores 展开完整前提/概念、五类差异化角度及领域方法细节；blueprint 覆盖 world/character/relationship/character_arc/plot/foreshadow 六类锚点并写具体 description（另有**可选**类别 quote=金句，出现即合法、不出现不算缺）。propose/adopt 均强制 planning-quality=pass，revise/block 必须修正后重传。",
         "分镜追加先执行 source-preflight；未知范围或重叠必须阻断并走 source-range/source-revoke 正式审计路径。Agent 本地提取、规划和资产锚定后用 storyboard propose 回填；平台生成仅后备，衔接由用户选择。",
         "场次规划板必须经 storyboard scene-board list/inspect 读取；upload/generate/delete 只操作场次 planning_boards，平台派生分页和 shot_ids，绝不修改 shot.frame_refs。",
         "回填 outline/cores/blueprint/storymap 时禁止手填或猜测 review preview 的 resource_kind/resource_id；固定使用 review propose-preview <novel|script> <project_id> <outline|cores|blueprint|storymap> <file> 自动绑定。用户明确决定后原样 confirm，再 claim；--review-token 使用 claim 返回的 token 字段，不是 packet_id。预览后内容若有实质修改，必须重新 preview。",
@@ -1211,6 +1360,8 @@ _AGENT_RUNTIME_CONTRACT = {
         "Skill 门禁：skill setup <pid>（预设点选共建挂载）→ skill mounts <pid> 核实；深度共创 skill craft / interpret local → 预检试写 → 挂载",
         "剧本核心密码：skill method-current / method-compile / method-compare / method-bind / method-resolve（只消费服务端 Method DNA）",
         "正文：默认 platform generate，用户明确本地创作时才 propose；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
+        "自动批次：chapter batch <作品号> --chapters a,b,c（剧本侧 scene batch）；须第一章已采纳 + 已挂载方法论 Skill，一批 2–3 个、串行、只产候选，完成后由作者逐单元审查再采纳。",
+        "分集量化仪表盘（剧本）：scriptnow script analytics <作品号> --json → 每集节拍密度/冲突分量、角色戏份分布、关键节点覆盖矩阵；谈节奏与戏份读它，不要自己估算",
         "审读：chapter show <作品号> <章号> --plain → chapter quality → 修订后重审",
         "导出：export create / preview / download；封面 cover package / generate",
         "完成：scriptnow guide --complete（仅关闭引导提示，作品闭环以平台导出为准）",
@@ -1844,16 +1995,42 @@ def _echo_guide(payload: dict[str, object]) -> None:
 
 @main.command()
 @click.option("--host", default="https://sn.igeewa.com", help="平台地址")
-@click.option("--timeout", type=click.IntRange(30, 600), default=180, help="浏览器授权等待秒数")
+@click.option("--timeout", type=click.IntRange(30, 600), default=180, help="授权等待秒数")
+@click.option(
+    "--device",
+    "use_device",
+    is_flag=True,
+    help="设备码登录：在你自己已登录的浏览器里确认（托管/无头环境唯一可行的方式）",
+)
 @click.option("--json", "json_output", is_flag=True)
-def login_cmd(host: str, timeout: int, json_output: bool) -> None:
-    """打开系统浏览器登录授权；CLI 和 Agent 不接收账号密码。"""
+def login_cmd(host: str, timeout: int, json_output: bool, use_device: bool) -> None:
+    """打开系统浏览器登录授权；CLI 和 Agent 不接收账号密码。
+
+    托管实例（``SCRIPTNOW_HOSTED=1``）里**只有 ``--device`` 能成功**：普通登录会在
+    实例自己的 ``127.0.0.1`` 上等浏览器回调，而用户的浏览器到不了那个地址。
+    """
+    from cli_anything.scriptnow.utils.session import ScriptNowError
+
+    if use_device:
+        from cli_anything.scriptnow.utils.device_login import device_login
+
+        try:
+            session = device_login(
+                host, timeout=timeout, notify=lambda message: click.echo(message, err=True)
+            )
+        except ScriptNowError as error:
+            raise click.ClickException(str(error)) from error
+        _emit({"ok": True, "base_url": session.base_url}, json_output)
+        if not json_output:
+            click.echo(ui.ok("设备码授权成功，登录会话已保存。"))
+        return
+
     from cli_anything.scriptnow.utils.browser_login import browser_login
 
-    # 宿主托管实例里登录**不可能成功**：browser_login 会在本实例的 127.0.0.1 上
+    # 宿主托管实例里**这条**路不可能成功：browser_login 会在本实例的 127.0.0.1 上
     # 等一个浏览器回调，而用户的浏览器到不了实例的 loopback。以前这里会一路等到
     # 超时才报错，报错又提示「重新运行 scriptnow login」——形成死循环，还会把
-    # Agent 逼去问用户要 Cookie。所以在这里就明确拒绝，并给出正确出路。
+    # Agent 逼去问用户要 Cookie。所以在这里就明确拒绝，并指出设备流这条真出路。
     if hosted_instance():
         raise click.ClickException(login_unsupported_message())
 
@@ -2553,7 +2730,186 @@ def admin_image_model_add(
 @main.group("interpret")
 @click.pass_context
 def interpret_group(ctx: click.Context) -> None:
-    """一书一 Skill：上传作品，通读生成「源分析 + 创作方法论」双卡。"""
+    """一书一 Skill：上传作品，通读生成「源分析 + 创作方法论」双卡。
+
+    改编项目的来源画像有**两条等价路径**，两条都要作者批准才生效：
+
+    · **回填优先（推荐给 Agent）**：Agent 本地读完原著 → `interpret propose`
+      回填画像 + 锚点自证 → `interpret decide --approve`。平台只校验与采纳，
+      **不调模型、不阻塞、原文不出本地**。
+    · **平台通读（辅助）**：`interpret go` / `create` + `read` 把素材交平台通读。
+      它会**同步阻塞到读完**（大作品数分钟起），Agent host 的工具调用窗口常常撑不住。
+
+    平台通读只是产出画像的一种方式，不是前置条件 —— 别把它当默认入口。
+    """
+
+
+PROFILE_SPEC = """\
+# ScriptNow 来源画像回填规范（Agent 本地解读产出）
+
+你正在把一部已有作品的「来源画像」回填到改编项目。作品原文由你**本地阅读**，
+不要上传平台；只把下面的结构化结果回传。
+
+## 为什么可以这样做
+
+改编项目在生成规划候选之前，必须有一份**已经作者批准**的来源画像。平台通读只是
+产出它的方式之一；Agent 读完原著后回填是等价的另一条路，且**平台不调模型、不阻塞、
+原文不出本地**。两条路产出的是同一种候选，走同一道作者批准。
+
+## 输出 JSON
+
+{
+  "profile": {
+    "story_core": "一句话故事内核",
+    "characters": ["姓名：身份 / 诉求 / 变化", "…"],
+    "central_conflict": "核心冲突",
+    "narrative_structure": "叙事结构",
+    "adaptation_points": ["可改编点", "…"],
+    "localization_direction": "本地化方向",
+    "recommended_changes": ["建议改动", "…"]
+  },
+  "attestation": {
+    "origin": "agent_local",
+    "reader": "你的名字或 Agent 名",
+    "anchors": ["第 3 章：「她把信折了三折，没有抬头」", "第 11 章：档案柜编号与批注不一致"]
+  },
+  "coverage": {"coverage": "representative", "segments_total": 10, "segments_read": 10}
+}
+
+## 硬要求（平台会校验，不合格直接 422）
+
+1. `story_core` / `characters` / `central_conflict` 三个字段必须有实质内容。
+2. `attestation.anchors` **不得为空**，且每条要能被作者拿去回查原文（章/场 + 原句）。
+   这是「来源可追溯」的机器判据 —— 没有锚点的画像会被拒收。
+3. `coverage.coverage` 只能填 full / representative / partial，且必须诚实：
+   只读了开头却写 full，是在骗作者。
+4. 回填只产出**候选**。必须由作者批准才生效：
+   `scriptnow interpret decide <项目号> <profile-id> --approve`
+
+## 提交
+
+scriptnow interpret propose <项目号> --profile @profile.json
+"""
+
+
+@interpret_group.command("propose")
+@click.argument("project_id")
+@click.option("--profile", "profile_file", default=None, help="来源画像 JSON：@profile.json（用 --spec 看规范）")
+@click.option("--skill", "skill_file", default=None, help="可选：一并回填创作方法论卡 @skill.json")
+@click.option("--anchor", "anchors", multiple=True, help="来源锚点（章/场 + 原句），可重复；与 JSON 内 anchors 合并")
+@click.option(
+    "--origin",
+    default="agent_local",
+    type=click.Choice(["agent_local", "platform_read"]),
+    help="来源自证的来源类别（默认 agent_local：原文在本地读过）",
+)
+@click.option("--reader", default=None, help="读取者署名（Agent 名，写进自证供作者复核）")
+@click.option(
+    "--coverage",
+    "coverage_kind",
+    default=None,
+    type=click.Choice(["full", "representative", "partial"]),
+    help="覆盖声明；不传则沿用 JSON 里的声明，都没有时按 representative 记录",
+)
+@click.option("--spec", is_flag=True, help="仅输出回填规范（供 Agent 本地解读参考）")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def interpret_propose(
+    ctx: click.Context,
+    project_id: str,
+    profile_file: str | None,
+    skill_file: str | None,
+    anchors: tuple[str, ...],
+    origin: str,
+    reader: str | None,
+    coverage_kind: str | None,
+    spec: bool,
+    json_output: bool,
+) -> None:
+    """回填来源画像候选（Agent 本地解读）—— 平台只校验与采纳，不调模型、不阻塞。
+
+    改编项目的**默认入口**。原文在本地读，平台只收画像与锚点：
+
+      1. `scriptnow interpret propose <项目号> --spec` 拿到回填规范；
+      2. Agent 本地读完原著，按规范产出 profile.json；
+      3. `scriptnow interpret propose <项目号> --profile @profile.json` 提交候选；
+      4. 作者批准：`scriptnow interpret decide <项目号> <profile-id> --approve`。
+
+    与 `interpret go`（平台通读）的关系：两者产出**同一种候选**、走**同一道批准**。
+    区别只在谁读原文 —— 这条路不把原文交给平台，也不会同步阻塞。
+    """
+    if spec:
+        _emit({"project_id": project_id, "profile_spec": PROFILE_SPEC}, json_output)
+        return
+    if not profile_file:
+        raise click.ClickException("需要 --profile @profile.json（先跑 --spec 看规范）")
+    raw = Path(profile_file[1:] if profile_file.startswith("@") else profile_file).read_text(
+        encoding="utf-8"
+    )
+    try:
+        payload = _json.loads(raw)
+    except _json.JSONDecodeError as error:
+        raise click.ClickException(f"来源画像 JSON 解析失败：{error}") from error
+    if not isinstance(payload, dict):
+        raise click.ClickException("来源画像 JSON 必须是对象")
+    # 两种写法都收：裸画像对象，或 {profile, attestation, coverage} 包装。
+    if "profile" in payload and isinstance(payload.get("profile"), dict):
+        profile = dict(payload["profile"])
+        attestation = dict(payload.get("attestation") or {})
+        coverage = payload.get("coverage")
+    else:
+        profile = payload
+        attestation = {}
+        coverage = payload.get("coverage") if isinstance(payload.get("coverage"), dict) else None
+    if anchors:
+        attestation["anchors"] = list(attestation.get("anchors") or []) + list(anchors)
+    attestation.setdefault("origin", origin)
+    if reader:
+        attestation["reader"] = reader
+    if coverage_kind:
+        coverage = {**(coverage or {}), "coverage": coverage_kind}
+    body: dict[str, Any] = {
+        "profile": profile,
+        "attestation": attestation,
+        "idempotency_key": f"cli-propose-{__import__('time').time_ns()}",
+    }
+    if coverage:
+        body["coverage"] = coverage
+    if skill_file:
+        skill_raw = Path(skill_file[1:] if skill_file.startswith("@") else skill_file).read_text(
+            encoding="utf-8"
+        )
+        try:
+            skill = _json.loads(skill_raw)
+        except _json.JSONDecodeError as error:
+            raise click.ClickException(f"skill JSON 解析失败：{error}") from error
+        if not isinstance(skill, dict):
+            raise click.ClickException("skill JSON 必须是对象")
+        body["skill"] = skill
+    created = _session(ctx).request(
+        "POST",
+        f"/projects/{project_id}/source-profiles/propose",
+        json_body=body,
+        write=True,
+        timeout=120,
+    )
+    result = {
+        "project_id": project_id,
+        "profile_id": created.get("id"),
+        "version": created.get("version"),
+        "decision": created.get("decision"),
+        "anchors": len((created.get("profile") or {}).get("attestation", {}).get("anchors", [])),
+    }
+    if json_output:
+        _emit(result, json_output)
+        return
+    click.echo(ui.ok(f"来源画像候选已回填（版本 {result['version']}，锚点 {result['anchors']} 条）"))
+    click.echo(
+        ui.warn(
+            "仍是候选 —— 请作者复核锚点后批准，规划生成才会放行：\n"
+            f"  scriptnow interpret decide {project_id} {result['profile_id']} --approve"
+        )
+    )
 
 
 @interpret_group.command("go")
@@ -2573,8 +2929,13 @@ def interpret_go(
     genre: str,
     json_output: bool,
 ) -> None:
-    """一键解读作品：上传 → 自动建项目 → 通读 → 输出源分析画像 + 创作 Skill 卡。
-    这是「一书一 Skill」的完整入口。"""
+    """一键解读作品（平台通读，辅助路径）：上传 → 自动建项目 → 通读 → 输出源分析画像 + 创作 Skill 卡。
+
+    这条路把素材交给平台模型通读，**会同步阻塞到读完**（大作品数分钟起），
+    Agent host 的工具调用窗口常常撑不住 ⇒ **默认请改用 `interpret propose`**
+    （Agent 本地解读后回填，原文不出本地、不阻塞）。两者产出同一种候选、
+    走同一道作者批准，所以平台通读只是"另一种做法"，不是前置条件。
+    """
     session = _session(ctx)
     if project_id is None:
         base = Path(file_path).name
@@ -2659,7 +3020,11 @@ def interpret_decide(
     feedback: str | None,
     json_output: bool,
 ) -> None:
-    """Approve or reject a source profile (human decision)."""
+    """Approve or reject a source profile (human decision).
+
+    两条来源路径（`interpret propose` 回填 / 平台通读）产出的是同一种候选，
+    都用这一条命令落定 —— 人的判定是唯一真值，回填不是"免批后门"。
+    """
     body: dict[str, Any] = {"approve": approve}
     if feedback:
         body["feedback"] = feedback
@@ -2699,7 +3064,13 @@ def interpret_create(ctx: click.Context, project_id: str, file_ids: tuple[str, .
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def interpret_read(ctx: click.Context, project_id: str, distillation_id: str | None, json_output: bool) -> None:
-    """Run the full read-through (blocks until done): analysis + reusable Skill."""
+    """Run the full read-through（平台通读，**同步阻塞到读完**）: analysis + reusable Skill.
+
+    这是「平台内通读」那一条路（素材必须在项目里）。它按设计在请求内读完 ——
+    平台侧注释写明 background dispatch 在此不可靠，所以不会改成"提交即返回"。
+    Agent 不想被挂住就用 `interpret propose` 回填，而不是在这里等。
+    本命令的超时是 CLI 侧 900 秒；读完的结果仍要作者用 `interpret decide` 批准。
+    """
     session = _session(ctx)
     if distillation_id is None:
         latest = session.request("GET", f"/projects/{project_id}/source-distillations/latest")
@@ -3769,6 +4140,139 @@ def chapter_generate(
             chapter_show(ctx, project_id, chapter_id, None, True, json_output)
         return
     _emit(result, json_output)
+
+
+@chapter_group.command("batch")
+@click.argument("project_id")
+@click.option("--chapters", default=None, help="逗号分隔的章节 id（2–3 章；与 --resume-from 二选一）")
+@click.option("--feedback", default=None, help="批次统一的创作/修订反馈")
+@click.option("--model", "model_id", default=None, help="批次统一使用的模型 id（仅项目写作，禁止用于非项目文本生成）")
+@click.option("--save-progress", "progress_file", default=None, help="完成后保存失败清单（续跑用）")
+@click.option("--resume-from", "resume_file", default=None, help="从上次失败清单续跑（JSON 文件，含 failed 列表）")
+@click.option("--yes", is_flag=True, help="确认已知风险后跳过提示")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def chapter_batch(
+    ctx: click.Context,
+    project_id: str,
+    chapters: str | None,
+    feedback: str | None,
+    model_id: str | None,
+    progress_file: str | None,
+    resume_file: str | None,
+    yes: bool,
+    json_output: bool,
+) -> None:
+    """按章纲自动批次创作（串行；2–3 章一批，产出须作者审查后才可采纳）。
+
+    批次 = agent+CLI 侧串行编排：CLI 逐章串行跑完这一批，不并发、不自动采纳。
+    四道门前置，缺一即拒（不做降级执行）：
+
+      1. 新手期已过 —— 作品第一章已有已采纳正文；
+      2. 风格已明确 —— 项目已挂载通过门禁的方法论 Skill；
+      3. 批次规模 2–3 章 —— 1 章用 chapter generate，> 3 章必须拆批；
+      4. 产出必须作者审查 —— 本命令只产候选，采纳另行由用户明确决定。
+
+    中断恢复：首次 --save-progress 保存失败清单，之后 --resume-from 续跑。
+    """
+    import json as _json
+    import time as _time
+
+    session = _session(ctx)
+    resuming = bool(resume_file)
+    if resume_file:
+        try:
+            prior = _json.loads(Path(resume_file).read_text(encoding="utf-8"))
+        except (ValueError, OSError) as error:
+            raise click.ClickException(f"读取进度文件失败：{error}") from error
+        ids = [str(item) for item in (prior.get("failed") or []) if str(item).strip()]
+        if not ids:
+            raise click.ClickException("进度文件里没有失败项，无需续跑")
+    else:
+        ids = [item.strip() for item in (chapters or "").split(",") if item.strip()]
+        if not ids:
+            raise click.ClickException("需要 --chapters（2–3 章）或 --resume-from")
+
+    _enforce_batch_mode(session, project_id, domain="novel", unit_ids=ids, resuming=resuming)
+
+    if not json_output:
+        click.echo(ui.warn("自动批次创作（串行）：本批只产候选，完成后必须由作者逐章审查。"), err=True)
+        click.echo(ui.dim("  审读 chapter show <作品号> <章号> --plain → chapter quality；"), err=True)
+        click.echo(
+            ui.dim("  采纳 用户明确决定 → review confirm/claim → chapter adopt --human --review-token <凭证>。"),
+            err=True,
+        )
+        click.echo(ui.dim("  不要并发起多个批次（设定会漂移、伏笔会失联）。"), err=True)
+        if not yes:
+            click.echo(ui.dim("（使用 --yes 确认后开始）"), err=True)
+
+    summary: list[dict[str, object]] = []
+    for index, chapter_id in enumerate(ids, 1):
+        started = _time.time()
+        try:
+            queued = session.request(
+                "POST",
+                f"/novel/projects/{project_id}/chapters/{chapter_id}/generate?background=true",
+                json_body={
+                    "idempotency_key": f"cli-chapter-batch-{_time.time_ns()}",
+                    "feedback": feedback,
+                    **({"model_id": model_id} if model_id else {}),
+                },
+                write=True,
+            )
+            run_id = str(queued.get("run_id") or "")
+            status = _poll_run_status(session, project_id, run_id, domain="novel")
+            elapsed = int(_time.time() - started)
+            summary.append(
+                {"chapter_id": chapter_id, "run_id": run_id, "status": status, "seconds": elapsed}
+            )
+            if not json_output:
+                mark = ui.ok("✓") if status == "succeeded" else ui.error("✗")
+                click.echo(f"[{index}/{len(ids)}] {mark} {chapter_id} {status} ({elapsed}s)", err=True)
+        except ScriptNowError as error:
+            summary.append({"chapter_id": chapter_id, "status": "error", "detail": str(error)})
+            if not json_output:
+                click.echo(ui.error(f"[{index}/{len(ids)}] {chapter_id} error: {error}"), err=True)
+
+    failed = [item for item in summary if item.get("status") != "succeeded"]
+    if progress_file and failed:
+        Path(progress_file).write_text(
+            _json.dumps({"failed": [str(item["chapter_id"]) for item in failed]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        if not json_output:
+            click.echo(
+                ui.dim(f"失败清单已保存：{progress_file}（续跑：--resume-from {progress_file}）"), err=True
+            )
+    payload = {
+        "project_id": project_id,
+        "batch_size": len(ids),
+        "total": len(ids),
+        "succeeded": len(ids) - len(failed),
+        "failed": failed,
+        "results": summary,
+        "review_required": True,
+    }
+    if json_output:
+        _emit(payload, json_output)
+        return
+    if failed:
+        click.echo(
+            ui.error(
+                f"未完成 {len(failed)}/{len(ids)} 章："
+                f"{'、'.join(str(item['chapter_id']) for item in failed)}"
+                f" —— 可续跑：--resume-from {progress_file or '<失败清单>'}"
+            ),
+            err=True,
+        )
+        return
+    click.echo(ui.ok(f"本批 {len(ids)} 章已产出候选 ✅ —— 尚未采纳，须由作者逐章审查："))
+    click.echo(
+        ui.dim(
+            "  审读 chapter show <作品号> <章号> --plain → chapter quality；"
+            "用户明确决定后 review confirm/claim → chapter adopt --human --review-token <凭证>。"
+        )
+    )
 
 
 @chapter_group.command("adopt")
@@ -6127,6 +6631,104 @@ def script_state(ctx: click.Context, project_id: str, json_output: bool) -> None
     _emit(_session(ctx).request("GET", f"/script/projects/{project_id}/state"), json_output)
 
 
+@script_group.command("analytics")
+@click.argument("project_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.option("--top", default=10, show_default=True, help="角色戏份榜显示前 N 位")
+@click.pass_context
+def script_analytics(ctx: click.Context, project_id: str, json_output: bool, top: int) -> None:
+    """分集量化仪表盘：节拍密度 / 冲突分量 / 角色戏份分布 / 关键节点覆盖矩阵。
+
+    全部数字由已采纳 StoryMap 与蓝图锚点**确定性**算出 —— 同一份集纲永远得到同一组
+    数字，可以直接拿去和制片方对账。不引入任何模型打分：冲突曲线输出的是可数的分量
+    （不可逆转向、有障碍的对峙、做出选择、付出代价），口径可逐条复核。
+
+    `characters` 与 `active_character_key` 是两个问题：前者答"谁在这一场出现"（需要
+    场次标注出场人物），后者答"这一场由谁推动"。没标注的场次会单列报出，不按 0 戏份
+    计入任何角色。
+    """
+    payload = _session(ctx).request("GET", f"/script/projects/{project_id}/analytics")
+    if json_output:
+        write_json(payload)
+        return
+
+    totals = payload.get("totals") or {}
+    version = payload.get("story_map_version")
+    click.echo(ui.section(f"分集量化仪表盘 · StoryMap v{version if version is not None else '—'}"))
+    rate = totals.get("beats_per_minute")
+    click.echo(
+        ui.kv(
+            "总量",
+            f"{totals.get('episode_count', 0)} 集 / {totals.get('scene_count', 0)} 场 / "
+            f"{totals.get('beat_count', 0)} 条节拍 · 规划 {totals.get('planned_minutes', 0)} 分钟 · "
+            f"{rate if rate is not None else '—'} 拍/分钟",
+        )
+    )
+    uncast = int(totals.get("uncast_scenes") or 0)
+    if uncast:
+        click.echo(
+            ui.warn(
+                f"未标注出场人物的场次：{uncast} —— 戏份分布不含这些场"
+                "（「没统计过」不等于「这个角色没戏」）"
+            )
+        )
+
+    click.echo("")
+    click.echo(ui.section("节拍密度与冲突分量（逐集）"))
+    for row in payload.get("episodes") or []:
+        per_minute = row.get("beats_per_minute")
+        uncast_here = int(row.get("uncast_scenes") or 0)
+        click.echo(
+            f"  集{row.get('ordinal')} {row.get('title') or ''}  "
+            f"{per_minute if per_minute is not None else '—'} 拍/分  "
+            f"转向 {row.get('turns')} · 障碍 {row.get('obstacles')} · "
+            f"选择 {row.get('choices')} · 代价 {row.get('costs')}"
+            + (f"  · 未标注 {uncast_here} 场" if uncast_here else "")
+        )
+
+    characters = payload.get("characters") or []
+    if characters:
+        click.echo("")
+        click.echo(ui.section(f"角色戏份分布（前 {min(top, len(characters))} 位）"))
+        for row in characters[:top]:
+            label = row.get("display_name") or row.get("character_key")
+            share = float(row.get("scene_share") or 0) * 100
+            click.echo(
+                f"  {label}  {row.get('scene_count')} 场 · "
+                f"{round(float(row.get('planned_seconds') or 0) / 60, 1)} 分钟 · "
+                f"{share:.1f}% 场次占比 · 推动 {row.get('driving_scenes')} 场"
+            )
+        if payload.get("characters_truncated"):
+            click.echo(ui.dim(f"  （还有 {payload['characters_truncated']} 位未列出，--json 取全量）"))
+
+    coverage = payload.get("coverage") or {}
+    rows = coverage.get("rows") or []
+    click.echo("")
+    if not rows:
+        click.echo(ui.dim("关键节点覆盖矩阵：蓝图无关键节点（event）或金句（quote）锚点，无需核对"))
+    elif coverage.get("complete"):
+        click.echo(ui.ok(f"关键节点覆盖矩阵：{len(rows)}/{len(rows)} 全部有集承载"))
+    else:
+        click.echo(
+            ui.error(
+                f"关键节点覆盖矩阵不完整：{len(coverage.get('uncovered') or [])}/{len(rows)} 无集承载"
+            )
+        )
+        for anchor_id in coverage.get("uncovered") or []:
+            label = next(
+                (f"{item.get('name')}（{item.get('kind')}）" for item in rows
+                 if item.get("anchor_id") == anchor_id),
+                anchor_id,
+            )
+            click.echo(f"  - {label}")
+        click.echo(
+            ui.dim(
+                "  两种处理：① 分配进承载它的一集（该集 anchor_ids 或某条节拍）；"
+                "② 确实要删，在蓝图该锚点 payload 里写 intentionally_dropped 与 drop_reason 后重新采纳"
+            )
+        )
+
+
 @script_group.command("outline")
 @click.argument("project_id", required=False)
 @click.option("--text", default=None, help="故事梗概（建议 300–500 字，以因果完整为准）")
@@ -7902,6 +8504,9 @@ def script_scene_batch(
 ) -> None:
     """批量生成场次（串行）：实时进度 + 失败集中汇总 + 断点续跑。
 
+    批次 = agent+CLI 侧串行编排；四道门前置（新手期 / 风格 / 规模 2–3 / 产出须作者审查），缺一即拒，
+    不做降级执行；本命令只产候选，采纳另行由用户明确决定。
+
     ⚠ 谨慎使用：批量生成可能造成情节/设定不一致或伏笔失误。
     最佳实践是逐场创作 + 审读 + 采纳（scene generate → scene-show → adopt-scene）。
     中断恢复：首次 --save-progress 保存失败清单，之后 --resume-from 续跑。
@@ -7919,6 +8524,11 @@ def script_scene_batch(
         ids = [item.strip() for item in (scenes or "").split(",") if item.strip()]
     if not ids:
         raise click.ClickException("需要 --scenes 或 --resume-from（失败清单非空）")
+    session = _session(ctx)
+    # 自动批次创作模式的四道门前置（新手期 / 风格 / 规模 2–3 / 产出须审查）。
+    _enforce_batch_mode(
+        session, project_id, domain="script", unit_ids=ids, resuming=bool(resume_file)
+    )
     if not json_output:
         click.echo(ui.warn("批量生成注意事项（请确认已了解风险，--yes 跳过本提示）："), err=True)
         click.echo(ui.dim("  1. 批量生成可能产生情节/设定不一致、伏笔失误，务必逐场审读后再采纳；"), err=True)
@@ -7926,7 +8536,6 @@ def script_scene_batch(
         click.echo(ui.dim("  3. Agent 请勿用 subagent 并发批量——上下文割裂会造成设定漂移。"), err=True)
         if not yes:
             click.echo(ui.dim("（使用 --yes 确认后开始）"), err=True)
-    session = _session(ctx)
     summary: list[dict[str, object]] = []
     for index, scene_id in enumerate(ids, 1):
         started = _time.time()
@@ -7964,9 +8573,24 @@ def script_scene_batch(
         if failed:
             click.echo(ui.error(f"未完成 {len(failed)}/{len(ids)} 场：{', '.join(str(i['scene_id']) for i in failed)}——可续跑：--resume-from {progress_file or '<失败清单>'}"), err=True)
         else:
-            click.echo(ui.ok(f"全部完成：{len(ids)} 个场次 ✅ —— 下一步逐场 scene show 审读，满意后 scene adopt 定稿。"))
+            click.echo(ui.ok(f"本批 {len(ids)} 个场次已产出候选 ✅ —— 尚未采纳，须由作者逐场审查："))
+            click.echo(
+                ui.dim(
+                    "  审读 scene show <作品号> <场号> --plain → scene quality；"
+                    "用户明确决定后 review confirm/claim → scene adopt --human --review-token <凭证>。"
+                )
+            )
         return
-    _emit({"total": len(ids), "succeeded": len(ids) - len(failed), "failed": failed, "results": summary}, json_output)
+    _emit(
+        {
+            "total": len(ids),
+            "succeeded": len(ids) - len(failed),
+            "failed": failed,
+            "results": summary,
+            "review_required": True,
+        },
+        json_output,
+    )
 
 
 @script_group.command("scene-quality")

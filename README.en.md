@@ -119,7 +119,8 @@ wheel host and fall back to codeload → git+https.
 ## Login
 
 ```bash
-scriptnow login --host https://sn.igeewa.com   # sign in and approve in the system browser
+scriptnow login --host https://sn.igeewa.com           # sign in and approve in the system browser
+scriptnow login --device --host https://sn.igeewa.com  # device code: approve in a browser you are signed into
 ```
 
 The session (cookie + CSRF) is persisted at `~/.config/scriptnow-cli/session.json`
@@ -128,19 +129,43 @@ On macOS/Linux/Windows, the CLI uses an inter-process lock for automatic refresh
 projects can run concurrently without refresh-token overwrite, while creative writes
 within one project must remain serial to avoid candidate and version conflicts.
 
-### A host-managed instance has no login step
+**In a hosted instance the host performs the renewal**, which is the same question as who
+holds the refresh token. The instance's session file carries only a short-lived access
+token; `sf_refresh` stays in the host process's memory. The sandbox restricts writes rather
+than reads, so a long-lived credential placed anywhere in the instance's filesystem is
+readable by the agent's shell — which is exactly how the 2026-09-17 incident leaked one.
+When the access token expires the CLI returns to the host with a per-instance secret; no
+credential ever reaches the instance. The price is that after a host restart you have to
+open the assistant page once so it can re-issue a session, and `scriptnow doctor` says so
+when that is the case.
+
+**Which one to use:**
+
+| Command | How it works | When |
+|---|---|---|
+| `scriptnow login` | the CLI listens on a local `127.0.0.1` callback and the browser hands the code back (PKCE) | an ordinary terminal on your own machine |
+| `scriptnow login --device` | the CLI prints a code and a link; you confirm it in a browser you are already signed into, and the CLI polls for the session (RFC 8628) | hosted instances, remote hosts, anything without a local browser |
+
+Both produce the same `session.json` and neither accepts a password or lets a
+credential pass through the command line.
+
+### A host-managed instance usually needs no login
 
 An instance hosted by an agent (for example the ScriptNow × deepseek-harness
-integration) exports `SCRIPTNOW_HOSTED=1`. There the session is **minted
-server-side by the host** and written to the file `SCRIPTNOW_CLI_CONFIG` points
-at, so the CLI neither needs nor can perform a login:
+integration) exports `SCRIPTNOW_HOSTED=1`. There the session is **usually already
+minted server-side by the host** and written to the file `SCRIPTNOW_CLI_CONFIG`
+points at, so there is nothing to do:
 
 - `scriptnow login` is **refused outright** with an explanation: it would wait for
   a browser callback on the instance's own `127.0.0.1`, which your browser cannot
   reach, so it could only time out;
+- when you genuinely need to re-authorize, use **`scriptnow login --device`**: the
+  CLI prints a confirmation code and a link, you approve in a browser you are
+  already signed into, and no credential passes through the command line;
 - when `scriptnow doctor` reports "not logged in", the right move is to **retry
-  shortly**, or ask the host to re-issue the session — not to log in, and
-  **never** to ask anyone (including an agent) for cookies or a password;
+  shortly**, or ask the host to re-issue the session, and only then fall back to
+  `--device` — **never** ask anyone (including an agent) for cookies or a password,
+  and an agent must not call any refresh endpoint itself or read the session file;
 - the marker reads the environment variable alone and is **not inferred from
   `SCRIPTNOW_CLI_CONFIG`**: relocating that file is the documented self-service
   fix below, and those users still own their own login.
@@ -155,6 +180,18 @@ host exports `SCRIPTNOW_API_PREFIX` alongside the marker. If the CLI reports
 sits behind the login gate and answers with a 401 indistinguishable from an expired
 session — so point `SCRIPTNOW_API_PREFIX` at the real mount point. A malformed value
 is reported by name rather than silently falling back to `/api`.
+
+**Where the platform's *web UI* is mounted** is a third variable:
+`SCRIPTNOW_WEB_PREFIX`. Empty by default (the Creator owns the site root in a
+standalone deployment), `/platform` in the integration shape, exported by the host
+alongside the other two. Every link the CLI prints for the user to open — the
+`/cli/authorize` page and the `/device` confirmation page — is joined through it.
+The 2026-09-17 production defect came from exactly here: the link was hand-built as
+`base + "/cli/authorize"`, while the integration shape gives the site root to the
+agent shell, so the authorization page was delivered to a *different application*
+and could never be opened on the one deployment that needed it. All links now go
+through a single function (`session.web_url`), and an unusable value is reported by
+name.
 
 ### Config & session location (agents: run `scriptnow doctor` first)
 
@@ -235,6 +272,8 @@ scriptnow script rough-outline-progress <pid>          # read back phase progres
 scriptnow script rough-outline-propose <pid> --review-token <submission-review-token>
 scriptnow script propose <pid> storymap @storymap.json --review-token <submission-review-token>
 scriptnow script planning-quality <pid> storymap @storymap.json  # full episode-outline gate
+# Pre-delivery self-check: beat density / conflict components / screen time / key-node coverage
+scriptnow script analytics <pid>
 # Writing loop
 scriptnow script scene-list <pid>
 scriptnow script scene-show <pid> scene-1-1 --plain
@@ -263,13 +302,13 @@ as a writer-facing export file yet.
 | project | Projects: create / list / **files (project files)** / upload / **use (set as default project)** / delete / direction (--apply agent-curated / --inspire platform inspiration) |
 | interpret | One-work-one-skill: go (platform read-through) / local (agent-side, samples stay local) / create / read / status / decide |
 | book | Hosted novel creation plan (agent orchestration primitive, includes Skill-support detection) |
-| chapter | Novel chapters: **outline (backfill one chapter) / outline-batch (batch backfill) / outline-check (self-check) / outline-example (structure example) / bible-example (character-bible example)** / list / show / generate / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
+| chapter | Novel chapters: **outline (backfill one chapter) / outline-batch (batch backfill) / outline-check (self-check) / outline-example (structure example) / bible-example (character-bible example)** / list / show / generate / **batch (automatic batch creation: 2–3 chapters per batch, serial, author review required)** / quality (--standard content/drama-filing/thousand-plan) / adopt / propose (local return) |
 | scene | Script scenes (the script-side counterpart of chapter): list / show / generate / adopt (alias of script adopt-scene) / propose (local return) / batch / quality / diff |
 | storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; Novel uses whole-book chapter ranges, not forced volumes)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; archive export/restore candidates use the per-domain `novel storymap-restore` / `script storymap-restore`; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | authorize | **DEPRECATED** — Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes. New flows use `review confirm → claim → --review-token` instead |
 | novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)**; rebuilding requires the novel rough outline adopted first, phases use whole-book chapter ranges and do not force one phase per volume |
-| script | Script chain: story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)** |
+| script | Script chain: story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)** / **analytics (per-episode quantified dashboard: beat density / conflict components / character screen time / key-node coverage matrix, deterministic and read-only)** |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / **candidate-preview / adopt (content-bound review credential)** / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
@@ -439,11 +478,42 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   governs prose (chapters/scenes) only; the planning-trio backfill-first rule (story_cores /
   blueprint / storymap) is unchanged.
 - **Episode/chapter outline is mandatory before prose** — Script episodes use flat
-  `logline`/`active_goal`/`conflict`/`turn`/`state_changes`/`anchor_ids`; Novel chapters embed
+  `logline`/`active_goal`/`conflict`/`turn`/`state_changes`/`anchor_ids` plus `title` (the
+  **rewritten** episode title) and `source_titles` (original chapter names, kept only for
+  traceability); Novel chapters embed
   `outline` with `summary` or `logline`, `active_goal`, `conflict`, `turn`, and `state_changes`
   (anchors may come from the outline or beats). Run full-map `planning-quality` before adoption.
   Backfill one unit with `script episode-outline <pid> <episode_id> @outline.json` or
   `chapter outline <pid> <chapter_id> @outline.json`; each remains a reviewable StoryMap candidate.
+- **Episode titles must be rewritten (server-side hard gate)** — verbatim copying is correct at the
+  *extraction* stage, but an episode title must not be copied. Web-novel titles are usually
+  clickbait (e.g. "Chapter 27: Do you get it now?") and copy them means the audience cannot tell
+  what happens in the episode. Say what is at stake right now: the conflict object, the
+  protagonist's move, or the turnaround. Stripping only the chapter number while keeping the
+  clickbait is judged a copy too (`episode_title_rewrite` → revise).
+- **Every key node must have an owner (coverage-matrix gate)** — each `event` anchor on the
+  blueprint (including the legacy `plot` alias) and each `quote` (golden line) anchor must be
+  carried by some episode, either in that episode's `anchor_ids` or in one of its beats'
+  `anchor_ids`. `script storymap propose` and `storymap-rebuild-propose` run the coverage matrix
+  and **reject the whole proposal, naming the orphans**, if no episode carries a node. To genuinely
+  drop a node, set `intentionally_dropped: true` and `drop_reason` on that blueprint anchor's
+  payload and re-adopt the blueprint — a key node must never be dropped silently.
+- **Golden lines are an optional anchor kind** — `kind: "quote"` (aliases quotes / signature_line /
+  signature_lines / golden_line / key_line; put the line in `payload.description`). Not every show
+  yields them, so the "all six kinds present" rule does not apply; but once adopted into the
+  blueprint they fall under the coverage matrix — a golden line must be **assigned** to an episode
+  rather than left to luck. A signature scene is a scene and a golden line is the one line that
+  travels on its own; name both, never substitute one for the other.
+- **Quantified dashboard (read-only derived view)** — `scriptnow script analytics <pid> [--top N]
+  [--json]` reports per-episode beat density (beats/minute), conflict components (irreversible
+  turns / obstructed confrontations / choices made / prices paid), character screen-time (scenes /
+  minutes / share) and the key-node coverage matrix. **No model scoring is involved**: everything
+  is computed deterministically from the adopted StoryMap, so the same outline always yields the
+  same numbers and can be reconciled with a producer. Each Script scene also fills `characters`
+  (blueprint keys of who appears on screen): `character_action.active_character_key` alone answers
+  "who drives this scene", not "who appears in it and for how long". Scenes left blank are reported
+  separately as uncast and are **never counted as 0 screen-time for any character**. Read it for
+  pacing, screen time and coverage; never estimate minutes or shares yourself.
 - Prefer `--json`; generation commands run in the background and return a `run_id` — poll with `run status` (never block with `--wait` in agent hosts; interactive terminals may set `SCRIPTNOW_WAIT_MAX_SECONDS`). Failures use `{ok:false,error:{type,status,detail}}` without a traceback, and prefer the sanitized original domain detail so the Agent can act on it; repair from `status.error/detail`, then inspect `run events <run_id> --json` (`events=[]` means no events); never treat a generic localized fallback as a repair instruction.
 - **Novel block contamination guard** — every `block.text` submitted through `chapter propose` is only that block's prose, never an embedded second `blocks` JSON document. Ordinary JSON text remains allowed; on rejection, repair from the returned detail and regenerate.
 - Version baseline: latest "adopted + human revision (even unadopted)"; unadopted agent

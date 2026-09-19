@@ -68,30 +68,93 @@ Both distributions are listed, unyanked, on the public index; a fresh Python 3.1
 installation from `https://pypi.org/simple` passed `--version` and Skill-bundle
 smoke checks.
 
-### Pending: `0.3.97` is on the platform source only
+### Pending: `0.3.98` is on the platform source and the GitHub mirror; PyPI awaits review
 
-`0.3.97` (hosted-instance login semantics, see
-`cli_anything/scriptnow/utils/hosted.py`) is **already live on the platform
-download source** — `https://sn.igeewa.com/downloads/scriptnow-cli/version.txt`
-returns `0.3.97`, and the versioned wheel / `latest` alias / source zip are all
-served. It is **not** on PyPI or the GitHub mirror yet, so the snapshot above
-deliberately still says `0.3.96`.
+`0.3.98` is live on the platform download source
+(`https://sn.igeewa.com/downloads/scriptnow-cli/version.txt` returns `0.3.98`) and
+on the GitHub mirror (commit `986e502a95e44c739f6f85210903ba7ec6eaa8ea`, tag
+`v0.3.98`). Its PyPI workflow, run
+[35183960449](https://github.com/quchenchen/scriptnow-cli/actions/runs/35183960449),
+has a green `build` job and a `publish` job **waiting on the `pypi` environment
+review** — the helper never approves that review itself, so the release is not
+complete until a maintainer does. That is why the snapshot above still says
+`0.3.96`.
 
-That split is the normal intermediate state of `scripts/sync-cli-release.sh`,
-whose stages run GitHub → platform → PyPI: a run that stops after the platform
-stage leaves the platform source ahead. To finish the release, run the script
-with authorization for its GitHub and PyPI writes (steps 3 and 5 above); it is
-idempotent, so the already-published platform files are simply re-verified.
+Resume after approving (no production writes are repeated):
+
+```bash
+python3 scripts/publish-cli-pypi.py --version 0.3.98 \
+  --commit 986e502a95e44c739f6f85210903ba7ec6eaa8ea --resume 35183960449
+```
+
+`0.3.97` never reached PyPI or the mirror — it lived only on the platform source
+for a few hours before `0.3.98` superseded it. Because the mirror is a
+normalized `rsync --delete` copy of this directory, `0.3.98` carries everything
+`0.3.97` had (the hosted-instance login semantics from `utils/hosted.py`) plus its
+own changes; there is no reason to publish `0.3.97` now, and its
+platform-only wheel remains downloadable for anyone pinned to it.
 
 Registered for that run:
 
 | Artifact | SHA256 |
 |---|---|
-| `scriptnow_cli-0.3.97-py3-none-any.whl` | `175d1b16e58a11b61a32609b7b3a10cd537a40d819ca6b6b516621c8315fd0a0` |
+| platform-served `scriptnow_cli-0.3.98-py3-none-any.whl` | `6ddd29eadc8cb0236ed0b5d225e705dfde63022e317f64ec741c6d9d68a2df7e` |
+| `dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.3.98-py3-none-any.whl` (that day's generation; superseded) | `3b2d6e568d930ca822c28c1bcca0538565427753b5233a660233611abda8406e` |
 
-Note this hash is **per build** — the wheel embeds build timestamps, so a
-rebuild changes it. The value that matters is what the platform is serving now
-(`shasum -a 256` the downloaded file), not this line.
+Note these hashes are **per build** — the wheel embeds build timestamps, so a
+rebuild changes them. The platform wheel is built by this release script and the
+vendored one by `dsh-integration` for the gateway image, so the two files of one
+version are never byte-identical.
+
+### ⚠ One version number = one content (2026-09-17 用户定规)
+
+Earlier this file said two builds of the same version "legitimately differ". That
+is no longer accepted: the version number is the only identity any human or tool
+reads (`scriptnow --version`, the image build's `verify-installed-cli.py
+--expect-version`, the platform's minimum-version gate) and **none of them compare
+content**. `0.3.98` was rebuilt in place **six times in one day** (R1 `8fc6d39e…`
+… R6 `da7fa89a…`, each a real fix) and there was no way to tell which one an image
+carried. So:
+
+1. **Any content change bumps `__version__`** (`cli_anything/scriptnow/__init__.py`);
+   never re-release a version number that has shipped.
+2. The vendored wheel's identity is pinned by the **version ledger** in
+   `dsh-integration/vendor/scriptnow-cli/PROVENANCE.txt`
+   (`LEDGER-BEGIN`/`LEDGER-END`, append-only); `check-vendored-cli.py` fails if the
+   wheel's sha256 differs from the ledger line for its version.
+3. `0.3.99` is the W5 batch (device-code login + `SCRIPTNOW_WEB_PREFIX` link fix +
+   host-held refresh). It is **not published yet**: publishing it needs the same
+   three-target flow as `0.3.98` (GitHub mirror + platform download source + PyPI).
+   `scripts/sync-cli-release.sh` now publishes **the vendored wheel itself**
+   (`dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.3.99-py3-none-any.whl`
+   = `3ffdf6f26d4649cfdee8d6b9ceb0f9fcf27a0ce2709cf4b745a3ff60fada74d8`) instead of
+   building a second one, so the gateway image, the platform download source and
+   the GitHub mirror all carry the same bytes for this version. PyPI still rebuilds
+   from the mirrored source in CI, so its wheel differs in timestamps only -- same
+   source, same content, one generation.
+4. `0.4.0` is the automatic-batch-creation batch: the new `chapter batch` command
+   (with `scene batch` moved onto the same four preconditions -- novice period
+   over, methodology skill mounted, 2-3 units per batch, candidates only) plus the
+   agent+CLI serial orchestration contract. Also **not published yet**, and it
+   needs the same three-target flow.
+   `dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.4.0-py3-none-any.whl`
+   = `64443f7860308889a72eb57a276414ce00651f0ef185949847f8c800ba6c32ef`.
+5. `0.4.1` adds the quantified dashboard: `script analytics` (`--json`, `--top N`)
+   reports beat density, conflict components, character screen time and the
+   key-node coverage matrix. Every number comes from the platform's read-only
+   endpoint, so the CLI never recomputes anything. Also **not published yet**;
+   it needs the same three-target flow.
+   `dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.4.1-py3-none-any.whl`
+   = `a578e701ab281c06dd1907afcca8231a8fb7a182bad863773e6814a1bf1c641e`.
+6. `0.4.2` is a **documentation catch-up, not a new feature**: it changes no
+   command and no flag. `0.4.1`'s two agent-facing docs (`cli_anything/scriptnow/README.md`'s
+   `script` row gaining `analytics`, and `skills/references/planning.md` gaining the
+   three episode-outline hard rules) were committed in `cec79e17` but the wheel was
+   built before them, so the vendored wheel kept shipping without those two sections --
+   and `check-vendored-cli.py` stayed red from that commit onward. Also **not published
+   yet**; it needs the same three-target flow.
+   `dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.4.2-py3-none-any.whl`
+   = `9e7c1a4ef1d5a457fbb120b903766a238a355bbbcdc506a6598f2088189c297c`.
 
 PyPI and the workflow run stay the authoritative live record — read the current
 published version straight from the index pip installs from, instead of trusting

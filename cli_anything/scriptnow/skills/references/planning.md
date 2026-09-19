@@ -36,6 +36,29 @@
 > 完整交付可用 `--sections synopsis,characters,rough_outline,story_map,manuscript`；
 > 平台固定按梗概→人物小传→粗纲→小说章纲/剧本集纲→正文排序，缺少已采纳材料时先补齐再导出。
 
+> **集纲三条硬规矩 + 量化自检（script）**：服务端在 `script propose` / `storymap` /
+> `storymap-rebuild-propose` 上强制三条，不达标整体拒绝或判 revise。
+> ① **集名必须改写**：提取原著时章名逐字照抄是对的，但**集名不能照抄**——网文标题多为
+> 引流词（如『第27章 你可懂了？』），照抄等于让观众从集名读不出本集发生了什么。每个 episode
+> 同时给 `title`（改后的集名：写进本集当下的冲突对象、主角动作或局面反转）与
+> `source_titles`（原著章名原名，只用于追溯）。只把章号摘掉、引流词原样保留同样判为照抄。
+> ② **关键节点必须各有归属**：蓝图每个 `event` 锚点（含历史别名 `plot`）与每个 `quote`
+> 锚点，都必须被某一集承载（该集 `anchor_ids`，或该集某条节拍的 `anchor_ids`）。
+> 覆盖矩阵门禁强制执行（与集名改写是两条独立检查）：无任何一集承载即整体拒绝并列名。
+> 确实要删的节点，不能靠「提案里不写」——在该蓝图锚点 payload 写
+> `intentionally_dropped: true` 与 `drop_reason` 后重新采纳蓝图。
+> ③ **金句是可选锚点类别**（`kind: "quote"`，别名 quotes / signature_line / signature_lines /
+> golden_line / key_line，原句放 `payload.description`）：不是每部戏都盘得出，所以**不要求六类齐全**；
+> 但一旦采纳入蓝图就受覆盖矩阵约束——金句必须被**分配**到某一集，而不是碰运气。名场面是场景、
+> 金句是可以单独传播的那一句话，两件事都要点名，不要互相代替。
+> 另：剧本每个 scene 填 `characters`（本场出场角色的蓝图 key）。只填
+> `character_action.active_character_key` 只回答「这一场由谁推动」，答不了「谁在这一场出现、占多少戏」。
+> 允许留空，但留空的场次会在仪表盘单列为「未标注出场人物」，**不按 0 戏份计入任何角色**。
+> 谈节奏、戏份、覆盖率一律读 `scriptnow script analytics <pid> [--top N] --json`：每集节拍密度
+> （拍/分钟）、冲突分量（不可逆转向/有障碍的对峙/做出选择/付出代价）、角色戏份分布与关键节点
+> 覆盖矩阵，全部由已采纳 StoryMap 确定性算出，同一份集纲永远得到同一组数字。**不要自己估算
+> 分钟数或戏份占比**；它同时是交付前自检——覆盖矩阵不完整会在 propose 时被直接拒绝。
+
 > **StoryMap 隔离重建（script，替代一次生成完整80集）**：已有 StoryMap 需要重建时，
 > 不要一次生成全集。用 `script storymap-rebuild-start <pid>` 开启隔离会话（冻结阶段计划），
 > 逐阶段：`storymap phases` 查看阶段边界 → 本地生成该阶段集纲 → `storymap-rebuild-check

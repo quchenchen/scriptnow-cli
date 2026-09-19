@@ -192,9 +192,14 @@ def test_backend_conflict_is_mapped_to_error(fake_session, runner, tmp_path, mon
 
 
 def test_version_command_shows_current(runner):
+    from cli_anything.scriptnow import __version__
+
     result = runner.invoke(main, ["version"])
     assert result.exit_code == 0
-    assert "0.3." in result.output
+    # 断言"就是当前 __version__"，而不是某个写死的版本前缀 ——
+    # 原来写死 `"0.3."`，CLI 一进 0.4.x 这条就一直红着（陈旧断言，
+    # 与版本内容无关，只会让人怀疑发版）。
+    assert __version__ in result.output
 
 
 def test_version_check_force_reports_latest(runner, monkeypatch):
@@ -791,8 +796,15 @@ def test_self_upgrade_uses_codeload_and_falls_back_to_git():
     assert "git+https://x" in calls[1]
 
 
-def test_doctor_reports_session_location_and_login_state():
-    """doctor：输出 CLI 版本、会话路径、登录状态与账号；未登录也不崩溃。"""
+def test_doctor_reports_session_location_and_login_state(monkeypatch):
+    """doctor：输出 CLI 版本、会话路径、登录状态与账号；未登录也不崩溃。
+
+    ⚠ 用 `monkeypatch` **夹具**而不是手工 `pytest.MonkeyPatch()`：手工那个必须自己
+    `undo()`，漏掉就把 patch 泄漏给**之后跑的所有测试**。这里踩过一次 —— 泄漏的
+    `_config_path` 让后续任何依赖会话路径的测试都去读
+    `/tmp/.sn-doctor-nonexistent/session.json`，表现为一批毫不相关的测试集体失败
+    （2026-09-17，新增宿主续期测试时才把它暴露出来）。
+    """
     import pytest
     from click.testing import CliRunner
 
@@ -803,7 +815,7 @@ def test_doctor_reports_session_location_and_login_state():
     # 1) 未登录（无会话文件时 _session 抛错，doctor 应捕获并报告未登录）
     import cli_anything.scriptnow.utils.session as sess_mod
 
-    mp = pytest.MonkeyPatch()
+    mp = monkeypatch
     mp.setattr(
         sess_mod,
         "_config_path",

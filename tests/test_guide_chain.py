@@ -118,10 +118,13 @@ def test_guide_docstring_mentions_12_steps() -> None:
 
 def test_runtime_contract_has_backfill_platform_author_and_order() -> None:
     rc = _AGENT_RUNTIME_CONTRACT
-    assert rc["contract_version"] == "4"
+    # 契约版本随内容递增：5 → 6 是「来源画像回填优先」这一条（改编项目）。
+    # 故意写死这个数 —— 它就是要让人在改契约时**有意识地**动一次这里。
+    assert rc["contract_version"] == "6"
     rules = NL.join(rc["rules"])
     assert "创作顺序固定为 12 步" in rules
     assert "规划回填优先" in rules
+    assert "来源画像回填优先" in rules
     assert "正文最终创作默认由平台内真实 AgentScope Agent 主笔" in rules
     assert "绝不自动扩大为采纳、结构覆盖、删除或发布" in rules
     assert "已弃用" in rules and "authorize" in rules

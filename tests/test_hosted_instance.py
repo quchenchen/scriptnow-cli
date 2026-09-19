@@ -246,8 +246,12 @@ def test_runtime_contract_forbids_cookie_handoff_when_hosted(cli_module) -> None
     module = cli_module("1")
     rules = module._AGENT_RUNTIME_CONTRACT["rules"]
     joined = "\n".join(rules)
-    assert "不要运行 scriptnow login" in joined
+    # 托管形态下契约必须：① 不引导走那条必然超时的普通登录；② 指出**能走通**的设备流；
+    # ③ 明确禁止向用户要 Cookie，以及 agent 自行换发/读会话文件。
+    assert "scriptnow login --device" in joined
+    assert "普通的 scriptnow login 在实例里只会超时" in joined
     assert "Cookie" in joined
+    assert "换发/刷新端点" in joined
     # Step 1 of the 12-step order is not "登录" when the host owns the session.
     assert "确认已登录" in joined
 
@@ -256,6 +260,8 @@ def test_runtime_contract_keeps_login_guidance_when_self_managed(cli_module) -> 
     module = cli_module(None)
     joined = "\n".join(module._AGENT_RUNTIME_CONTRACT["rules"])
     assert "登录只用 scriptnow login" in joined
+    # 设备流是托管形态的出路；自助形态下 loopback 回调本来就通，不该引它。
+    assert "scriptnow login --device" not in joined
     assert "确认已登录" not in joined
 
 

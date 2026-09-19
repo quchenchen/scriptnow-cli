@@ -7,16 +7,11 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from .session import ScriptNowError, Session, _config_path
+from .session import ScriptNowError, Session, _config_path, platform_base, web_url
 
 
 def browser_login(host: str, *, timeout: int = 180, notify=print) -> Session:
-    origin = urlsplit(host)
-    if (origin.scheme not in {"http", "https"} or not origin.netloc or origin.username
-            or origin.password or origin.query or origin.fragment or origin.path not in {"", "/"}
-            or (origin.scheme == "http" and origin.hostname not in {"localhost", "127.0.0.1", "::1"})):
-        raise ScriptNowError("登录地址必须为 HTTPS 平台地址；仅本机开发允许 HTTP")
-    base = host.rstrip("/")
+    base = platform_base(host)
     verifier = secrets.token_urlsafe(32)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     state = secrets.token_urlsafe(32)
@@ -52,7 +47,12 @@ def browser_login(host: str, *, timeout: int = 180, notify=print) -> Session:
     with ThreadingHTTPServer(("127.0.0.1", 0), Callback) as server:
         server.timeout = 1
         redirect = f"http://127.0.0.1:{server.server_port}/callback"
-        url = base + "/cli/authorize?" + urlencode({"challenge": challenge, "state": state, "redirect_uri": redirect})
+        # 走 `web_url` 而不是手拼 `base + "/cli/authorize"`：整合形态下 Creator 在
+        # `/platform/`，站点根给了 agent 外壳 —— 手拼的链接会准确地把用户送进**另一个
+        # 应用**，而授权页永远打不开（2026-09-17 线上实测的形状）。
+        url = web_url(base, "/cli/authorize") + "?" + urlencode(
+            {"challenge": challenge, "state": state, "redirect_uri": redirect}
+        )
         notify("请在系统浏览器中登录并确认授权。不要在对话中输入密码。")
         notify(url)
         try:
