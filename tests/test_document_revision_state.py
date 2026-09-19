@@ -147,6 +147,11 @@ def test_novel_orchestrate_plan_marks_human_final(monkeypatch):
 
     state = _novel_state()
     state["story_map_candidates"] = [{"id": "storymap-candidate-1", "status": "active", "volumes": []}]
+    # `novel orchestrate` loads the session before it reads any state, and this test is
+    # about revision aggregation rather than about logging in -- so stub both. Stubbing
+    # only `_novel_state` is what made this pass on a machine with a saved session and
+    # fail in CI (2026-09-19); see tests/conftest.py.
+    monkeypatch.setattr(cli, "_session", lambda *_args: Mock())
     monkeypatch.setattr(cli, "_novel_state", lambda *_args: state)
     result = CliRunner().invoke(main, ["novel", "orchestrate", "project-1"])
     assert result.exit_code == 0, result.output

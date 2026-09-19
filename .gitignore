@@ -6,3 +6,7 @@ __pycache__/
 .DS_Store
 build/
 dist/
+# tests/conftest.py points SCRIPTNOW_CLI_CONFIG at tests/.no-session/session.json so the
+# suite always runs with no saved session. Nothing ever writes that file -- but the update
+# check does drop its cache (version-check.json) beside it, so ignore the whole directory.
+tests/.no-session/
