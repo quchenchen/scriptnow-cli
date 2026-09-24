@@ -116,16 +116,28 @@ def test_guide_docstring_mentions_12_steps() -> None:
 
 # ------------------------------------------------------------- contracts ---
 
-def test_runtime_contract_has_backfill_platform_author_and_order() -> None:
+def test_runtime_contract_has_dsh_default_and_order() -> None:
     rc = _AGENT_RUNTIME_CONTRACT
-    # 契约版本随内容递增：5 → 6 是「来源画像回填优先」这一条（改编项目）。
-    # 故意写死这个数 —— 它就是要让人在改契约时**有意识地**动一次这里。
-    assert rc["contract_version"] == "6"
+    # 契约版本写死以迫使行为变更时同步更新此测试。16 要求
+    # dsh 正文读取选中方法并携带内容摘要，候选仍独立于采纳。
+    assert rc["contract_version"] == "16"
     rules = NL.join(rc["rules"])
     assert "创作顺序固定为 12 步" in rules
     assert "规划回填优先" in rules
     assert "来源画像回填优先" in rules
-    assert "正文最终创作默认由平台内真实 AgentScope Agent 主笔" in rules
+    assert "候选提交的**响应丢失恢复**" in rules
+    assert "相同文字的新提交不等于旧请求重试" in rules
+    # dsh 新路径需覆盖两域正文及已接入规划，且不得暗示全部操作都能恢复。
+    assert "`scene-propose`" in rules and "`chapter propose`" in rules
+    assert "story_cores / blueprint / synopsis / rough_outline / storymap / bibles / episode_outline / chapter_outline" in rules
+    assert "新的 attempt 不能冒领" in rules
+    assert "尚未接入的结构追加与重建路径" in rules
+    assert "正式采纳和导出" in rules
+    # 旧凭据兼容链仍只有剧本蓝图允许显式身份；dsh 路径另有范围。
+    assert "旧出口仅剧本 blueprint 支持" in rules
+    assert "小说 `chapter propose` 尚未接入" not in rules
+    assert "正文与规划默认由 dsh" in rules
+    assert "skill selected --unit-id" in rules and "--material-digest" in rules
     assert "绝不自动扩大为采纳、结构覆盖、删除或发布" in rules
     assert "已弃用" in rules and "authorize" in rules
     quickstart = NL.join(rc["quickstart"])
@@ -252,7 +264,8 @@ def test_cli_page_uses_the_canonical_cores_first_order_and_no_retired_bootstrap(
     assert novel.index("propose <项目ID> cores") < novel.index("novel outline")
     assert script.index("script propose <项目ID> cores") < script.index("script outline")
     assert "novel bootstrap" not in text
-    assert "默认由平台内真实 AgentScope 主笔" in text
+    assert "dsh 默认主笔" in text
+    assert "平台 generate 仅为显式后备" in text
 
 # ------------------------------------------------ P2 hardening -----
 
@@ -281,28 +294,29 @@ def test_step5_synopsis_chain_uses_review_confirm_claim_token(runner: CliRunner)
     for medium in ('novel', 'script'):
         data = _guide_json(runner, 5, medium)
         cmd = data['step']['command']
-        assert 'review propose-preview' in cmd, (medium, cmd)
+        assert 'run claim' in cmd and 'synopsis' in cmd, (medium, cmd)
+        assert '--execution-token' in cmd and 'outline-candidates' in cmd, (medium, cmd)
+        assert 'outline-adopt-preview' in cmd and '--candidate-id' in cmd, (medium, cmd)
         assert 'review confirm' in cmd, (medium, cmd)
         assert 'review claim' in cmd, (medium, cmd)
         assert '--review-token' in cmd, (medium, cmd)
         assert '-status' in cmd or 'adopt' in cmd, (medium, cmd)
-        for wip in ('outline-adopt-preview', 'authorize'):
+        for wip in ('authorize',):
             assert wip not in cmd, (medium, wip, cmd)
 
 
 def test_step6_rough_outline_chain_example_check_candidate_adopt(runner: CliRunner) -> None:
     novel = _guide_json(runner, 6, 'novel')['step']['command']
     assert 'rough-outline-example' in novel, novel
-    assert 'rough-outline-check' in novel, novel
+    assert 'run claim' in novel and '--execution-token' in novel, novel
     assert 'review candidate-preview novel' in novel, novel
     assert 'rough_outline_candidate' in novel, novel
     assert 'rough-outline-adopt' in novel, novel
     assert '--review-token' in novel, novel
     script = _guide_json(runner, 6, 'script')['step']['command']
+    assert 'run claim' in script and 'script propose <作品号> rough_outline' in script
+    assert '--execution-token' in script and 'review candidate-preview script' in script
     assert 'rough-outline-start' in script, script
-    assert 'rough-outline-phase' in script, script
-    assert 'rough-outline-progress' in script, script
-    assert 'rough-outline-phase-preview' in script, script
     for wip in ('rough-outline-prepare', 'rough-outline-phase-continue', 'propose-preview'):
         assert wip not in novel and wip not in script, wip
 
@@ -335,7 +349,9 @@ def test_step4_planning_adopt_requires_confirm_claim_token(runner: CliRunner) ->
 def test_step9_prose_adopt_requires_human_and_review_token(runner: CliRunner) -> None:
     for medium in ('novel', 'script'):
         cmd = _guide_json(runner, 9, medium)['step']['command']
-        assert 'review preview' in cmd, (medium, cmd)
+        assert 'review revision-preview' in cmd, (medium, cmd)
+        assert 'run claim' in cmd and '--execution-token' in cmd, (medium, cmd)
+        assert 'skill selected' in cmd and '--material-digest' in cmd, (medium, cmd)
         assert 'review confirm' in cmd, (medium, cmd)
         assert 'review claim' in cmd, (medium, cmd)
         assert ('chapter adopt <作品号> <章节号> <版本号> --human --review-token' in cmd
@@ -343,13 +359,13 @@ def test_step9_prose_adopt_requires_human_and_review_token(runner: CliRunner) ->
         for wip in ('authorize', 'outline-adopt-preview', 'propose-preview'):
             assert wip not in cmd, (medium, wip, cmd)
 
-def test_step6_script_long_chain_aggregate_review_before_propose(runner: CliRunner) -> None:
+def test_step6_script_default_saves_a_complete_candidate_before_adoption(runner: CliRunner) -> None:
     script = _guide_json(runner, 6, 'script')['step']['command']
-    assert 'rough_outline_build' in script, script
-    assert 'scriptnow script rough-outline-propose <作品号> --review-token <汇总凭证> --json' in script, script
-    i_build = script.find('rough_outline_build')
-    i_propose = script.find('rough-outline-propose')
-    assert 0 <= i_build < i_propose, (i_build, i_propose)
+    i_claim = script.find('run claim')
+    i_propose = script.find('script propose <作品号> rough_outline')
+    i_preview = script.find('review candidate-preview')
+    i_adopt = script.find('rough-outline-adopt')
+    assert 0 <= i_claim < i_propose < i_preview < i_adopt, script
 
 
 def _click_command(path: tuple[str, ...]) -> click.Command:
@@ -435,14 +451,8 @@ def test_script_rough_outline_guide_examples_match_click_command_groups(runner: 
         )
 
     guide = _guide_json(runner, 6, "script")["step"]["command"]
-    for command in (
-        "scriptnow script rough-outline-start",
-        "scriptnow script rough-outline-phase-preview",
-        "scriptnow script rough-outline-phase",
-        "scriptnow script rough-outline-progress",
-        "scriptnow script rough-outline-propose",
-    ):
-        assert command in guide, guide
+    assert "scriptnow script propose <作品号> rough_outline" in guide
+    assert "rough-outline-start/phase" in guide  # 保留长篇作者可选的隔离链
 
 
 def test_subcommand_json_never_starts_background_upgrade_check(

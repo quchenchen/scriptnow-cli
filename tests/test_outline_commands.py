@@ -65,6 +65,33 @@ def test_episode_outline_backfill_uses_server_storymap_version(monkeypatch, tmp_
     assert body["logline"] == "主角公开证据"
 
 
+def test_dsh_episode_outline_uses_scoped_write_grant_and_stable_request(monkeypatch, tmp_path):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.delenv("SCRIPTNOW_CREATIVE_ATTEMPT", raising=False)
+    session = Mock()
+    session.request.side_effect = [
+        {"story_map": {"version": 7}}, {"id": "candidate-1", "status": "active"},
+        {"story_map": {"version": 7}}, {"id": "candidate-1", "status": "active"},
+    ]
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "episode-dsh.json", {
+        "summary": "她打开档案柜找到录音带，最终公开证据并失去盟友。",
+        "anchor_ids": ["event:tape"],
+    })
+    args = [
+        "script", "episode-outline", "p1", "episode-1", file_arg,
+        "--execution-token", "ea1.attempt-1.sig", "--json",
+    ]
+    first = CliRunner().invoke(main, args)
+    second = CliRunner().invoke(main, args)
+    assert first.exit_code == second.exit_code == 0, first.output + second.output
+    writes = [call for call in session.request.call_args_list if call.args[0] == "POST"]
+    assert writes[0].kwargs["json_body"]["idempotency_key"] == writes[1].kwargs["json_body"]["idempotency_key"]
+    assert writes[0].kwargs["json_body"]["source"] == "agent"
+    assert writes[0].kwargs["headers"] == {"X-Creative-Attempt": "ea1.attempt-1.sig"}
+
+
 def test_chapter_outline_backfill_accepts_outline_wrapper(monkeypatch, tmp_path):
     session = Mock()
     session.request.return_value = {"id": "candidate-chapter-1", "status": "active"}
@@ -88,6 +115,27 @@ def test_chapter_outline_backfill_accepts_outline_wrapper(monkeypatch, tmp_path)
     assert result.exit_code == 0, result.output
     body = session.request.call_args.kwargs["json_body"]
     assert body["outline"]["summary"] == "主角走进旧仓库"
+
+
+def test_dsh_chapter_outline_saves_candidate_without_submit_review(monkeypatch, tmp_path):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.delenv("SCRIPTNOW_CREATIVE_ATTEMPT", raising=False)
+    session = Mock()
+    session.request.return_value = {"id": "candidate-1", "status": "active"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    file_arg = _write(tmp_path, "chapter-dsh.json", {
+        "summary": "她进入旧仓库，找到失踪者留下的录音带，并决定公开证据。",
+        "anchor_ids": ["plot:tape"],
+    })
+    result = CliRunner().invoke(main, [
+        "chapter", "outline", "p1", "chapter-1", file_arg,
+        "--execution-token", "ea1.attempt-1.sig", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    call = session.request.call_args
+    assert call.args == ("POST", "/novel/projects/p1/chapters/chapter-1/outline/propose")
+    assert call.kwargs["headers"] == {"X-Creative-Attempt": "ea1.attempt-1.sig"}
     assert session.request.call_args.args[1] == "/novel/projects/p1/chapters/chapter-1/outline/propose"
 
 
@@ -111,10 +159,27 @@ def test_outline_check_valid_and_invalid(tmp_path):
     assert r_ok.exit_code == 0
     assert "自查通过" in r_ok.output
 
-    bad = _write(tmp_path, "bad.json", {"summary": "只有概述"})
+    bad = _write(tmp_path, "bad.json", {"anchor_ids": ["event:medicine"]})
     r_bad = runner.invoke(main, ["chapter", "outline-check", bad])
     assert r_bad.exit_code != 0
     assert "行动者目标" in r_bad.output
+
+
+def test_outline_check_accepts_narrative_only(tmp_path):
+    """叙事式章纲（无任何分栏字段）必须能通过 CLI 预检。
+
+    体例拍板（2026-09-19）：一段整段叙事本身就是合格形态。此前
+    「只有 summary」会被判不合格 —— 那是把作者逼进分栏的旧契约。
+    """
+    runner = CliRunner()
+    f = _write(tmp_path, "narrative.json", {
+        "summary": "主角为拿回药方踏入被封锁的旧仓库，对手设伏，他抢到的是被调包的药方。",
+        "anchor_ids": ["event:medicine"],
+    })
+    r = runner.invoke(main, ["chapter", "outline-check", f])
+    assert r.exit_code == 0, r.output
+    # state_changes 不再参与门禁，缺了不该出现在缺失项里。
+    assert "state_changes" not in r.output
 
 
 def test_outline_example_lists_fields():
@@ -144,7 +209,7 @@ def test_outline_check_accepts_beat_anchors(tmp_path):
 def test_outline_check_json_invalid_exits_1(tmp_path):
     """--json mode must still exit non-zero when the outline is invalid."""
     runner = CliRunner()
-    f = _write(tmp_path, "bad.json", {"summary": "只有概述"})
+    f = _write(tmp_path, "bad.json", {"anchor_ids": ["event:medicine"]})
     r = runner.invoke(main, ["chapter", "outline-check", f, "--json"])
     assert r.exit_code == 1
     assert '"valid": false' in r.output or '"valid":false' in r.output
@@ -332,35 +397,53 @@ def test_storymap_append_phase_submits_next_phase(monkeypatch, tmp_path):
     assert body["expected_story_map_version"] == 1
 
 
-def test_script_bible_example_lists_rich_keys():
+def _cli_text(result) -> str:
+    """stdout + stderr 合并 —— 示范里的「可选说明」走 stderr（``err=True``）。"""
+    return result.output + (getattr(result, "stderr", "") or "")
+
+
+def test_script_bible_example_shows_narrative_and_optional_legacy_keys():
     from click.testing import CliRunner
 
     runner = CliRunner()
     result = runner.invoke(main, ["script", "bible-example"])
     assert result.exit_code == 0, result.output
-    for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
-        assert key in result.output, key
+    text = _cli_text(result)
+    # 主路：一段整段叙事。
+    assert "summary" in text
+    assert "整段叙事" in text
+    # 存量分栏键仍合法，但示范只把它们当**可选**说明，不再逐键要求。
+    for key in ("desire", "fear", "weakness", "goal", "inner_need"):
+        assert key in text, key
+    assert "不是必填" in text
 
 
-def test_script_episode_outline_example_lists_fields_and_beat_contrast():
+def test_script_episode_outline_example_leads_with_narrative():
     from click.testing import CliRunner
 
     runner = CliRunner()
     result = runner.invoke(main, ["script", "episode-outline-example"])
     assert result.exit_code == 0, result.output
-    for key in ("logline", "active_goal", "conflict", "turn", "state_changes", "anchor_ids"):
-        assert key in result.output, key
-    assert "正确示范" in result.output and "错误示范" in result.output
+    text = _cli_text(result)
+    # 叙事是主路，anchor_ids 是机器索引 —— 两者都在示范里。
+    assert "summary" in text
+    assert "anchor_ids" in text
+    # 「两形任一」的口径必须出现在示范里，否则读者会以为分栏被禁了。
+    assert "两形任一即可" in text
+    assert "正确示范" in text and "错误示范" in text
 
 
-def test_novel_bible_example_lists_rich_keys():
+def test_novel_bible_example_shows_narrative_and_optional_legacy_keys():
     from click.testing import CliRunner
 
     runner = CliRunner()
     result = runner.invoke(main, ["chapter", "bible-example"])
     assert result.exit_code == 0, result.output
-    for key in ("desire", "fear", "weakness", "goal", "inner_need", "secret", "wound"):
-        assert key in result.output, key
+    text = _cli_text(result)
+    assert "summary" in text
+    for key in ("desire", "fear", "weakness", "goal", "inner_need"):
+        assert key in text, key
+    assert "不是必填" in text
 
 
 def test_script_episode_outline_check_valid_and_invalid(tmp_path):
@@ -690,7 +773,9 @@ def test_single_phase_preflight_uses_progress_boundary_and_dynamic_density():
         "range_start": 22,
         "range_end": 30,
         "summary": summary,
-        "key_beats": [],
+        # 每阶段 ≥1 关键转折点是**结构规范**（平台硬拒，CLI 同判据）：
+        # 缺了它粗纲就不成其为粗纲。这个用例原本给的是空数组。
+        "key_beats": [{"title": "录音曝光", "description": "阿澄把录音放给老周听，老周没有否认"}],
     }
     example = {
         "total_units": 80,
@@ -727,6 +812,73 @@ def test_single_phase_preflight_uses_progress_boundary_and_dynamic_density():
         "最后阶段必须覆盖到第 80 集" in issue
         for issue in _rough_outline_phase_issues(final_phase, example, final_progress)
     )
+    # 缺 key_beats 是**阻断**，不是建议：粗纲前检里只有套话才带 [建议] 前缀。
+    without_beats = {**phase, "key_beats": []}
+    blocking = _rough_outline_phase_issues(without_beats, example, progress)
+    assert any("key_beats" in issue for issue in blocking), blocking
+    assert not any(
+        issue.startswith("[建议] ") for issue in blocking if "key_beats" in issue
+    ), blocking
+    # ⚠ 隔离链（Script 的长篇分批回填）与平铺提交**不是同一把尺子**：它的
+    # phase_key 是**进度游标**，必须来自叙事结构模板 —— 这是机器索引要求，
+    # 不是体例要求。作者自定的阶段颗粒度走的是平铺路径
+    # （`_rough_outline_issues`：只看结构规范，与模板划分不同只给 [建议]）。
+    assert _rough_outline_phase_issues(
+        {**phase, "phase_key": "author_named_phase"}, example, progress
+    ) == ["阶段 author_named_phase 不属于当前叙事结构"]
+
+
+def test_flat_rough_outline_allows_author_chosen_granularity():
+    """平铺提交：作者自定阶段颗粒度（1-5 集 / 1-10 集一段）只给建议、不阻断。
+
+    体例拍板（2026-09-19）。此前 CLI 拿「摘要句子数」去比 `max(8, 区间长度)` ——
+    单位就抄错了，且它让「1-10 集颗粒度」根本做不出来。硬拒只剩**结构规范**。
+    """
+    from cli_anything.scriptnow.scriptnow_cli import (
+        _rough_outline_issues,
+        rough_outline_advisory_issues,
+        rough_outline_blocking_issues,
+    )
+
+    example = {
+        "total_units": 20,
+        "phases": [  # 结构给出的**建议**划分（两个阶段）
+            {"ordinal": 1, "phase_key": "template_a", "range_start": 1, "range_end": 15},
+            {"ordinal": 2, "phase_key": "template_b", "range_start": 16, "range_end": 20},
+        ],
+    }
+    phases = [  # 作者按自己的颗粒度分：1-5 集一段 + 6-20 集一段
+        {
+            "ordinal": 1, "phase_key": "author_first_five",
+            "range_start": 1, "range_end": 5,
+            "summary": "阿澄从老屋取回录音机。",
+            "key_beats": [{"title": "录音到手", "description": "阿澄从老屋取回录音机"}],
+        },
+        {
+            "ordinal": 2, "phase_key": "author_rest",
+            "range_start": 6, "range_end": 20,
+            "summary": "证据链逐层铺开。",
+            "key_beats": [{"title": "证据链铺开", "description": "证人逐个改口"}],
+        },
+    ]
+    issues = _rough_outline_issues(phases, example, range_label="集")
+    blocking = rough_outline_blocking_issues(issues)
+    assert blocking == [], blocking
+    advices = rough_outline_advisory_issues(issues)
+    assert advices and all(item.startswith("[建议] ") for item in advices)
+
+    # 结构规范照旧阻断：区间必须从 1 起连续铺满。
+    gapped = [phases[0], {**phases[1], "range_start": 7}]
+    assert rough_outline_blocking_issues(
+        _rough_outline_issues(gapped, example, range_label="集")
+    ), "区间有缺口必须阻断"
+
+    # 每阶段 ≥1 key_beats 同样是结构规范（平台硬拒，CLI 同判据）。
+    thin = [phases[0], {**phases[1], "key_beats": []}]
+    thin_blocking = rough_outline_blocking_issues(
+        _rough_outline_issues(thin, example, range_label="集")
+    )
+    assert any("key_beats" in item for item in thin_blocking), thin_blocking
 
 
 def test_script_storymap_rebuild_start_and_phase_flow(monkeypatch, tmp_path):
@@ -849,7 +1001,28 @@ def test_script_blueprint_extend_submits_sparse_patch_for_server_merge(monkeypat
     assert call.args[1] == "/script/projects/p1/blueprints/extend"
     assert call.kwargs["headers"] == {"X-Review-Token": "patch-token"}
     assert call.kwargs["json_body"]["anchors"][0]["id"] == "event:new-clue"
+    assert call.kwargs["json_body"]["anchors"][0]["kind"] == "event"
     assert json.loads(result.output)["merged_full_blueprint"] is True
+
+
+def test_script_blueprint_extend_keeps_quote_and_arc_kinds(monkeypatch, tmp_path):
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    anchors = [
+        {"id": "arc:new", "kind": "arc", "name": "新弧线"},
+        {"id": "quote:new", "kind": "quote", "name": "新金句"},
+    ]
+    patch_file = tmp_path / "blueprint-patch.json"
+    patch_file.write_text(json.dumps({"anchors": anchors}), encoding="utf-8")
+    session = Mock()
+    session.request.return_value = {"id": "candidate-merged", "status": "active"}
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(main, [
+        "script", "blueprint-extend", "p1", str(patch_file),
+        "--review-token", "patch-token", "--json",
+    ])
+    assert result.exit_code == 0, result.output
+    assert session.request.call_args.kwargs["json_body"]["anchors"] == anchors
 
 
 def test_rough_outline_phase_normalization_matches_server_defaults():

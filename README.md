@@ -36,13 +36,17 @@
 - **双域阶段语义**：叙事阶段不决定小说卷边界；剧本 `volume_two` 表示每集场数，阶段比例据此按每集场数解释。
 - **新增卷章 = 纯追加（服务端硬门禁）**：`storymap append-volume` / `storymap append-chapters` / `storymap append-phase` 只尾部新增，已有卷章
   id/序号/标题/字数完全不动；纯追加形状（含任意位置纯新增）的全量提案被服务端拒绝并指引追加通道；**全置换（retained=0）的普通全量提案同样被拒绝**——恢复旧结构唯一合法通道是 `novel/script storymap-restore`（服务端按归档镜像校验放行），全新结构仅限首次创建（空结构）或 storymap-rebuild-* 隔离链；被替换的旧结构自动归档，平台「结构历史」可查看导出。
-- **集纲 / 章纲先于正文**：StoryMap 不能只提供 episode/scene 或 volume/chapter 容器。剧本每个
-  `episode` 需填写平铺字段 `logline`、`active_goal`、`conflict`、`turn`、`state_changes`、`anchor_ids`，并给
-  `title`（**改后的集名**）与 `source_titles`（原著章名原名，仅用于追溯）；可用
-  `script episode-outline <pid> <episode_id> @outline.json` 补单集；
-  小说每个 `chapter` 需填写嵌入的 `outline`（`summary`/`logline`、`active_goal`、`conflict`、`turn`、
-  `state_changes`，锚点可来自 outline 或 beat）；先运行
-  `script/novel planning-quality`，全量通过并经作者采纳后才可写正文。历史章节（已有正文）可读可写，不受章纲字段缺失影响；新章节必须带完整章纲（提交前可用 `chapter outline-check` 自查、`chapter outline-example` 看结构示范）。
+- **集纲 / 章纲先于正文，但体例两形任一即可**：StoryMap 不能只提供 episode/scene 或
+  volume/chapter 容器。剧本每个 `episode` 交付**任一种可读形态**：① 一段整段叙事
+  （`summary`；`logline` 与之等价）；或 ② 三栏细化（`active_goal` + `conflict` + `turn` 齐备 ——
+  缺一栏都不算一种形态）。`state_changes` **不是准入条件**（「没标注」≠「没有变化」，
+  分析里以 `turns: null` / `turns_unannotated` 显式报出）。`anchor_ids` 仍**必填**，
+  但它是**机器索引**而不是写作栏目，可由集级字段或本集任一节拍承载。
+  另外仍须给 `title`（**改后的集名**）与 `source_titles`（原著章名原名，仅用于追溯）；
+  可用 `script episode-outline <pid> <episode_id> @outline.json` 补单集；
+  小说每个 `chapter` 需填写嵌入的 `outline`（同一套两形判据：`summary`/`logline` 或三栏齐备，
+  锚点可来自 outline 或 beat）；先运行
+  `script/novel planning-quality`，全量通过并经作者采纳后才可写正文。历史章节（已有正文）可读可写，不受章纲字段缺失影响；新章节必须带可读章纲（提交前可用 `chapter outline-check` 自查、`chapter outline-example` 看结构示范）。
 - **集名必须改写（服务端硬门禁）**：提取阶段要求原著章名逐字照抄是对的，但**集名不能照抄**——网文标题
   多为引流词（如『第27章 你可懂了？』），照抄等于让观众从集名读不出本集发生了什么。集名要写进本集当下的
   冲突对象、主角动作或局面反转；只把章号摘掉、引流词原样保留同样被 `episode_title_rewrite` 判为照抄（revise）。
@@ -51,7 +55,7 @@
   与 `storymap-rebuild-propose` 会跑覆盖矩阵，**无任何一集承载即整体拒绝并列名**；确实要删的节点，在该蓝图
   锚点 payload 写 `intentionally_dropped: true` 与 `drop_reason: "理由"` 后重新采纳蓝图——不允许不声不响地丢掉一个关键节点。
 - **金句是可选锚点类别**：`kind: "quote"`（别名 quotes / signature_line / signature_lines / golden_line /
-  key_line，原句放 `payload.description`）不是每部戏都盘得出来，所以**不要求六类齐全**；但一旦采纳入蓝图就受
+  key_line，原句放 `payload.description`）不是每部戏都盘得出来。**所有锚点类别都随故事需要选取，不要求凑齐六类**；但一旦采纳入蓝图就受
   覆盖矩阵约束——金句必须被**分配**到某一集，而不是碰运气看写手记不记得。名场面是场景、金句是可以单独传播的
   那一句话，两件事都要点名，不要互相代替。
 - **量化仪表盘（只读派生视图）**：`scriptnow script analytics <作品号> [--top N] [--json]` → 每集节拍密度
@@ -266,7 +270,7 @@ scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_i
 scriptnow novel adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
 scriptnow novel propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
 scriptnow novel outline <pid> --text "一句梗概" --review-token <提交审阅凭证>
-scriptnow novel outline-adopt <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow novel outline-adopt <pid> --candidate-id <candidate_id> --review-token <采纳审阅凭证>
 scriptnow novel rough-outline-example <pid>                 # 取结构建议
 scriptnow novel rough-outline-check <pid> @rough_outline.json  # 自查
 scriptnow novel rough-outline <pid> @rough_outline.json --review-token <提交审阅凭证>
@@ -315,7 +319,7 @@ scriptnow review candidate-preview script <pid> story_core_candidate <candidate_
 scriptnow script adopt-core <pid> <candidate_id> --review-token <采纳审阅凭证>
 scriptnow script propose <pid> blueprint @blueprint.json --review-token <提交审阅凭证>
 scriptnow script outline <pid> --text "一句梗概" --review-token <提交审阅凭证>
-scriptnow script outline-adopt <pid> <candidate_id> --review-token <采纳审阅凭证>
+scriptnow script outline-adopt <pid> --candidate-id <candidate_id> --review-token <采纳审阅凭证>
 scriptnow script rough-outline-example <pid>                 # 取结构建议
 scriptnow script rough-outline-start <pid>                  # 长篇开隔离链
 scriptnow script rough-outline-progress <pid>               # 回读阶段进度
@@ -351,15 +355,15 @@ scriptnow script adopt-scene <pid> scene-1-1 <rev> --human --review-token <定�
 | chapter | 小说章节：**outline（单章补纲）/ outline-batch（批量补纲）/ outline-check（章纲自查）/ outline-example（章纲结构示范）/ bible-example（人物圣经范例）** / list / show / generate / **batch（自动批次创作：2–3 章一批、串行、须作者审查）** / quality（--standard 内容/备案/千部）/ adopt / propose（本地回传） |
 | scene | 剧本场次（chapter 的剧本侧对称）：list / show / generate / adopt（alias of script adopt-scene）/ propose（本地回传）/ batch（批量串行）/ quality / diff |
 | storymap | 跨域共享结构命令（novel+script 通用）：state / generate / **append-volume（新增卷，纯追加）** / **append-chapters（新增章，纯追加）** / **append-phase（按叙事阶段提交下一未完成阶段，Novel 按全书章区间）** / **phases（按叙事结构推导的阶段计划预览）** / adopt（**高危，需 --confirm**） / **structures（内置 + 结构库已存模板）** / **structure-save（命名结构存库，--description/--medium 元数据）** / **structure-delete**；归档导出/恢复候选走分域命令 `novel storymap-restore` / `script storymap-restore`；隔离重建走各域 storymap-rebuild-* 链 |
-| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / outline / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
-| script | 剧本创作链：story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）** / **analytics（分集量化仪表盘：节拍密度/冲突分量/角色戏份分布/关键节点覆盖矩阵，确定性算出，只读）** |
+| novel | 小说创作链：story-cores / blueprint / adopt-core / adopt-blueprint / bible-candidates / bible-candidate-preview / bible-candidate-adopt / outline / outline-candidates / outline-adopt-preview / outline-adopt / outline-status / graph（叙事图谱对账）/ planning-quality / planning-status / ready-check / propose（本地 JSON 导入）/ orchestrate / **rough-outline 平铺链：rough-outline / adopt / check / example** / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）**；重建须先采纳小说粗纲，阶段按全书章区间且不强制一阶段一卷 |
+| script | 剧本创作链：story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-candidates / outline-adopt-preview / outline-adopt / outline-status / **rough-outline 分阶段链：-start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example / bible-candidates / bible-candidate-preview / bible-candidate-adopt** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap（高危）/ planning-quality / **ready-check** / propose（本地 JSON 导入）/ adopt-scene / scene / scene-list / scene-show / scene-propose（--help-format/--example；--auto-adopt 已停用）/ scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild 隔离重建链：start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive（旧结构归档读取）/ storymap-restore（归档导出恢复候选）** / **analytics（分集量化仪表盘：节拍密度/冲突分量/角色戏份分布/关键节点覆盖矩阵，确定性算出，只读）** |
 | storyboard | 分镜回填链：state / source-preflight / source-import / source-range / source-revoke / propose / **candidate-preview / adopt（内容绑定审阅凭证）** / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export；规划板是显式单场操作，不写 shot.frame_refs |
 | translate | 故事归化：create / analyze-source / target-contract / strategies / mappings |
 | cover | 封面：package（平台生成包装包）/ package-propose（Agent 自主提交包装文案）/ package-show / models / specs / generate（默认 1 张 1024×1600）/ list / delete |
 | export | 导出交付：options / create / **preview（交付范围审阅，返回一键审阅地址）** / download / zip；剧本 working DOCX 含每场制作信息 |
 | skill | Skill 工坊：**setup（按推荐预设与作者点选共建，服务端编译并挂载；剧本域含 Method DNA）** / craft（六问深度共创、预检、确认、挂载回读）/ list / create / **detail（个人 Skill 摘要）** / update / versions / archive / mount / **unmount（仅解除本项目挂载，需 --confirm）** / mounts / upload；**method-current / method-compile / method-compare / method-bind / method-resolve**（服务端 Method DNA 核心密码版本与 scope 解析）；**growth**（方法论进化）；**canary**（版本灰度） |
 | admin | 管理员专用（仅 is_admin，非管理员 403）：status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
-| run | 运行排查：status / events |
+| run | 执行权：claim / renew / revoke / stop-status；运行排查：status / events |
 | feedback | 发送严格无内容的 v2 质量事件；本地诊断默认关闭，须先 `doctor --enable-diagnostics MINUTES` 限时开启，`--send` 前再次交互确认；不采集参数、详情、备注、路径、ID 或正文 |
 | version / self-upgrade / config | 版本查看（--check 强制联网检查）/ 自动升级（先检查、用户确认后执行；启动时会后台低频提示新版）/ `config on|off` 开启或关闭「有新版本时自动升级」（默认关闭；开启后后台自动升级并在升级前后通知，不阻塞命令） |
 
@@ -490,6 +494,12 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   也**禁止**读取或打印 CLI 会话文件 —— 会话归宿主管，「未登录」时先让宿主重新下发，
   仍不行才把 `scriptnow login --device` 指给用户。
 - **审阅凭证精确绑定**：凭证绑定用户实际阅读的可读 JSON；解析器默认值不得被当作内容变化。
+- **候选提交响应丢失时原样重试**：dsh 正文及双域 story_cores、blueprint、synopsis、
+  rough_outline、storymap、逐人人物小传、单集/单章纲使用同一执行凭据、请求身份与内容重发；回执绑定 attempt、项目、资源、作者和
+  内容摘要。撤销后的旧 attempt 只能取回自己已保存的回执，新 attempt 不能冒领。
+  梗概与人物小传保留不可变候选号，采纳时必须指明该号并经过独立人审链。旧 `--review-token`
+  兼容路径仍按原作用域；旧路径显式 `--request-key` 仅剧本 blueprint 接受。
+  结构追加与重建、正式采纳与导出尚不能按此回执规则推断可恢复。
 - **编排前置：Skill 是逐章/逐场创作前的必然门禁（MANDATORY，且须健壮性完善）**：
   创作意图明确且项目落地后，默认用 `skill setup <pid>` 与作者按推荐预设点选共建
   （服务端编译挂载，剧本域含 Method DNA）；需要深度定制时先与用户规划专属方法论
@@ -500,11 +510,17 @@ SKILL.md 位于 [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/scriptno
   premise/tone/world_setting/genre/structure/卷章数/字数等；不要依赖 `--inspire`，也不要建裸项目。
 - **规划回填优先**：story_cores / blueprint / storymap 默认由 Agent 本地生成后 `propose` 回填为候选；
   平台端 generate 仅作后备，不要把平台生成当作首选路径。
-- **正文创作双模式（用户明确选择，平台侧不阻塞）**：作者委托 Agent 协助创作只覆盖引导、读取、编排、展示和在明确范围内生成/propose，不会自动扩大为采纳、结构覆盖、删除或发布。默认由平台内真实 AgentScope 主笔完成——`chapter/scene generate`
-  生成候选 → `review preview` 审读 → `adopt`；仅当用户**明确选择本地创作**时，Agent 才在本地写好
-  正文后经 `chapter propose` / `script scene-propose` 回填候选 → `review preview` 审读 →
-  `adopt --human`。未明确选择时一律按平台主笔执行；本规则只约束正文（章节/场次）创作，
-  「规划回填优先」（story_cores / blueprint / storymap 规划三件套）保持不变、不受影响。
+- **dsh 默认主笔**：规划与正文由 dsh 读取平台已采纳事实及方法后完成。逐章/逐场先用
+  `run claim` 取得绑定作品、单元和本次执行的写资格，`skill selected --unit-id
+  --json` 读取选中方法全文与引用；再以 `chapter/scene propose --execution-token
+  --material-digest` 回填候选。平台核对当前方法摘要；`review revision-preview` 展示实际保存的版本。
+  作者明确决定后才可 `review confirm`、`review claim`、`adopt --human`。
+  写资格不能用于采纳；被撤销的旧尝试不能写新候选。平台 `generate` 仅作显式后备。
+  dsh shell 会把 `DSH_SESSION_ID` 随 `run claim` 绑定到 attempt；`run revoke` 先撤销写资格，
+  只有 `engine_stopped=true` 才表示引擎确已停止。未确认时用 `run stop-status` 只读复查。
+  StoryMap 新增用带执行凭据和稳定请求键的 append 命令；完整替换须先开启隔离重建，
+  再由 dsh 用 `novel/script propose <pid> storymap @file --rebuild-direct --execution-token <凭据>`
+  一次保存候选。阶段式重建仅为超长作品的可选路径，正式采纳仍需作者确认。
 - **自动批次创作（agent+CLI 侧串行编排）**：`chapter batch <pid> --chapters a,b,c`
   （剧本侧 `scene batch <pid> --scenes a,b,c`）在一批里串行跑 2–3 个正文单元。四道门前置，缺一即拒：
   ① **新手期已过** —— 该作品第一章（剧本：第一场）已有已采纳正文；

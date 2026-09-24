@@ -139,6 +139,22 @@ def test_append_chapters_requires_volume_id(fake_session, runner, tmp_path):
     assert body["chapters"][0]["id"] == "chapter-9-1"
 
 
+def test_dsh_append_reuses_one_request_identity_and_write_grant(fake_session, runner, tmp_path):
+    file_arg = _write(
+        tmp_path, "dsh-volumes.json",
+        '[{"id": "volume-3", "ordinal": 1, "title": "第三卷", "chapters": []}]',
+    )
+    args = ["storymap", "append-volume", "pid-1", file_arg,
+            "--execution-token", "ea1.attempt.signature",
+            "--request-key", "append-third-volume", "--json"]
+    first = runner.invoke(main, args)
+    second = runner.invoke(main, args)
+    assert first.exit_code == second.exit_code == 0
+    for call in fake_session.request.call_args_list[-2:]:
+        assert call.kwargs["headers"] == {"X-Creative-Attempt": "ea1.attempt.signature"}
+        assert call.kwargs["json_body"]["idempotency_key"] == "append-third-volume"
+
+
 def test_missing_file_is_rejected(fake_session, runner, tmp_path):
     result = runner.invoke(main, ["storymap", "append-volume", "pid-1", "@nope.json", *REVIEW_ARGS])
     assert result.exit_code != 0

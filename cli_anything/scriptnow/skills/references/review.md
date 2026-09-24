@@ -40,8 +40,8 @@ decision. The Agent may call `review confirm` only to record those exact words; 
 never infer or fabricate them. Then use `review status`, claim the one-time credential with
 `review claim`, and pass it to the target write command. Use
 `review status` to read a user's later adjustment without asking them to repeat
-it. `review preview` may return a `review_url` for long content, but opening the
-page is optional; a user edit saved directly in the frontend is already a human
+it. Every preview command may return a `review_url` for long content, but opening
+the page is optional; a user edit saved directly in the frontend is already a human
 decision and must not trigger a second confirmation. Never expose token copying
 or JSON editing as a user task.
 
@@ -50,6 +50,22 @@ decisions. Never use implicit `--adopt`. After propose, use
 `review candidate-preview` to show the canonical platform candidate; only then
 confirm, claim a new exact-content credential, and call the matching adopt
 command.
+
+For prose (`chapter` / `scene`) there are two distinct packets, and they are
+**not interchangeable**:
+
+- **Submission packet** — `scriptnow review body-preview <novel|script>
+  <project_id> <chapter_id|scene_id> <file> --json`. Scope is `chapter`/`scene`
+  plus the **real unit id**, matching `chapter propose` / `scene propose`.
+- **Adoption packet** — `scriptnow review revision-preview <novel|script>
+  <project_id> <revision_id> --json`. Scope is `chapter_revision` /
+  `scene_revision` plus the revision id, matching the adopt command. The
+  platform expands its own stored revision, so never pass preview content
+  yourself and never guess the scope.
+
+Using the wrong packet is rejected (409) and the whole review has to be redone.
+Never hand-build a prose preview with the generic `review preview` just to fill
+in a scope you were not told.
 
 Keep user-facing replies to: current fact, one proposed next decision, and the
 result after platform read-back. Never dump this file, terminal installation

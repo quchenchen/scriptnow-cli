@@ -36,6 +36,18 @@
 > 完整交付可用 `--sections synopsis,characters,rough_outline,story_map,manuscript`；
 > 平台固定按梗概→人物小传→粗纲→小说章纲/剧本集纲→正文排序，缺少已采纳材料时先补齐再导出。
 
+> 人物小传由 dsh 逐人写成完整叙事。落平台时先 `run claim <项目> bible <人物键>
+> --domain novel|script`，再 `novel/script propose <项目> bibles @bible.json
+> --execution-token <写凭据>` 保存候选；`bible-candidates` 回读，
+> `bible-candidate-preview` 由平台展开原文，作者明确决定后再
+> `bible-candidate-adopt --review-token <采纳凭据>`。写资格不能采纳。
+
+> 补单章/单集纲时，dsh 先 `run claim <项目> chapter_outline <章号> --domain novel`
+> 或 `run claim <项目> episode_outline <集号> --domain script`，再以
+> `chapter outline` / `script episode-outline --execution-token` 回填完整 StoryMap
+> 候选。服务端保留未改动单元；作者审阅结构影响后按 StoryMap 采纳链决定，
+> 不因只是改一段章纲就绕过结构版本门禁。
+
 > **集纲三条硬规矩 + 量化自检（script）**：服务端在 `script propose` / `storymap` /
 > `storymap-rebuild-propose` 上强制三条，不达标整体拒绝或判 revise。
 > ① **集名必须改写**：提取原著时章名逐字照抄是对的，但**集名不能照抄**——网文标题多为
@@ -48,7 +60,7 @@
 > 确实要删的节点，不能靠「提案里不写」——在该蓝图锚点 payload 写
 > `intentionally_dropped: true` 与 `drop_reason` 后重新采纳蓝图。
 > ③ **金句是可选锚点类别**（`kind: "quote"`，别名 quotes / signature_line / signature_lines /
-> golden_line / key_line，原句放 `payload.description`）：不是每部戏都盘得出，所以**不要求六类齐全**；
+> golden_line / key_line，原句放 `payload.description`）：不是每部戏都盘得出；**所有类别都随故事需要选取，不要求凑齐六类**；
 > 但一旦采纳入蓝图就受覆盖矩阵约束——金句必须被**分配**到某一集，而不是碰运气。名场面是场景、
 > 金句是可以单独传播的那一句话，两件事都要点名，不要互相代替。
 > 另：剧本每个 scene 填 `characters`（本场出场角色的蓝图 key）。只填
@@ -59,9 +71,12 @@
 > 覆盖矩阵，全部由已采纳 StoryMap 确定性算出，同一份集纲永远得到同一组数字。**不要自己估算
 > 分钟数或戏份占比**；它同时是交付前自检——覆盖矩阵不完整会在 propose 时被直接拒绝。
 
-> **StoryMap 隔离重建（script，替代一次生成完整80集）**：已有 StoryMap 需要重建时，
-> 不要一次生成全集。用 `script storymap-rebuild-start <pid>` 开启隔离会话（冻结阶段计划），
-> 逐阶段：`storymap phases` 查看阶段边界 → 本地生成该阶段集纲 → `storymap-rebuild-check
+> **StoryMap 隔离重建（script）**：已有 StoryMap 需要真重构时，作者先明确决定并用
+> `script storymap-rebuild-start <pid>` 冻结旧结构版本。dsh 默认在本地整体创作，再用
+> `run claim` 取得 StoryMap 写资格，`script propose <pid> storymap @replacement.json
+> --rebuild-direct --execution-token <凭据> --request-key <请求键>` 一次保存完整候选。
+> 只有开放的对应版本隔离会话能放行全置换；旧结构在正式采纳前不变。
+> 超长作品才可选逐阶段：`storymap phases` 查看边界 → 本地生成该阶段集纲 → `storymap-rebuild-check
 > <pid> <phase_key> @episodes.json`（重复度/因果/场名/状态变化）→ `storymap-rebuild-phase
 > <pid> <phase_key> @episodes.json` 累积。全部阶段完成（会话 ready）后 `storymap-rebuild-propose`
 > 形成完整替换候选（走普通 propose，不改现有 StoryMap）；用户明确确认后才经
@@ -70,8 +85,10 @@
 > 查看单份（含旧集场结构与各场正文快照），novel 镜像 `novel storymap-archives` /
 > `novel storymap-archive`。
 
-> **StoryMap 隔离重建（novel）**：长期小说需要重建 StoryMap 时同样不要一次生成完整长卷。
-> 命令链镜像 script：`scriptnow novel storymap-rebuild-start` / `storymap-rebuild` /
+> **StoryMap 隔离重建（novel）**：同样默认由 dsh 整体创作，先
+> `novel storymap-rebuild-start`，再用 `novel propose <pid> storymap @replacement.json
+> --rebuild-direct --execution-token <凭据> --request-key <请求键>` 保存完整候选。
+> 超长小说可选分阶段命令链：`scriptnow novel storymap-rebuild-start` / `storymap-rebuild` /
 > `storymap-rebuild-phase` / `storymap-rebuild-phase-preview` / `storymap-rebuild-check` /
 > `storymap-rebuild-propose`。必须先采纳小说粗纲（粗纲位于章纲之前；先 `novel
 > rough-outline-example <pid>` 取结构建议，作者可调整边界、须连续覆盖全书），再开启隔离会话
@@ -87,7 +104,9 @@
 > **新增卷/章 = 纯追加通道（服务端硬门禁，禁止用全量替换承载新增）**：
 > 已有 StoryMap 需要新增卷/章时，只允许追加通道 `storymap append-volume <pid> @volumes.json`
 > / `storymap append-chapters <pid> <volume_id> @chapters.json` / `storymap append-phase
-> <pid>`（按阶段计划追加），已有卷章的 id/序号/标题完全不动。服务端按候选形状硬门禁：
+> <pid>`（按阶段计划追加）。dsh 默认先 `run claim storymap`，追加命令带
+> `--execution-token <凭据> --request-key <稳定请求键>`，保存候选后另行人审采纳；
+> 已有卷章的 id/序号/标题完全不动。服务端按候选形状硬门禁：
 > `novel propose storymap` / `script propose storymap` 提交纯追加形状（仅尾部新增、已有单元
 > 全不动）会被拒绝并指引追加通道；任意位置纯新增（头部/中间插入新卷章）同样被拒（服务端
 > 形状门禁 R2）。全置换（retained=0、不保留任何现有单元）的普通全量提案也被拒（R1）——
@@ -120,12 +139,16 @@
   submission runs `planning-quality storymap` (storymap group has no standalone
   propose-preflight command). Correct: "阿澄把录音机放在柜台按下播放键，店里收音机声戛然而止".
 
-- A StoryMap container is not a completed outline: every Script episode must
-  carry flat `logline`, `active_goal`, `conflict`, `turn`, `state_changes`, and
-  `anchor_ids`; every Novel chapter must carry `outline` with `summary` or
-  `logline`, `active_goal`, `conflict`, `turn`, and `state_changes` (anchors may
-  come from `outline.anchor_ids` or beats). Run `planning-quality` across the
-  full map before adoption or batch prose generation.
+- A StoryMap container is not a completed outline, but the unit-outline form is
+  free: deliver ONE readable shape per unit — either ① a single narrative
+  passage (`summary`; `logline` is equivalent) or ② the three columns
+  (`active_goal` + `conflict` + `turn` all present — a partial set is not a
+  shape). `state_changes` is NOT an admission requirement (a missing annotation
+  is reported explicitly as `turns: null` / `turns_unannotated`, never faked as
+  zero). `anchor_ids` stays mandatory as the **machine index**, carried either
+  by the unit field or by any beat's `anchor_ids` (Script `scenes[].beats[]`,
+  Novel `beats[]`). Run `planning-quality` across the full map before adoption
+  or batch prose generation.
 
 - Structural growth is append-only: add volumes/chapters only via
   `storymap append-volume` / `storymap append-chapters` (existing ids, titles,
@@ -138,8 +161,10 @@
 
 - Creative flow is layer-by-layer in a fixed order: adopt story cores and blueprint
   (`novel propose cores` → `adopt-core`; `novel propose blueprint` →
-  `adopt-blueprint`) first, then the synopsis outline (`novel outline` +
-  `outline-adopt`), then the rough outline (`rough-outline-example` →
+  `adopt-blueprint`) first, then the synopsis outline (`run claim ... synopsis`
+  → dsh writes one coherent passage → `novel/script outline --execution-token`
+  → `outline-candidates` → `outline-adopt-preview --candidate-id` → author's
+  decision → `outline-adopt --candidate-id --review-token`), then the rough outline (`rough-outline-example` →
   `rough-outline-check` → `novel rough-outline` → `rough-outline-adopt`;
   Script uses its `rough-outline-start` isolated chain), and only then plan the
   StoryMap where episode/chapter outlines are delivered together (`propose

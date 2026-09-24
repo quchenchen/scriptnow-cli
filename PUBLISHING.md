@@ -8,8 +8,9 @@ No production server deployment is needed for a PyPI release.
 ## One-time setup
 
 1. Verify the owner's PyPI email and enable two-factor authentication.
-2. In GitHub repository settings, create environment `pypi`, restrict deployment
-   to `main`, and require a maintainer review for deployments.
+2. In GitHub repository settings, create environment `pypi` and restrict
+   deployment to `main`. Leave required reviewers and wait timers disabled;
+   the workflow itself checks the repository, branch and requested version.
 3. In PyPI account publishing settings, add a pending GitHub publisher:
    project `scriptnow-cli`, owner `quchenchen`, repository `scriptnow-cli`,
    workflow `publish-pypi.yml`, environment `pypi`.
@@ -29,16 +30,17 @@ PyPI checks eligibility on upload.
    and are explicitly excluded there. Check `--version`, `--help`, and
    `agent-guide --json`, then run CLI tests.
 3. Run monorepo `scripts/sync-cli-release.sh` after authorization for its GitHub
-   and production-distribution writes. It preflights GitHub auth and the reviewed
-   main-only `pypi` environment, synchronizes the mirror, verifies production
-   distribution, then invokes `scripts/publish-cli-pypi.py` automatically.
+   and production-distribution writes. It preflights GitHub auth and the
+   unattended main-only `pypi` environment, synchronizes the mirror, verifies
+   production distribution, then invokes `scripts/publish-cli-pypi.py` automatically.
    Unchanged mirror files no longer cause an early exit that skips PyPI.
 4. The helper dispatches **Publish to PyPI** for the exact source commit/version,
    reuses an active matching run, and checks the run and public PyPI release.
-   It does not auto-approve environment reviews. Exit code 3 means review or
-   execution is pending, not success; follow the printed workflow URL and resume
-   command after approval. Failed builds/uploads and network errors exit 1.
-5. For a PyPI-only release or resuming after approval (no production writes):
+   It waits for CI and the index automatically. Exit code 3 means execution or
+   indexing is still pending, not success; resume the same run without rebuilding.
+   An unexpected GitHub environment review is an error. Failed builds/uploads
+   and network errors exit 1.
+5. For a PyPI-only release or resuming after a polling timeout (no production writes):
    `python3 scripts/publish-cli-pypi.py --version X.Y.Z --commit <full-sha>`.
    Use the emitted `--resume <run-id>` when resuming an existing run. The helper
    verifies the workflow, commit, version, wheel and sdist; it never overwrites an

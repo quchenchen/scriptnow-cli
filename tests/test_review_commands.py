@@ -257,7 +257,10 @@ def test_candidate_preview_uses_canonical_platform_candidate(monkeypatch):
         (
             "script",
             "blueprint-extension",
-            {"anchors": [{"id": "event:new", "kind": "event"}]},
+            {"anchors": [
+                {"id": "arc:new", "kind": "arc"},
+                {"id": "quote:new", "kind": "quote"},
+            ]},
             "blueprint_extension",
         ),
         ("script", "storymap", {"episodes": [{"id": "episode-1"}]}, "storymap"),
@@ -291,6 +294,8 @@ def test_propose_preview_derives_review_scope(
     assert body["resource_id"] == "p1"
     if kind == "outline":
         assert body["preview"]["content"] == {"text": payload}
+    if kind == "blueprint-extension":
+        assert body["preview"]["content"]["anchors"] == payload["anchors"]
     response = json.loads(result.output)
     assert "token 字段" in " ".join(response["next_steps"])
 
@@ -326,4 +331,126 @@ def test_outline_adopt_preview_derives_candidate_scope(monkeypatch, medium):
         "title": "故事梗概候选审阅",
     }
     assert f"/{medium}/projects/p1/creative-reviews/planning-candidate-preview" == session.request.call_args.args[1]
+    assert "token 字段" in " ".join(json.loads(result.output)["next_steps"])
+
+
+# ---------------------------------------------------------------------------
+# 正文预览与 revision 采纳预览（阶段 2A）
+#
+# 这两条命令各自对准一个提交端：正文预览必须用**真实单元 ID** 绑定提交作用域
+# （chapter/scene + 章/场 ID），采纳预览必须用**平台已存 revision** 绑定采纳作用域
+# （chapter_revision/scene_revision + revision ID）。作用域猜错不会在预览期报错，
+# 只会在提交/采纳时 409 —— 所以这里逐字断言。
+# ---------------------------------------------------------------------------
+
+
+_BODY_INPUT = {
+    "novel": (
+        ["block_id"],
+        [
+            {"block_id": "c1-heading", "type": "heading", "text": "第一章 雨夜"},
+            {"block_id": "c1-body", "type": "prose", "text": "她把钥匙放回信封。"},
+        ],
+        "chapter",
+        "chapter-1",
+    ),
+    "script": (
+        ["para_id"],
+        [
+            {"para_id": "p1-slug", "type": "slugline", "text": "内景 · 旧公寓 · 夜"},
+            {"para_id": "p1-act", "type": "action", "text": "她把钥匙放回信封。"},
+        ],
+        "scene",
+        "scene-1",
+    ),
+}
+
+
+@pytest.mark.parametrize("medium", ["novel", "script"])
+def test_body_preview_binds_real_unit_id_and_submit_scope(monkeypatch, tmp_path, medium):
+    _keys, blocks, resource_kind, unit_id = _BODY_INPUT[medium]
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {
+        "packet_id": "packet-body",
+        "review_path": "/projects/p1/reviews/packet-body",
+    }
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    candidate = tmp_path / "blocks.json"
+    candidate.write_text(json.dumps({"blocks": blocks}, ensure_ascii=False), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        ["review", "body-preview", medium, "p1", unit_id, str(candidate), "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    call = session.request.call_args
+    assert call.args[:2] == ("POST", "/creative-reviews/preview")
+    body = call.kwargs["json_body"]
+    assert body["resource_kind"] == resource_kind
+    assert body["resource_id"] == unit_id
+    assert body["preview"]["content"] == {"blocks": blocks}
+    assert body["content_digest"] == _digest({"blocks": blocks})
+
+
+@pytest.mark.parametrize(
+    ("medium", "block"),
+    [
+        ("novel", {"block_id": "c1", "type": "prose", "text": "x", "note": "提交端没有这个字段"}),
+        ("novel", {"para_id": "c1", "type": "prose", "text": "x"}),
+        ("script", {"para_id": "s1", "type": "prose", "text": "x"}),
+    ],
+)
+def test_body_preview_rejects_blocks_the_submit_endpoint_would_reject(
+    monkeypatch, tmp_path, medium, block
+):
+    """预览期的规范化必须与提交端同构，否则摘要会漂移到提交期才炸。"""
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {"packet_id": "packet-body"}
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    candidate = tmp_path / "blocks.json"
+    candidate.write_text(json.dumps({"blocks": [block]}, ensure_ascii=False), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        main,
+        ["review", "body-preview", medium, "p1", "unit-1", str(candidate)],
+    )
+
+    assert result.exit_code != 0
+    assert not session.request.called
+
+
+@pytest.mark.parametrize("medium", ["novel", "script"])
+def test_revision_preview_registers_adoption_scope(monkeypatch, medium):
+    session = Mock()
+    session.base_url = "https://sn.example"
+    session.request.return_value = {
+        "packet_id": "packet-rev",
+        "review_path": "/projects/p1/reviews/packet-rev",
+        "preview": {"content": {"blocks": []}},
+    }
+    import cli_anything.scriptnow.scriptnow_cli as cli
+
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    result = CliRunner().invoke(
+        main, ["review", "revision-preview", medium, "p1", "revision-9", "--json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    call = session.request.call_args
+    assert call.args[:2] == (
+        "POST",
+        f"/{medium}/projects/p1/creative-reviews/revision-preview",
+    )
+    # 平台自己展开已存 revision：CLI 只交 ID，不交正文，也不替它算摘要。
+    assert call.kwargs["json_body"] == {
+        "revision_id": "revision-9",
+        "title": "候选正文审阅",
+    }
     assert "token 字段" in " ".join(json.loads(result.output)["next_steps"])

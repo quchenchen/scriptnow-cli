@@ -56,8 +56,8 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 先完成当前层的讨论、候选与采纳，再依赖它推进下一层。既有项目从平台证明的当前状态
 继续，不要求重做已完成内容。作品篇幅和完成目标由作者决定，不能自行缩成“最小流程”。
 
-规划默认由当前 Agent 本地准备并经 propose 回填；正文默认由平台主笔生成候选。
-只有作者明确选择本地正文创作，才走本地正文回填。两条路径都必须经过平台校验和人工采纳。
+规划和正文默认由 dsh 整体创作，经 CLI propose 回填平台候选；平台负责事实、校验和人工采纳。
+平台 AgentScope generate 只作作者明确选择的后备路径。
 改编项目的**来源画像**同理，**回填优先**：Agent 本地读完原著 → `interpret propose`
 回填画像 + 锚点自证（原文不出本地）→ 作者 `interpret decide --approve`。
 平台通读（`interpret go` / `create` + `read`）是**辅助路径**，且会**同步阻塞到读完**
@@ -79,16 +79,23 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 | 故事核心、蓝图、梗概、粗纲、章纲与集纲；结构追加或重建 | [planning](references/planning.md) |
 | 展示并提交候选、记录人工决定、采纳正式版本 | [review](references/review.md) |
 | 选择写作方法、挂载 Skill、剧本格式与 Method DNA | [methods](references/methods.md) |
-| 逐章或逐场正文、本地正文回填 | [writing](references/writing.md) |
+| dsh 逐章或逐场正文、执行权领取与续租、候选回填 | [writing](references/writing.md) |
 | 用户明确要求分镜与制作交付 | [storyboard](references/storyboard.md) |
 
 ## 每次执行都要守住
 
 - 写前读平台状态；同一项目创作写入串行；写后读回，只报告服务器确认的结果。
-- 提交候选与采纳是不同决定。执行前读取 review 说明，展示准确版本，记录作者原话，
-  使用平台发放的一次性凭据；内容改变则重新展示，不伪造决定，不让作者复制 token。
+- 提交候选与采纳是不同决定。dsh 写候选先 `run claim`，长任务到期前
+  `run renew`；`--execution-token` 只授权候选保存。采纳前读取 review 说明、
+  展示准确版本、记录作者原话，再用平台的一次性审阅凭据；内容改变则重新展示。
+- 取消时 `run revoke` 先撤销写资格；若 `engine_stopped=false`，用 `run stop-status`
+  只读复查，不重复发取消去误停同会话的后继任务。
 - 新增结构走 `storymap append-volume` / `append-chapters` 或当前合法追加通道。
   重排、删除、替换属于不同操作，先解释影响并取得明确授权，保留归档恢复路径。
+- dsh 追加结构时用 `run claim storymap` 和带 `--execution-token --request-key` 的追加命令保存候选。
+  真重构先由作者明确启动 `storymap-rebuild-start`，再用
+  `novel/script propose <pid> storymap @file --rebuild-direct --execution-token <凭据>`
+  整体保存候选；超长作品才按需选分阶段链。采纳仍单独授权并归档旧结构。
 - 生成返回 run_id 后跟踪同一任务；失败先查状态和错误，不重复启动，不把失败说成完成。
 - 缺少权限、规则或前置材料时，说明实际缺口。不能改用体外项目、猜造数据或绕过门禁。
 - 导出前核对范围与正式版本；导出后检查文件是否实际下载、可打开、内容完整。

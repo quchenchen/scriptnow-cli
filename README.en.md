@@ -236,7 +236,7 @@ scriptnow review candidate-preview novel <pid> story_core_candidate <candidate_i
 scriptnow novel adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
 scriptnow novel propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
 scriptnow novel outline <pid> --text "one-line synopsis" --review-token <submission-review-token>
-scriptnow novel outline-adopt <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow novel outline-adopt <pid> --candidate-id <candidate_id> --review-token <adoption-review-token>
 scriptnow novel rough-outline-example <pid>            # structural suggestion
 scriptnow novel rough-outline-check <pid> @rough_outline.json
 scriptnow novel rough-outline <pid> @rough_outline.json --review-token <submission-review-token>
@@ -265,7 +265,7 @@ scriptnow review candidate-preview script <pid> story_core_candidate <candidate_
 scriptnow script adopt-core <pid> <candidate_id> --review-token <adoption-review-token>
 scriptnow script propose <pid> blueprint @blueprint.json --review-token <submission-review-token>
 scriptnow script outline <pid> --text "one-line synopsis" --review-token <submission-review-token>
-scriptnow script outline-adopt <pid> <candidate_id> --review-token <adoption-review-token>
+scriptnow script outline-adopt <pid> --candidate-id <candidate_id> --review-token <adoption-review-token>
 scriptnow script rough-outline-example <pid>            # structural suggestion
 scriptnow script rough-outline-start <pid>             # long-form isolated chain
 scriptnow script rough-outline-progress <pid>          # read back phase progress
@@ -307,15 +307,15 @@ as a writer-facing export file yet.
 | storymap | Cross-domain structure commands (novel+script share): state / generate / **append-volume (add volume, append-only)** / **append-chapters (add chapters, append-only)** / **append-phase (submit next phase; Novel uses whole-book chapter ranges, not forced volumes)** / **phases (narrative-structure phase plan)** / adopt (**HIGH-RISK, requires --confirm**) / **structures (built-ins + saved library templates)** / **structure-save (name a structure; --description/--medium metadata)** / **structure-delete**; archive export/restore candidates use the per-domain `novel storymap-restore` / `script storymap-restore`; isolated rebuild runs on the per-domain storymap-rebuild-* chain |
 | agent-guide | Agent operating contract (--json structured): platform is the source of truth, planning backfill-first, episode/chapter outline gate, background generation with run-status polling, StoryMap restructuring needs explicit user authorization |
 | authorize | **DEPRECATED** — Issue a one-time "human decision authorization token" (in-conversation text-authorization channel, reuses the login session — no re-login): `--chapter/--scene` scope the target, `--digest` binds the user-read content; the token powers `chapter adopt --human --token` / `scene adopt --human --token` finalized-by-human writes. New flows use `review confirm → claim → --review-token` instead |
-| novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / outline / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)**; rebuilding requires the novel rough outline adopted first, phases use whole-book chapter ranges and do not force one phase per volume |
-| script | Script chain: story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-adopt / outline-status / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)** / **analytics (per-episode quantified dashboard: beat density / conflict components / character screen time / key-node coverage matrix, deterministic and read-only)** |
+| novel | Novel chain: story-cores / blueprint / adopt-core / adopt-blueprint / bible-candidates / bible-candidate-preview / bible-candidate-adopt / outline / outline-candidates / outline-adopt-preview / outline-adopt / outline-status / graph (story-graph reconciliation) / planning-quality / planning-status / ready-check / propose (local JSON import) / orchestrate / **rough-outline flat chain: rough-outline / adopt / check / example** / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)**; rebuilding requires the novel rough outline adopted first, phases use whole-book chapter ranges and do not force one phase per volume |
+| script | Script chain: story-cores / blueprint / adopt-blueprint / adopt-core / outline / outline-candidates / outline-adopt-preview / outline-adopt / outline-status / **rough-outline phased chain: -start / -phase / -progress / -propose / -phase-preview / -check** / episode-outline / **episode-outline-check / episode-outline-example** / **bible-example / bible-candidates / bible-candidate-preview / bible-candidate-adopt** / state / storymap / **storymap-phases / storymap-append-phase** / adopt-storymap (high-risk) / planning-quality / **ready-check** / propose (local JSON import) / adopt-scene / scene / scene-list / scene-show / scene-propose (--help-format/--example; --auto-adopt is disabled) / scene-batch / scene-quality / scene-diff / quality-report / **storymap-rebuild isolated chain: start / rebuild / rebuild-phase / rebuild-phase-preview / rebuild-check / rebuild-propose** / **storymap-archives / storymap-archive (replaced-structure archive reads) / storymap-restore (export an archive as restore candidate)** / **analytics (per-episode quantified dashboard: beat density / conflict components / character screen time / key-node coverage matrix, deterministic and read-only)** |
 | storyboard | Storyboard backfill: state / source-preflight / source-import / source-range / source-revoke / propose / **candidate-preview / adopt (content-bound review credential)** / assets / asset-add / continuity / **scene-board upload|generate|list|inspect|delete** / readiness / export; scene boards are explicit single-scene actions and never write shot.frame_refs |
 | translate | Cross-cultural recreation: create / analyze-source / target-contract / strategies / mappings |
 | cover | Covers: package / package-propose (agent-submitted packaging draft) / package-show / models / specs / generate (defaults to a single 1024×1600) / list / delete |
 | export | Delivery: options / create / **preview (delivery-scope review with a one-click review URL)** / download / zip; script working DOCX includes per-scene production metadata |
 | skill | Skill workshop: **setup (guided preset co-creation with the author; server compiles & mounts; script domain emits Method DNA)** / craft (deep six-question co-create, preflight, confirm, mount read-back) / list / create / **detail (personal skill summary)** / update / versions / archive / mount / **unmount (project-only, requires --confirm)** / mounts / upload; **method-current / method-compile / method-compare / method-bind / method-resolve** (server Method DNA revisions and scope resolution); **growth** (methodology evolution); **canary** (version rollout) |
 | admin | Administrator only (is_admin, 403 otherwise): status / tenant-status / skills / skill-show / skill-update / supply / provider-connect / model-add / image-model-add |
-| run | Ops: status / events |
+| run | Scoped execution: claim / renew / revoke / stop-status; status / events |
 | feedback | Send strict content-free v2 quality events. Local diagnostics are off by default; enable them temporarily with `doctor --enable-diagnostics MINUTES`, then confirm again before `--send`. Arguments, details, notes, paths, IDs, and prose are never collected. |
 | version / self-upgrade / config | show version (--check force-checks the GitHub release mirror) / auto-upgrade (checks, asks for consent, then upgrades; a low-frequency background hint appears at startup) / `config on|off` toggles automatic upgrade on new versions (off by default; when on, upgrades in the background and notifies you, never blocking commands) |
 
@@ -380,7 +380,12 @@ never exist only in background JSON.
 These commands are normally run by the Agent behind the conversation:
 
 ```bash
-# Show and register the complete candidate; this does not write creative content
+# Prose has two dedicated commands; the CLI binds the scope for you (never hand-fill
+# resource_kind/resource_id).
+scriptnow review body-preview novel <pid> <chapter_id> @prose.json   # submission packet: chapter + unit id
+scriptnow review revision-preview novel <pid> <revision_id>          # adoption packet: chapter_revision + revision id
+# Planning candidates use candidate-preview; only custom scopes need the generic preview
+scriptnow review candidate-preview novel <pid> <resource-kind> <candidate_id>
 scriptnow review preview <pid> <resource-kind> <resource-id> @candidate.json
 # After the user's one clear decision, record the exact words and claim a one-time credential
 scriptnow review confirm <packet-id> --decision retain --evidence "Keep this version and continue." --json
@@ -389,6 +394,17 @@ scriptnow review claim <packet-id> --json
 # On adjustment, read the feedback, revise, and preview again; never reuse the old credential
 scriptnow review status <packet-id> --json
 ```
+
+The two prose packets are **not interchangeable**: the submission packet carries
+the prose you are about to propose (`chapter`/`scene` + unit id) while the
+adoption packet carries the version already stored on the platform
+(`chapter_revision`/`scene_revision` + revision id). Using the wrong packet is
+rejected (409) and the review has to be redone from the start.
+
+`review body-preview` / `review revision-preview` / `review preview` all print the
+complete content in the terminal and register its digest; `review status` lets the
+Agent read the user's feedback directly; `--json` serves Agent orchestration only
+and never substitutes for the readable preview.
 
 `review status` lets the Agent read the user's feedback without asking them to
 repeat it. `--evidence` should preserve the user's words, not an Agent summary.
@@ -470,19 +486,30 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   genre/structure/volumes/word-counts with `project direction <pid> --apply @direction.json`;
   do not rely on `--inspire` and do not create bare projects.
 - **Review credentials bind exact content** — bind a credential to the human-readable JSON the user actually read; parser-added defaults must not manufacture a content change.
-- **two modes for prose writing (the user picks; the platform never blocks either)**: delegating creative assistance to an Agent covers guidance, reading, orchestration, presentation, and generation/proposal only; it never expands to adoption, structural replacement, deletion, or publishing. By default
-  the platform is the writer — `chapter/scene generate` produces a candidate → `review preview`
-  → `adopt`. Only when the user explicitly chooses local writing may the Agent write the prose
-  locally and backfill it via `chapter propose` / `script scene-propose` → `review preview` →
-  `adopt --human`. Without an explicit choice, default to the platform-authored path. This rule
-  governs prose (chapters/scenes) only; the planning-trio backfill-first rule (story_cores /
-  blueprint / storymap) is unchanged.
-- **Episode/chapter outline is mandatory before prose** — Script episodes use flat
-  `logline`/`active_goal`/`conflict`/`turn`/`state_changes`/`anchor_ids` plus `title` (the
-  **rewritten** episode title) and `source_titles` (original chapter names, kept only for
-  traceability); Novel chapters embed
-  `outline` with `summary` or `logline`, `active_goal`, `conflict`, `turn`, and `state_changes`
-  (anchors may come from the outline or beats). Run full-map `planning-quality` before adoption.
+- **Retry the same candidate submission after a lost response**: dsh prose and Script/Novel story_cores, blueprint, synopsis, rough_outline, storymap, one-character Bible and per-episode/chapter outline candidates reuse the same execution credential, request key and exact content. A receipt binds the attempt, project, resource, author and content digest. A revoked attempt may recover its own committed receipt; another attempt cannot claim it. Synopsis and character-Bible candidates have immutable IDs and require a separate human review and adoption decision for one ID. The legacy review-token path keeps its original scope. Structure append/rebuild, formal adoption and export do not inherit the new receipt semantics.
+- **dsh authors by default**: dsh reads adopted project facts and methods, then creates planning and
+  prose candidates. For a chapter or scene, `run claim` grants a scoped writing attempt;
+  `skill selected --unit-id --json` delivers the selected methods and references.
+  `chapter/scene propose --execution-token --material-digest` saves a candidate only when
+  its method digest still matches the current selection. Show the actual saved version with
+  `review revision-preview`. Only an explicit author decision permits `review confirm`, `review claim`,
+  and `adopt --human`. The writing token never authorizes adoption; a revoked attempt cannot save a
+  new candidate. Platform `generate` remains an explicit fallback.
+  The dsh shell binds `DSH_SESSION_ID` to `run claim`; `run revoke` withdraws write authority first.
+  Only `engine_stopped=true` confirms the dsh session stopped. Probe with `run stop-status` if unconfirmed.
+  Append StoryMap changes with an execution grant and stable request key. For a full replacement,
+  start an isolated rebuild first, then have dsh submit one complete candidate with
+  `novel/script propose <pid> storymap @file --rebuild-direct --execution-token <grant>`.
+  The phased rebuild remains optional for very long works; adoption still needs the author's decision.
+- **Episode/chapter outlines are mandatory before prose, but their form is free** — deliver ONE
+  readable shape per unit: either ① a single narrative passage (`summary`; `logline` is equivalent)
+  or ② the three columns (`active_goal` + `conflict` + `turn` all present — a partial set is not a
+  shape). `state_changes` is NOT an admission requirement: a missing annotation is reported
+  explicitly as `turns: null` / `turns_unannotated`, never faked as zero. `anchor_ids` stays
+  **mandatory as the machine index**, carried by the unit field or by any beat's `anchor_ids`
+  (Script `scenes[].beats[]`, Novel `beats[]`). Episode `title` must be the **rewritten** title and
+  `source_titles` keeps the original chapter names for traceability. Run full-map `planning-quality`
+  before adoption.
   Backfill one unit with `script episode-outline <pid> <episode_id> @outline.json` or
   `chapter outline <pid> <chapter_id> @outline.json`; each remains a reviewable StoryMap candidate.
 - **Episode titles must be rewritten (server-side hard gate)** — verbatim copying is correct at the
@@ -500,7 +527,7 @@ SKILL.md lives at [`cli_anything/scriptnow/skills/SKILL.md`](cli_anything/script
   payload and re-adopt the blueprint — a key node must never be dropped silently.
 - **Golden lines are an optional anchor kind** — `kind: "quote"` (aliases quotes / signature_line /
   signature_lines / golden_line / key_line; put the line in `payload.description`). Not every show
-  yields them, so the "all six kinds present" rule does not apply; but once adopted into the
+  yields them. Anchor kinds follow the story; no six-kind completeness rule applies. Once adopted into the
   blueprint they fall under the coverage matrix — a golden line must be **assigned** to an episode
   rather than left to luck. A signature scene is a scene and a golden line is the one line that
   travels on its own; name both, never substitute one for the other.
@@ -546,21 +573,14 @@ quality is judged by the agent against the evaluation dimensions above.
 
 ## Agent creation roles & workflow discipline (must-read)
 
-- **Role split (default: the platform is the writer)**: Agent = project manager +
-  quality reviewer; the platform (scene/chapter generation) writes by default —
-  prepare direction/feedback, drive generation, review, demand regeneration,
-  and adopt only passing versions. Only when the user explicitly chooses local
-  writing may the Agent write the prose locally and backfill it via
-  `chapter propose` / `script scene-propose` — never otherwise (no piled-up
-  local draft files).
-- **Stage 1 (immediate)**: create the project at once, then backfill structure
-  via propose (cores/blueprint/storymap, first 5-10 episodes/volumes) — push to
-  the platform instead of accumulating local files.
-- **Stage 2 (per-unit loop)**: per scene/chapter — prepare a detailed feedback
-  brief → generate → review (`scene-show --plain` + `scene-quality`) → if below
-  threshold, regenerate immediately with feedback → adopt only when it passes.
-- **Quality threshold**: 9-10 excellent · 8-9 acceptable · **<8 regenerate
-  immediately** — never adopt unqualified work.
+- **Roles**: dsh and the author develop the story together, plan, draft and review.
+  The platform stores facts, validates candidates and records human adoption.
+  When the author's intent is unclear or the idea is incomplete, dsh asks focused,
+  constructive questions without turning exploration into a form to fill.
+- **Progression**: agree on a creative direction, then submit the planning and
+  prose candidates that the work actually needs. Do not hard-code episode counts,
+  numeric quality thresholds or a fixed number of conversation turns. Review
+  each saved candidate against character action, causality and expression goals.
 - **Progress control**: after each episode/volume, report quality stats and ask
   the user whether to continue.
 
