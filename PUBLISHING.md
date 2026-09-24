@@ -58,36 +58,28 @@ and [PyPA publishing guide](https://packaging.python.org/en/latest/guides/publis
 
 ## Latest verified release
 
-**`0.3.96`** — published 2026-09-11 via
-[workflow run 34612135389](https://github.com/quchenchen/scriptnow-cli/actions/runs/34612135389).
+**`0.4.14`** — published 2026-09-24 via unattended Trusted Publishing
+[workflow run 35981356605](https://github.com/quchenchen/scriptnow-cli/actions/runs/35981356605)
+from mirror commit `55fd04e6f09ba204319fe07e1485c66df7960e59`.
 
 | Artifact | SHA256 |
 |---|---|
-| `scriptnow_cli-0.3.96-py3-none-any.whl` | `c602eacf784fbfa90df375c4727b92ee8100b1c3033468fec3d850dc1ffe0843` |
-| `scriptnow_cli-0.3.96.tar.gz` | `ebe09669c4f9702524562ad4c870ebd9bff51e93093aefc37b6e0faadd5f2dea` |
+| `scriptnow_cli-0.4.14-py3-none-any.whl` | `bd299dd9f554ce8004d384d699019f8a07bd1453b7456f5ce05d4e332d0200c0` |
+| `scriptnow_cli-0.4.14.tar.gz` | `a90510ce512515399ddedbbdf5df9625ae92471966e504e90b77fc271852d0f3` |
 
-Both distributions are listed, unyanked, on the public index; a fresh Python 3.12
-installation from `https://pypi.org/simple` passed `--version` and Skill-bundle
-smoke checks.
+Both distributions are listed, unyanked, on the public index; a fresh isolated
+installation from `https://pypi.org/simple` passed `--version` and
+`agent-guide --json`. The platform-hosted wheel and gateway-preinstalled wheel
+have the same SHA256: `7e08da8ed8e77adcd85bb94ef1e314ca8438463d44c3a6e247747d29b6c0d2ba`.
 
-### Pending: `0.3.98` is on the platform source and the GitHub mirror; PyPI awaits review
+### Historical: `0.3.98` did not reach PyPI
 
-`0.3.98` is live on the platform download source
-(`https://sn.igeewa.com/downloads/scriptnow-cli/version.txt` returns `0.3.98`) and
-on the GitHub mirror (commit `986e502a95e44c739f6f85210903ba7ec6eaa8ea`, tag
-`v0.3.98`). Its PyPI workflow, run
+`0.3.98` previously reached the platform download source and GitHub mirror
+(commit `986e502a95e44c739f6f85210903ba7ec6eaa8ea`, tag `v0.3.98`). Its PyPI workflow, run
 [35183960449](https://github.com/quchenchen/scriptnow-cli/actions/runs/35183960449),
-has a green `build` job and a `publish` job **waiting on the `pypi` environment
-review** — the helper never approves that review itself, so the release is not
-complete until a maintainer does. That is why the snapshot above still says
-`0.3.96`.
-
-Resume after approving (no production writes are repeated):
-
-```bash
-python3 scripts/publish-cli-pypi.py --version 0.3.98 \
-  --commit 986e502a95e44c739f6f85210903ba7ec6eaa8ea --resume 35183960449
-```
+was later **cancelled**; PyPI still returns 404 for that exact version. The
+platform source now serves `0.4.14`, and the old environment review rule has
+been removed for subsequent main-only releases.
 
 `0.3.97` never reached PyPI or the mirror — it lived only on the platform source
 for a few hours before `0.3.98` superseded it. Because the mirror is a
@@ -103,10 +95,9 @@ Registered for that run:
 | platform-served `scriptnow_cli-0.3.98-py3-none-any.whl` | `6ddd29eadc8cb0236ed0b5d225e705dfde63022e317f64ec741c6d9d68a2df7e` |
 | `dsh-integration/vendor/scriptnow-cli/wheels/scriptnow_cli-0.3.98-py3-none-any.whl` (that day's generation; superseded) | `3b2d6e568d930ca822c28c1bcca0538565427753b5233a660233611abda8406e` |
 
-Note these hashes are **per build** — the wheel embeds build timestamps, so a
-rebuild changes them. The platform wheel is built by this release script and the
-vendored one by `dsh-integration` for the gateway image, so the two files of one
-version are never byte-identical.
+Those are **historical per-build** hashes: independent builds embedded different
+timestamps. The current release script publishes the existing vendored wheel to
+the platform source, so 0.4.14 is byte-identical across those two channels.
 
 ### ⚠ One version number = one content (2026-09-17 用户定规)
 
