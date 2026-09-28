@@ -81,6 +81,7 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 | 选择写作方法、挂载 Skill、剧本格式与 Method DNA | [methods](references/methods.md) |
 | dsh 逐章或逐场正文、执行权领取与续租、候选回填 | [writing](references/writing.md) |
 | 用户明确要求分镜与制作交付 | [storyboard](references/storyboard.md) |
+| 小说故事归化、本地原著分析、文化重构与试写 | [recreation](references/recreation.md) |
 
 ## 每次执行都要守住
 

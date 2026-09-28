@@ -1450,6 +1450,7 @@ _AGENT_CONTRACT = {
         "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
         "正文与规划默认由 dsh 在当前创作会话中完成：先通过 scriptnow run claim 取得绑定项目、资源与执行代次的候选写资格，再读取平台事实；正文前用 skill selected --unit-id <单元ID> --json 取得所选方法全文及 material_digest，确认 execution_ready 后使用 chapter/scene propose --execution-token --material-digest 回填候选；规划用对应 propose --execution-token。平台只负责校验、保存、审阅与采纳；平台 AgentScope generate 仅为作者显式选择的后备。作者对 dsh 的委托绝不自动扩大为采纳、结构覆盖、删除或发布。候选写资格不等于采纳授权：作者看到平台回读的完整候选并明确决定后，才运行 confirm/claim 和 adopt。旧执行被撤销或接管后不能写新候选；取消写资格不冒充引擎已停止。",
         "取消时 run revoke 先撤销写资格；只有回执 engine_stopped=true 才表示 dsh 已停。若仍为 false，用 run stop-status 只读复查，不重复发取消。dsh shell 的 DSH_SESSION_ID 随 run claim 绑定到 attempt，旧会话未确认停止前不得接管同任务。",
+        "故事归化专用链：原著文件、抽取全文和逐页阅读留在 Agent 环境，平台旧 analyze-source 已停用。先 translate state/contract 读取基线并保存契约回执，run claim 领取限域写资格，本地分析原作叙事功能、目标文化制度/关系/动机，按需保留、解释、迁移或重构，再用 translate propose @file --contract @contract.json 保存候选；同请求重试复用同一契约。迁移或重构实际文化载体时给因果映射，触及保护项时由作者裁决；不凑类别或固定篇幅。逐章前用本次凭据分别读取 translate state --unit-key <键> --read-kind facts 与 methods，随 propose 提交 methods 回执的 material_digest；未采纳前序单元或任一读取缺失会拒绝。章节以 review-unit 审读，可 revise-unit 另存人工版，再经上述完整人工审阅命令确认、领取凭证并用 translate adopt 独立采纳；manuscript/export 标明基线状态。平台其余生成入口只在作者显式选择时作为后台后备，仍产候选。",
         "StoryMap 普通提案不得偷偷纯追加或全置换。新增卷章用带 execution-token 的 append 通道；作者明确授权真重构后先 storymap-rebuild-start，再由 dsh 整体创作并以 propose storymap --rebuild-direct 保存完整候选，正式替换仍单独人审。分阶段重建只在超长作品按需选用，不强迫作者逐格回填。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：**集纲/章纲写成一段整段叙事**（剧本 episodes[].summary；小说 chapter.outline.summary）——谁要什么 / 卡在哪 / 怎么翻 / 翻完局面变成什么，写在同一段里；分栏字段（logline/active_goal/conflict/turn/state_changes）仍可读写但不是必填。anchor_ids 是**机器索引**（剧本 episodes[].anchor_ids 或该集场节拍；小说 outline.anchor_ids 或 beat），必需。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带**可读**的集纲/章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "改编项目的来源画像同样**回填优先**：Agent 本地读完原著 → `scriptnow interpret propose <作品号> --spec` 取回填规范 → `scriptnow interpret propose <作品号> --profile @profile.json` 回填「来源画像 + 锚点自证」（原文不出本地，平台只校验与采纳，**不调模型、不阻塞**）→ 作者复核锚点后 `scriptnow interpret decide <作品号> <profile-id> --approve`。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**（大作品数分钟起，宿主工具轮候窗口常撑不住），不要当默认入口、也不要在其中干等。改编项目在**来源画像获批之前**不得生成任何规划或正文候选 —— 这条门禁不因来源来自本地而放松：回填产出的是候选，不是免批后门；锚点为空或画像缺 story_core/characters/central_conflict 会被平台直接拒收（422）。",
@@ -1521,7 +1522,7 @@ _AGENT_CONTRACT = {
 # available through `--full` for a human or a deliberate deep inspection.
 _AGENT_RUNTIME_CONTRACT = {
     "guide": "scriptnow-agent-runtime-contract",
-    "contract_version": "16",
+    "contract_version": "18",
     "title": "ScriptNow Agent 运行契约",
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
@@ -1530,6 +1531,7 @@ _AGENT_RUNTIME_CONTRACT = {
         f"创作顺序固定为 12 步（guide --step 1..12）：{_STEP_ONE_NAME} → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
         "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
         "来源画像回填优先（改编项目）：改编项目的来源画像默认由 Agent 本地读完原著后 `scriptnow interpret propose <作品号> --profile @profile.json` 回填（须带锚点自证 attestation，原文不出本地；平台只校验与采纳，不调模型、不阻塞），再由作者 `scriptnow interpret decide <作品号> <profile-id> --approve` 批准。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**，不作为默认入口。来源画像获批之前，改编项目不得生成任何规划或正文候选 —— 锚点为空、或画像缺 story_core/characters/central_conflict 会被平台拒收（422）；回填产出的是候选，不是免批后门。",
+        "故事归化：原著在 Agent 本地完整读取，平台不接收抽取全文，旧 analyze-source 已停用；translate state/contract 并保存契约文件 → run claim（归化 kind）→ 本地创作 → translate propose --contract @contract.json --execution-token --request-key 回填候选。同请求重试复用同一契约。策略说明原元素叙事功能，再决定保留/解释/迁移/重构；实际迁移或重构文化载体才须映射，触及保护项才须作者裁决。试写验证最大文化与因果风险。逐章前按真实工作包键分别用 translate state --read-kind facts 与 methods 取得本次 attempt 的服务端读取回执，随候选提交 material_digest；读取不等于应用，原著通读仍只可自证。章节 review-unit / revise-unit 后作者另行按上述完整命令确认并领取审阅凭证，再执行 translate adopt；manuscript/export 明示当前或历史基线。其余平台生成只作显式后台后备。",
         "正文与规划默认由 dsh 在当前创作会话中完成：先通过 scriptnow run claim 取得绑定项目、资源与执行代次的候选写资格，再读取平台事实；正文前用 skill selected --unit-id <单元ID> --json 取得所选方法全文及 material_digest，确认 execution_ready 后使用 chapter/scene propose --execution-token --material-digest 回填候选；规划用对应 propose --execution-token。平台只负责校验、保存、审阅与采纳；平台 AgentScope generate 仅为作者显式选择的后备。作者对 dsh 的委托绝不自动扩大为采纳、结构覆盖、删除或发布。候选写资格不等于采纳授权：作者看到平台回读的完整候选并明确决定后，才运行 confirm/claim 和 adopt。旧执行被撤销或接管后不能写新候选；取消写资格不冒充引擎已停止。",
         "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
@@ -2647,6 +2649,8 @@ def run_events(ctx: click.Context, run_id: str, last_event_id: str | None, json_
 @click.argument("project_id")
 @click.argument("resource_kind", type=click.Choice([
     "scene", "chapter", "blueprint", "story_cores", "synopsis", "rough_outline", "storymap", "bible", "episode_outline", "chapter_outline",
+    "source_story_model", "target_story_contract", "recreation_strategy",
+    "cultural_mapping_set", "protection_conflict_decision", "pilot", "scale_plan", "recreation_unit",
 ]))
 @click.argument("resource_id")
 @click.option("--domain", type=click.Choice(["script", "novel"]), default=None,
@@ -2662,7 +2666,10 @@ def run_claim(
     task_key: str, attempt_key: str, takeover_generation: int | None, json_output: bool,
 ) -> None:
     """Claim one scoped dsh candidate-writing attempt; adoption is separate."""
-    inferred = {"scene": "script", "chapter": "novel"}.get(resource_kind)
+    inferred = {"scene": "script", "chapter": "novel", **{kind: "novel" for kind in (
+        "source_story_model", "target_story_contract", "recreation_strategy",
+        "cultural_mapping_set", "protection_conflict_decision", "pilot", "scale_plan", "recreation_unit",
+    )}}.get(resource_kind)
     if inferred is not None and domain is not None and domain != inferred:
         raise click.ClickException("resource_kind 与 --domain 不匹配")
     if inferred is None and domain is None:
@@ -9796,7 +9803,192 @@ def script_scene_diff(
 @main.group("translate")
 @click.pass_context
 def translate_group(ctx: click.Context) -> None:
-    """故事归化（翻译改编）：目标市场契约 / 源分析 / 策略 / 映射。"""
+    """故事归化：Agent 本地细读原著、文化重构、候选回填与人审。"""
+
+
+_RECREATION_KINDS = [
+    "source_story_model", "target_story_contract", "recreation_strategy",
+    "cultural_mapping_set", "protection_conflict_decision", "pilot",
+    "scale_plan", "recreation_unit",
+]
+
+
+@translate_group.command("state")
+@click.argument("project_id")
+@click.option("--unit-key", default=None, help="按归化工作包键读取本次正文事实或方法")
+@click.option("--read-kind", type=click.Choice(["facts", "methods"]), default=None)
+@click.option("--execution-token", envvar="SCRIPTNOW_CREATIVE_ATTEMPT", default=None)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_state(ctx: click.Context, project_id: str, unit_key: str | None,
+                    read_kind: str | None, execution_token: str | None,
+                    json_output: bool) -> None:
+    """Read adopted baseline, candidates and dependency freshness."""
+    if unit_key or read_kind:
+        if not unit_key or not read_kind or not execution_token:
+            raise click.ClickException("单元读取须同时提供 --unit-key、--read-kind 和 --execution-token")
+        _emit(_session(ctx).request(
+            "POST", f"/cross-cultural-recreations/by-project/{project_id}/work-packages/{unit_key}/reads/{read_kind}",
+            headers={"X-Creative-Attempt": execution_token}, write=True,
+        ), json_output)
+        return
+    _emit(_session(ctx).request("GET", f"/cross-cultural-recreations/by-project/{project_id}"), json_output)
+
+
+@translate_group.command("contract")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(_RECREATION_KINDS))
+@click.option("--work-package-key", default=None, help="recreation_unit 的工作包键")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_contract(ctx: click.Context, project_id: str, kind: str,
+                       work_package_key: str | None, json_output: bool) -> None:
+    """Read current dependency versions before local creation."""
+    _emit(_session(ctx).request("GET", f"/cross-cultural-recreations/by-project/{project_id}/contract/{kind}",
+                                params={"work_package_key": work_package_key} if work_package_key else None), json_output)
+
+
+@translate_group.command("propose")
+@click.argument("project_id")
+@click.argument("kind", type=click.Choice(_RECREATION_KINDS))
+@click.argument("file_path")
+@click.option("--contract", "contract_path", required=True, help="保存的 translate contract --json 回执文件；重试须复用同一份")
+@click.option("--execution-token", envvar="SCRIPTNOW_CREATIVE_ATTEMPT", required=True)
+@click.option("--request-key", required=True)
+@click.option("--work-package-key", default=None, help="仅 recreation_unit 需要")
+@click.option("--material-digest", default=None, help="recreation_unit 的服务端选中方法回执摘要")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_propose(
+    ctx: click.Context, project_id: str, kind: str, file_path: str,
+    contract_path: str,
+    execution_token: str, request_key: str, work_package_key: str | None,
+    material_digest: str | None,
+    json_output: bool,
+) -> None:
+    """Submit one local-Agent result as a candidate; never adopts it."""
+    payload = read_json_object(file_path)
+    contract = read_json_object(contract_path)
+    if contract.get("project_id") != project_id or contract.get("kind") != kind:
+        raise click.ClickException("归化契约的项目或候选种类与本次提交不一致")
+    if contract.get("missing_prerequisites") or contract.get("missing_prior_units") or contract.get("stale_prerequisites"):
+        raise click.ClickException("归化契约尚未就绪，请先处理前置与需复核项")
+    if kind == "recreation_unit" and not work_package_key:
+        raise click.ClickException("recreation_unit 必须指定 --work-package-key")
+    if kind == "recreation_unit" and not material_digest:
+        raise click.ClickException("recreation_unit 必须先读取方法并提供 --material-digest")
+    if kind == "recreation_unit" and contract.get("resource_id") != work_package_key:
+        raise click.ClickException("归化契约工作包键与本次提交不一致")
+    result = _session(ctx).request(
+        "POST", f"/cross-cultural-recreations/by-project/{project_id}/candidates/{kind}",
+        json_body={"payload": payload, "expected_dependencies": contract["dependency_versions"],
+                   "expected_prior_units": contract.get("prior_units") or {},
+                   "material_digest": material_digest,
+                   "request_key": request_key, "work_package_key": work_package_key},
+        headers={"X-Creative-Attempt": execution_token}, write=True,
+    )
+    _emit(result, json_output)
+
+
+@translate_group.command("adopt")
+@click.argument("project_id")
+@click.argument("candidate_id")
+@click.option("--kind", type=click.Choice(["artifact", "unit"]), required=True)
+@click.option("--review-token", required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_adopt(
+    ctx: click.Context, project_id: str, candidate_id: str, kind: str,
+    review_token: str, json_output: bool,
+) -> None:
+    """Adopt a saved candidate after separate human review."""
+    path = (f"/cross-cultural-recreations/by-project/{project_id}/artifacts/{candidate_id}/adopt"
+            if kind == "artifact" else
+            f"/cross-cultural-recreations/by-project/{project_id}/production-units/{candidate_id}/adopt")
+    _emit(_session(ctx).request("POST", path, headers={"X-Review-Token": review_token}, write=True), json_output)
+
+
+@translate_group.command("review-unit")
+@click.argument("project_id")
+@click.argument("unit_id")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_review_unit(ctx: click.Context, project_id: str, unit_id: str, json_output: bool) -> None:
+    """Run the platform's deterministic review on a saved recreation unit."""
+    _emit(_session(ctx).request(
+        "POST", f"/cross-cultural-recreations/by-project/{project_id}/production-units/{unit_id}/review",
+        write=True,
+    ), json_output)
+
+
+@translate_group.command("revise-unit")
+@click.argument("project_id")
+@click.argument("unit_id")
+@click.argument("file_path")
+@click.option("--request-key", required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_revise_unit(ctx: click.Context, project_id: str, unit_id: str,
+                          file_path: str, request_key: str, json_output: bool) -> None:
+    """Save an author-edited title and draft as a new candidate version."""
+    payload = read_json_object(file_path)
+    if not isinstance(payload.get("title"), str) or not isinstance(payload.get("target_language_draft"), str):
+        raise click.ClickException("人工修订文件须包含 title 与 target_language_draft")
+    _emit(_session(ctx).request(
+        "POST", f"/cross-cultural-recreations/by-project/{project_id}/production-units/{unit_id}/revisions",
+        json_body={"title": payload["title"], "target_language_draft": payload["target_language_draft"],
+                   "idempotency_key": request_key}, write=True,
+    ), json_output)
+
+
+@translate_group.command("manuscript")
+@click.argument("project_id")
+@click.option("--work-package-key", "work_package_keys", multiple=True)
+@click.option("--scale-plan-id", default=None, help="历史稿的整书方案 ID")
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_manuscript(ctx: click.Context, project_id: str,
+                         work_package_keys: tuple[str, ...], scale_plan_id: str | None,
+                         json_output: bool) -> None:
+    """Read adopted recreation prose with its exact baseline status."""
+    params: dict[str, Any] = {}
+    if work_package_keys:
+        params["work_package_keys"] = list(work_package_keys)
+    if scale_plan_id:
+        params["scale_plan_id"] = scale_plan_id
+    _emit(_session(ctx).request(
+        "GET", f"/cross-cultural-recreations/by-project/{project_id}/manuscript",
+        params=params or None,
+    ), json_output)
+
+
+@translate_group.command("export")
+@click.argument("project_id")
+@click.option("--work-package-key", "work_package_keys", multiple=True)
+@click.option("--scale-plan-id", default=None, help="历史稿的整书方案 ID")
+@click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_export(ctx: click.Context, project_id: str,
+                     work_package_keys: tuple[str, ...], scale_plan_id: str | None,
+                     output: str, json_output: bool) -> None:
+    """Download the adopted recreation DOCX for a declared baseline."""
+    params: dict[str, Any] = {}
+    if work_package_keys:
+        params["work_package_keys"] = list(work_package_keys)
+    if scale_plan_id:
+        params["scale_plan_id"] = scale_plan_id
+    response = _session(ctx).request(
+        "GET", f"/cross-cultural-recreations/by-project/{project_id}/export.docx",
+        params=params or None, raw=True, timeout=300,
+    )
+    if not response.content.startswith(b"PK"):
+        raise click.ClickException("平台返回的归化稿不是 DOCX 文件")
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(response.content)
+    _emit({"path": str(destination), "bytes": len(response.content),
+           "baseline": response.headers.get("X-ScriptNow-Baseline", "unverified")}, json_output)
 
 
 @translate_group.command("create")
@@ -9840,11 +10032,11 @@ def translate_create(
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def translate_analyze_source(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """Analyze the source work for recreation (blocks until done)."""
-    result = _session(ctx).request(
-        "POST", f"/cross-cultural-recreations/by-project/{project_id}/analyze-source", write=True, timeout=900
+    """Legacy entry: read the source locally and propose its story model."""
+    raise click.ClickException(
+        "请在 Agent 本地完整读取原著，再用 translate contract/source_story_model "
+        "与 run claim + translate propose 回填来源模型候选；平台不代读原文。"
     )
-    _emit(result, json_output)
 
 
 @translate_group.command("target-contract")
@@ -9862,20 +10054,10 @@ def translate_target_contract(
     cultural_distance: str,
     json_output: bool,
 ) -> None:
-    """Set the target-market contract for a recreation."""
-    body = {
-        "genre_promise": genre_promise,
-        "background_policy": background_policy,
-        "cultural_distance": cultural_distance,
-    }
-    _emit(
-        _session(ctx).request(
-            "POST",
-            f"/cross-cultural-recreations/by-project/{project_id}/target-contract",
-            json_body=body,
-            write=True,
-        ),
-        json_output,
+    """Legacy entry: use a reviewed target-intent candidate."""
+    raise click.ClickException(
+        "旧 target-contract 参数不能表达完整归化边界，且旧接口会直接采纳。"
+        "请用 translate contract target_story_contract、run claim 与 translate propose 回填候选。"
     )
 
 
@@ -9884,11 +10066,11 @@ def translate_target_contract(
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def translate_strategies(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """Generate recreation strategies (blocks until done)."""
-    result = _session(ctx).request(
-        "POST", f"/cross-cultural-recreations/by-project/{project_id}/strategies", write=True, timeout=900
+    """Legacy entry: create a cultural-reconstruction strategy locally."""
+    raise click.ClickException(
+        "请在 Agent 中构思故事归化方案，并通过 translate contract/recreation_strategy "
+        "与 run claim + translate propose 保存候选。"
     )
-    _emit(result, json_output)
 
 
 @translate_group.command("mappings")
@@ -9896,11 +10078,11 @@ def translate_strategies(ctx: click.Context, project_id: str, json_output: bool)
 @click.option("--json", "json_output", is_flag=True)
 @click.pass_context
 def translate_mappings(ctx: click.Context, project_id: str, json_output: bool) -> None:
-    """Confirm cultural mappings (blocks until done)."""
-    result = _session(ctx).request(
-        "POST", f"/cross-cultural-recreations/by-project/{project_id}/cultural-mappings", write=True, timeout=900
+    """Legacy entry: submit only mappings needed by the chosen strategy."""
+    raise click.ClickException(
+        "请仅对实际迁移或重构的文化载体写明叙事功能与因果理由，"
+        "再经 translate contract/cultural_mapping_set 与 translate propose 保存候选。"
     )
-    _emit(result, json_output)
 
 
 # -------------------------------------------------------------------- storyboard
