@@ -1,3 +1,13 @@
+# 选择平台时的衔接
+
+只有作者选择平台保存或明确要求继续已绑定平台项目，才执行本页。先 `scriptnow agent-guide --json`，核对当前命令与 `--help`。本地方法读取不需要此步骤。没有项目 ID 就先确认要保存到哪个项目；不要自行把所有本地草稿或原著上传。
+
+使用 `scriptnow project create --help` 与 `scriptnow translate create --help` 核对建项参数，只在作者授权后建立 novel / cross_cultural_recreation 项目及归化记录。既有项目先 `translate state`，不得重复创建。平台未部署本契约、登录失效或命令不存在时，保留本地工作并如实说明未写入，不用其他域命令或旧生成接口冒充成功。
+
+本地局部试写不代表满足平台来源完整覆盖门禁；准备接入时按实时 contract 补足阅读，不伪造 complete。自由模式的作者认可也不自动成为平台采纳凭证。
+
+平台内置归化方法会随项目级 creative-skill-plan 返回；个人写作方法配置与其健壮性门禁仍独立有效。内置方法已选中不能冒充个人 Skill 已挂载或已过门禁。
+
 # 故事归化：本地细读、文化重构、候选回填
 
 先加载 `webnovel-localization` 或 `scriptnow translate method --section all --json`。方法读取无需登录和项目；自由本地分析、试写与修订不要求保存平台。仅在作者选择平台或要求继续已绑定项目时使用下面的候选链。
@@ -6,7 +16,7 @@
 
 先把原作里的关键元素写成“它在故事中做什么”：谁因什么制度、关系或期待受阻，采取什么行动，改变谁的处境。再与作者确定目标读者、类型承诺、发行场景和背景边界。目标语言不自动决定背景地点。对每个真正需要处理的文化载体，选择保留、解释、迁移或重构；迁移或重构须写明新载体和人物动机、因果变化。触及作者保护项时先提交冲突决策候选，等作者明确采纳。不要凑满类别或固定国家、章节数、字数、评分轮次。
 
-contract 若返回缺失/过期依赖或未采纳前序工作包，先只读处理前置，不领取写资格或盲试提交。
+contract 若返回缺失/过期依赖或未采纳前序工作包，先只读解释并处理前置，不领取写资格或盲试提交。
 
 执行顺序：`translate state <作品号> --json` 看当前已采纳基线；`translate contract <作品号> <kind> --json` 读必需依赖与作用域并原样保存为 `@contract.json`；`run claim <作品号> <kind> <资源号> --domain novel --task-key ... --attempt-key ... --json` 领取本次候选写资格；若为 recreation_unit，先按下文用同一凭据真实读取 facts 与 methods 并确认准备就绪，再开始本轮正文创作；Agent 本地创作 `@file.json`；`translate propose <作品号> <kind> @file.json --contract @contract.json --execution-token ... --request-key ... --json` 回填；再次 `translate state` 回读候选。`recreation_unit` 的资源号和 `--work-package-key` 都是已采纳方案中的工作包键，其契约用 `translate contract <作品号> recreation_unit --work-package-key <键> --json` 取得。重试同一请求须保留同一契约文件、请求键、凭据和内容；候选回执只证明已保存，不证明已采纳。
 

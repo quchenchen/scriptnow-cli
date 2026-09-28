@@ -108,7 +108,9 @@ class AgentJsonGroup(click.Group):
         # so its json_output option cannot see a command-local --json. Preserve
         # the invocation-wide machine-output intent for that callback.
         ctx.meta["scriptnow_invocation_json"] = "--json" in args
-        return super().parse_args(ctx, args)
+        remaining = super().parse_args(ctx, args)
+        ctx.meta["scriptnow_remaining_args"] = remaining
+        return remaining
 
     def main(self, *args: Any, **extra: Any) -> Any:
         cli_args = extra.get("args")
@@ -536,7 +538,11 @@ def main(
     # 强制版本检查：后台低频（24h 缓存）查询 GitHub 发布镜像，有新版时提示
     # 升级（不阻塞任何命令，失败静默）。子命令自己的 --json 同样是
     # 机器输出契约；根组尚未解析到它时，仍须避免启动会异步写输出的检查。
-    if not json_output and not ctx.meta.get("scriptnow_invocation_json", False):
+    offline_method = (
+        ctx.invoked_subcommand == "translate"
+        and ctx.meta.get("scriptnow_remaining_args", [])[:1] == ["method"]
+    )
+    if not offline_method and not json_output and not ctx.meta.get("scriptnow_invocation_json", False):
         maybe_warn_in_background()
     if ctx.invoked_subcommand is None:
         click.echo(ui.banner(VERSION))
@@ -1447,10 +1453,10 @@ _AGENT_CONTRACT = {
         "authorize 命令与旧版 decision-token 通道已弃用：所有采纳授权统一走 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json` → `scriptnow review claim <packet_id> --json` → 目标采纳命令的 `--review-token <凭证>`；CLI authorize 仅保留兼容输出并标记 deprecated，新流程不再引导使用。",
         "创作对话优先于技术操作：新手模式按 scriptnow guide --step <n> --medium novel|script --json 一幕一幕推进。每轮只问一个主问题；用户卡住时才选择一个 lenses 角度启发。先用自然语言复述创作意图，再给一个具体候选，让用户只做『保留 / 调整 / 换方向』的决定。命令、JSON、id、质量术语默认留在幕后。多轮发散后可将最近对话的轻量摘要传给 guide --pulse @pulse.json --step <当前幕>：只含 rounds_without_progress / decision_advanced / captured_material / unresolved / conflicts / next_stage_requested，不传正文。仅当返回 drifting/conflict 才按 recovery 协议先收拢成果、再邀请回归；useful_detour 必须保留素材并允许继续探索。也可直接用 --resume 温和接回。所有机制都不得改变平台状态、强制跳转、倾倒整套流程、连续盘问，或用『作为 AI』『根据算法』等措辞破坏共创感。",
         "平台是唯一事实源：项目、章节、候选、采纳、版本、导出都以 ScriptNow 平台为准。禁止在本地自行创建『类项目目录/JSON 结构』冒充平台项目，也不要绕过 CLI 直接构造 HTTP 请求。唯一的体外例外是本地缓存与资料整理（下载素材、归档参考资料、暂存草稿片段等纯本地文件）——此类文件不得自称或伪装为平台项目，正式项目一律在平台内创建。",
-        "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。离线创作的正文只是草稿，成品必须以 propose 回传为平台候选，由平台校验格式与质量。",
+        "一切平台操作必须经 scriptnow 命令：创建项目、规划、回传（propose）、采纳（adopt）、生成（generate）、导出（export）。作者选择平台项目后，正式成果须以 propose 回传为候选，由平台校验格式与质量；自由本地网文归化可以直接交付，不强制建项目或回填。",
         "正文与规划默认由 dsh 在当前创作会话中完成：先通过 scriptnow run claim 取得绑定项目、资源与执行代次的候选写资格，再读取平台事实；正文前用 skill selected --unit-id <单元ID> --json 取得所选方法全文及 material_digest，确认 execution_ready 后使用 chapter/scene propose --execution-token --material-digest 回填候选；规划用对应 propose --execution-token。平台只负责校验、保存、审阅与采纳；平台 AgentScope generate 仅为作者显式选择的后备。作者对 dsh 的委托绝不自动扩大为采纳、结构覆盖、删除或发布。候选写资格不等于采纳授权：作者看到平台回读的完整候选并明确决定后，才运行 confirm/claim 和 adopt。旧执行被撤销或接管后不能写新候选；取消写资格不冒充引擎已停止。",
         "取消时 run revoke 先撤销写资格；只有回执 engine_stopped=true 才表示 dsh 已停。若仍为 false，用 run stop-status 只读复查，不重复发取消。dsh shell 的 DSH_SESSION_ID 随 run claim 绑定到 attempt，旧会话未确认停止前不得接管同任务。",
-        "故事归化专用链：原著文件、抽取全文和逐页阅读留在 Agent 环境，平台旧 analyze-source 已停用。先 translate state/contract 读取基线并保存契约回执，run claim 领取限域写资格，本地分析原作叙事功能、目标文化制度/关系/动机，按需保留、解释、迁移或重构，再用 translate propose @file --contract @contract.json 保存候选；同请求重试复用同一契约。迁移或重构实际文化载体时给因果映射，触及保护项时由作者裁决；不凑类别或固定篇幅。逐章前用本次凭据分别读取 translate state --unit-key <键> --read-kind facts 与 methods，随 propose 提交 methods 回执的 material_digest；未采纳前序单元或任一读取缺失会拒绝。章节以 review-unit 审读，可 revise-unit 另存人工版，再经上述完整人工审阅命令确认、领取凭证并用 translate adopt 独立采纳；manuscript/export 标明基线状态。平台其余生成入口只在作者显式选择时作为后台后备，仍产候选。",
+        "网文归化先加载 webnovel-localization 或 translate method --section all --json；自由本地试写无需项目或登录，作者选择平台时才走以下链。用 translate review-preview 获取服务端绑定的审阅包，不自行猜内容摘要。故事归化专用链：原著文件、抽取全文和逐页阅读留在 Agent 环境，平台旧 analyze-source 已停用。先 translate state/contract 读取基线并保存契约回执，run claim 领取限域写资格，本地分析原作叙事功能、目标文化制度/关系/动机，按需保留、解释、迁移或重构，再用 translate propose @file --contract @contract.json 保存候选；同请求重试复用同一契约。迁移或重构实际文化载体时给因果映射，触及保护项时由作者裁决；不凑类别或固定篇幅。逐章前用本次凭据分别读取 translate state --unit-key <键> --read-kind facts 与 methods，随 propose 提交 methods 回执的 material_digest；未采纳前序单元或任一读取缺失会拒绝。章节以 review-unit 审读，可 revise-unit 另存人工版，再经上述完整人工审阅命令确认、领取凭证并用 translate adopt 独立采纳；manuscript/export 标明基线状态。平台其余生成入口只在作者显式选择时作为后台后备，仍产候选。",
         "StoryMap 普通提案不得偷偷纯追加或全置换。新增卷章用带 execution-token 的 append 通道；作者明确授权真重构后先 storymap-rebuild-start，再由 dsh 整体创作并以 propose storymap --rebuild-direct 保存完整候选，正式替换仍单独人审。分阶段重建只在超长作品按需选用，不强迫作者逐格回填。",
         "规划三件套（story_cores / blueprint / storymap）回填优先：默认由 Agent 本地生成后 propose 回填为候选，再经 planning-quality 质量门禁后采纳。平台端 generate 仅作后备，不依赖、不鼓励——不要把平台生成当作首选路径。StoryMap 不是只有 episode/scene 或 volume/chapter 容器：**集纲/章纲写成一段整段叙事**（剧本 episodes[].summary；小说 chapter.outline.summary）——谁要什么 / 卡在哪 / 怎么翻 / 翻完局面变成什么，写在同一段里；分栏字段（logline/active_goal/conflict/turn/state_changes）仍可读写但不是必填。anchor_ids 是**机器索引**（剧本 episodes[].anchor_ids 或该集场节拍；小说 outline.anchor_ids 或 beat），必需。集纲/章纲随 StoryMap 一体交付：新章节在 propose/append 时必须带**可读**的集纲/章纲，经 planning-quality 与采纳后逐章写作；历史章节（已有正文）可读可写，不受章纲字段缺失影响，无需批量迁移。提交章纲前可用 chapter outline-check 自查结构，chapter outline-example 查看平台结构示范。",
         "改编项目的来源画像同样**回填优先**：Agent 本地读完原著 → `scriptnow interpret propose <作品号> --spec` 取回填规范 → `scriptnow interpret propose <作品号> --profile @profile.json` 回填「来源画像 + 锚点自证」（原文不出本地，平台只校验与采纳，**不调模型、不阻塞**）→ 作者复核锚点后 `scriptnow interpret decide <作品号> <profile-id> --approve`。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**（大作品数分钟起，宿主工具轮候窗口常撑不住），不要当默认入口、也不要在其中干等。改编项目在**来源画像获批之前**不得生成任何规划或正文候选 —— 这条门禁不因来源来自本地而放松：回填产出的是候选，不是免批后门；锚点为空或画像缺 story_core/characters/central_conflict 会被平台直接拒收（422）。",
@@ -1522,7 +1528,7 @@ _AGENT_CONTRACT = {
 # available through `--full` for a human or a deliberate deep inspection.
 _AGENT_RUNTIME_CONTRACT = {
     "guide": "scriptnow-agent-runtime-contract",
-    "contract_version": "18",
+    "contract_version": "19",
     "title": "ScriptNow Agent 运行契约",
     "audience": "在 ScriptNow 平台执行创作任务的 AI Agent。",
     "rules": [
@@ -1531,7 +1537,7 @@ _AGENT_RUNTIME_CONTRACT = {
         f"创作顺序固定为 12 步（guide --step 1..12）：{_STEP_ONE_NAME} → 创建作品 → 补齐创作方向 → 故事核心与蓝图（cores/blueprint）→ 故事梗概（outline）→ 全剧统筹与粗纲（rough-outline）→ StoryMap 与集纲/章纲一体交付（storymap propose/adopt 含章节纲）→ 创建并挂载 Skill → 逐章/逐场创作 → 审读与修订 → 包装与导出 → 标记引导完成（guide --complete）。核心与蓝图必须先于梗概；粗纲依赖已采纳的核心/蓝图锚点与梗概，位于集纲/章纲与 StoryMap 之前；不得跳过引导直接排 StoryMap 或写正文。",
         "规划回填优先（故事核心与蓝图/story_cores/blueprint/storymap）：默认由 Agent 本地生成后 propose 回填为平台候选，再经 planning-quality 门禁与用户采纳；平台 generate 仅作后备手段，不依赖、不鼓励、不主动引导。",
         "来源画像回填优先（改编项目）：改编项目的来源画像默认由 Agent 本地读完原著后 `scriptnow interpret propose <作品号> --profile @profile.json` 回填（须带锚点自证 attestation，原文不出本地；平台只校验与采纳，不调模型、不阻塞），再由作者 `scriptnow interpret decide <作品号> <profile-id> --approve` 批准。平台通读（`interpret go` / `interpret create` + `interpret read`）是**辅助路径且同步阻塞到读完**，不作为默认入口。来源画像获批之前，改编项目不得生成任何规划或正文候选 —— 锚点为空、或画像缺 story_core/characters/central_conflict 会被平台拒收（422）；回填产出的是候选，不是免批后门。",
-        "故事归化：原著在 Agent 本地完整读取，平台不接收抽取全文，旧 analyze-source 已停用；translate state/contract 并保存契约文件 → run claim（归化 kind）→ 本地创作 → translate propose --contract @contract.json --execution-token --request-key 回填候选。同请求重试复用同一契约。策略说明原元素叙事功能，再决定保留/解释/迁移/重构；实际迁移或重构文化载体才须映射，触及保护项才须作者裁决。试写验证最大文化与因果风险。逐章前按真实工作包键分别用 translate state --read-kind facts 与 methods 取得本次 attempt 的服务端读取回执，随候选提交 material_digest；读取不等于应用，原著通读仍只可自证。章节 review-unit / revise-unit 后作者另行按上述完整命令确认并领取审阅凭证，再执行 translate adopt；manuscript/export 明示当前或历史基线。其余平台生成只作显式后台后备。",
+        "网文归化先加载 webnovel-localization（CLI：translate method --section all --json，无需登录/项目）；自由试写不强制落平台。作者选择平台后，用 translate review-preview 读取已保存候选的审阅包；原著在 Agent 本地完整读取，平台不接收抽取全文，旧 analyze-source 已停用；translate state/contract 并保存契约文件 → run claim（归化 kind）→ 本地创作 → translate propose --contract @contract.json --execution-token --request-key 回填候选。同请求重试复用同一契约。策略说明原元素叙事功能，再决定保留/解释/迁移/重构；实际迁移或重构文化载体才须映射，触及保护项才须作者裁决。试写验证最大文化与因果风险。逐章前按真实工作包键分别用 translate state --read-kind facts 与 methods 取得本次 attempt 的服务端读取回执，随候选提交 material_digest；读取不等于应用，原著通读仍只可自证。章节 review-unit / revise-unit 后作者另行按上述完整命令确认并领取审阅凭证，再执行 translate adopt；manuscript/export 明示当前或历史基线。其余平台生成只作显式后台后备。",
         "正文与规划默认由 dsh 在当前创作会话中完成：先通过 scriptnow run claim 取得绑定项目、资源与执行代次的候选写资格，再读取平台事实；正文前用 skill selected --unit-id <单元ID> --json 取得所选方法全文及 material_digest，确认 execution_ready 后使用 chapter/scene propose --execution-token --material-digest 回填候选；规划用对应 propose --execution-token。平台只负责校验、保存、审阅与采纳；平台 AgentScope generate 仅为作者显式选择的后备。作者对 dsh 的委托绝不自动扩大为采纳、结构覆盖、删除或发布。候选写资格不等于采纳授权：作者看到平台回读的完整候选并明确决定后，才运行 confirm/claim 和 adopt。旧执行被撤销或接管后不能写新候选；取消写资格不冒充引擎已停止。",
         "授权统一走对话审阅通道 `scriptnow review confirm <packet_id> --decision retain --evidence \"<用户明确决定原话>\" --json`（原样登记用户明确决定）→ `scriptnow review claim <packet_id> --json`（取一次性凭证）→ 带 --review-token 的目标采纳命令；authorize 与旧版决策令牌通道已弃用，不再引导使用。",
         "平台是唯一项目事实源：所有创建、回传、采纳、生成、导出都只能通过 scriptnow CLI。",
@@ -1564,7 +1570,7 @@ _AGENT_RUNTIME_CONTRACT = {
     ],
     "quickstart": [
         "scriptnow --help",
-        "scriptnow agent-guide --json（第一个动作）",
+        "scriptnow agent-guide --json（第一个平台动作；translate method 本地方法读取除外）",
         "scriptnow guide --step 1 --medium novel|script --json（按 next_step 逐幕推进到 12）",
         "故事核心与蓝图：按 guide 第 4 步先审阅本地文件、propose 回填、审阅平台候选、confirm/claim，再用带 <作品号> <候选号> 和 --review-token 的 adopt-core/adopt-blueprint 采纳。",
         "故事梗概：novel outline <作品号> --text \"一句梗概\" → novel outline-status → novel outline-adopt",
@@ -1572,7 +1578,7 @@ _AGENT_RUNTIME_CONTRACT = {
         "StoryMap 一体：review propose-preview → novel propose storymap @storymap.json → review candidate-preview → 用户明确决定 → novel adopt-storymap（planning-quality 通过）；补纲用 chapter outline / outline-batch",
         "Skill 门禁：skill setup <pid>（预设点选共建挂载）→ skill mounts <pid> 核实；深度共创 skill craft / interpret local → 预检试写 → 挂载",
         "剧本核心密码：skill method-current / method-compile / method-compare / method-bind / method-resolve（只消费服务端 Method DNA）",
-        "正文：默认 platform generate，用户明确本地创作时才 propose；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
+        "正文：默认 dsh 本地创作后 propose，platform generate 仅为作者显式选择的后备；两种路径均在用户明确决定后，以完整 chapter/scene adopt 位置参数、--human 和 --review-token 采纳。",
         "自动批次：chapter batch <作品号> --chapters a,b,c（剧本侧 scene batch）；须第一章已采纳 + 已挂载方法论 Skill，一批 2–3 个、串行、只产候选，完成后由作者逐单元审查再采纳。",
         "分集量化仪表盘（剧本）：scriptnow script analytics <作品号> --json → 每集节拍密度/冲突分量、角色戏份分布、关键节点覆盖矩阵；谈节奏与戏份读它，不要自己估算",
         "审读：chapter show <作品号> <章号> --plain → chapter quality → 修订后重审",
@@ -9803,7 +9809,7 @@ def script_scene_diff(
 @main.group("translate")
 @click.pass_context
 def translate_group(ctx: click.Context) -> None:
-    """故事归化：Agent 本地细读原著、文化重构、候选回填与人审。"""
+    """故事归化：method 本地方法（无需项目），或可选平台候选与人审。"""
 
 
 _RECREATION_KINDS = [
@@ -9811,6 +9817,42 @@ _RECREATION_KINDS = [
     "cultural_mapping_set", "protection_conflict_decision", "pilot",
     "scale_plan", "recreation_unit",
 ]
+
+
+@translate_group.command("method")
+@click.option("--section", type=click.Choice(["entry", "method", "continuity", "review", "platform", "research", "world", "all"]), default="entry", show_default=True)
+@click.option("--json", "json_output", is_flag=True)
+def translate_method(section: str, json_output: bool) -> None:
+    """Read the bundled webnovel-localization Skill without login or project writes."""
+    root = Path(__file__).parent / "localization_skill"
+    paths = ["SKILL.md"]
+    if section == "all":
+        paths.extend(f"references/{name}.md" for name in ("method", "continuity", "review", "platform", "research", "world"))
+    elif section != "entry":
+        paths.append(f"references/{section}.md")
+    documents = {name: (root / name).read_text(encoding="utf-8") for name in paths}
+    if json_output:
+        _emit({"skill": "webnovel-localization", "cli_version": VERSION,
+               "section": section, "documents": documents, "platform_required": False}, True)
+    else:
+        click.echo("\n\n".join(documents.values()))
+
+
+@translate_group.command("review-preview")
+@click.argument("project_id")
+@click.argument("candidate_id")
+@click.option("--kind", type=click.Choice(["artifact", "unit"]), required=True)
+@click.option("--json", "json_output", is_flag=True)
+@click.pass_context
+def translate_review_preview(ctx: click.Context, project_id: str, candidate_id: str,
+                             kind: str, json_output: bool) -> None:
+    """Read the server-bound saved candidate and prepare separate human review."""
+    resource = "artifacts" if kind == "artifact" else "production-units"
+    result = _session(ctx).request(
+        "POST", f"/cross-cultural-recreations/by-project/{project_id}/{resource}/{candidate_id}/review-preview",
+        write=True,
+    )
+    _emit(result, json_output)
 
 
 @translate_group.command("state")

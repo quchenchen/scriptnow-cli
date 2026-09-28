@@ -11,6 +11,8 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 
 ## 启动与继续
 
+自由归化分析、试译和修订先加载 `webnovel-localization`；已有 CLI 时可用 `translate method --section all --json`。这类本地任务不执行下列安装、登录或平台向导；只有作者选择平台后才进入。
+
 1. 任何开始或继续 ScriptNow 创作的请求，都先自动检查 `scriptnow --version` 及已知安装路径。
    若缺少可用 CLI，直接读取 [安装与连接](references/setup.md)，在当前 Agent 实际执行环境中
    安装并验证，然后继续原创作任务；不要求作者另说“安装”，不重复询问是否安装必要依赖。
@@ -81,7 +83,7 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 | 选择写作方法、挂载 Skill、剧本格式与 Method DNA | [methods](references/methods.md) |
 | dsh 逐章或逐场正文、执行权领取与续租、候选回填 | [writing](references/writing.md) |
 | 用户明确要求分镜与制作交付 | [storyboard](references/storyboard.md) |
-| 小说故事归化、本地原著分析、文化重构与试写 | [recreation](references/recreation.md) |
+| 小说故事归化、本地原著分析、文化重构与试写（先 webnovel-localization 或 translate method，无需项目） | [recreation](references/recreation.md) |
 
 ## 每次执行都要守住
 
@@ -104,3 +106,5 @@ CLI 是执行工具；本 Skill 是协作入口；平台是项目事实源。
 
 结束一轮时交代：刚刚确认了什么、平台保存了什么、下一步由作者决定什么。
 暂停时保留可用于恢复的项目链接、当前单元和待办；不在记录中保存登录凭据。
+
+归化独立方法入口：`scriptnow translate method --section all --json`（本地读取，无需登录）；平台保存候选的审阅包用 `translate review-preview <作品号> <候选号> --kind artifact|unit --json`，人类确认与采纳仍独立执行。

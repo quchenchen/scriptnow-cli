@@ -90,3 +90,31 @@ def test_translate_unit_review_revision_manuscript_and_export(tmp_path, monkeypa
     assert exported.exit_code == 0, exported.output
     assert target.read_bytes() == b"PKsynthetic-docx"
     assert json.loads(exported.output)["baseline"] == "current"
+
+
+def test_translate_method_is_offline_and_self_contained(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offline method must not access session or network")
+    monkeypatch.setattr(cli, "_session", forbidden)
+    monkeypatch.setattr(cli, "maybe_warn_in_background", forbidden)
+    for options in (["--json"], []):
+        result = CliRunner().invoke(cli.main, ["translate", "method", "--section", "all", *options])
+        assert result.exit_code == 0, result.output
+        assert "webnovel-localization" in result.output
+        if options:
+            payload = json.loads(result.output)
+            assert payload["platform_required"] is False
+            assert set(payload["documents"]) == {"SKILL.md", "references/method.md",
+                "references/continuity.md", "references/review.md", "references/platform.md", "references/research.md", "references/world.md"}
+            assert all(payload["documents"].values())
+
+
+def test_translate_review_preview_uses_saved_server_candidate(monkeypatch):
+    session = FakeSession()
+    monkeypatch.setattr(cli, "_session", lambda _ctx: session)
+    for kind, resource in (("artifact", "artifacts"), ("unit", "production-units")):
+        result = CliRunner().invoke(cli.main, ["translate", "review-preview", "p1", "c1",
+                                              "--kind", kind, "--json"])
+        assert result.exit_code == 0, result.output
+        assert session.calls[-1] == ("POST",
+            f"/cross-cultural-recreations/by-project/p1/{resource}/c1/review-preview", {"write": True})

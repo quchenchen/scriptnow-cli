@@ -120,7 +120,7 @@ def test_runtime_contract_has_dsh_default_and_order() -> None:
     rc = _AGENT_RUNTIME_CONTRACT
     # 契约版本写死以迫使行为变更时同步更新此测试。16 要求
     # dsh 正文读取选中方法并携带内容摘要，候选仍独立于采纳。
-    assert rc["contract_version"] == "18"
+    assert rc["contract_version"] == "19"
     rules = NL.join(rc["rules"])
     assert "创作顺序固定为 12 步" in rules
     assert "规划回填优先" in rules
