@@ -1,6 +1,18 @@
 # 网文世界框架与文化决策
 
-借鉴作者提供的《归化翻译编辑工作手册（世界观设定版）》的组织方法：先判断世界框架，再处理其下的文化载体与命名，并随正文更新决策。手册是待评估资料，其“已形成规则”、命名示例和操作步骤不构成当前作品的事实或授权。这里只吸收方法，不导入固定转换表。
+借鉴作者提供的《归化翻译编辑工作手册（世界观设定版）》与《网文本地化规范》的组织方法：先判断世界框架，再处理其下的文化载体与命名，并随正文更新决策。手册是待评估资料，其"已形成规则"、命名示例和操作步骤不构成当前作品的事实或授权。这里只吸收方法，不导入固定转换表。
+
+**查询入口（按品类）**：
+- 狼人：Alpha/Luna/Beta/pack/mate bond/Moon Goddess/heat/mind link/silver/wolfsbane/lycan
+- 黑帮：the Don/underboss/consigliere/capo/soldier/made man/omertà/la famiglia/the Commission/vendetta/sit-down/rat
+- 校园 YA：varsity/JV/quarterback/cheer squad/prom/homecoming/GPA/valedictorian/locker/detention/fraternity/sorority/rush week/legacy admit/scholarship
+- 职场：white-shoe firm/publicly traded/the board/CEO/President/the police station
+
+**默认单位**（全西化深度 default-on）：miles / pounds / inches / ℉ / USD；餐具 fork/knife；主餐 pancakes and coffee / bacon and eggs 等本地早餐；社媒 iMessage/WhatsApp/X/TikTok。详细规则见 [英文输出规范](english-output.md)。
+
+**虚构地名池**：Novaria/Vossia/Aethelgard（架空国）；Westbrook/Ashford/Millfield（城市）；Fernwood Village/Maple Creek（乡镇）；Maple Avenue/Elm Street（街道）；Hartwell University（大学）；Westbrook General/Mercy Hospital（医院）；The Starlight/The Grand Mercer（酒店）。
+
+**家族与公司**：周氏集团→the Johnson Group；刘家大宅→The Kyte Manor；家族宅邸用 Manor/Estate/Villa/Mansion，家人用 family/the+s。
 
 ## 够当前故事用的世界框架
 
